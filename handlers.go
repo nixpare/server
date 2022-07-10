@@ -25,8 +25,30 @@ type Website struct {
 	AvoidMetricsAndLogging bool
 }
 
-type ServeFunction func(route *Route, w http.ResponseWriter, r *http.Request)
-type InitFunction func(srv *Server)
+type ServeFunction func(route *Route)
+type InitFunction func(srv *Server, domain *Domain, subdomain *Subdomain)
+
+type ResponseWriter interface {
+	http.ResponseWriter
+	WriteString(string) error
+}
+
+type responseWriter struct {
+	w http.ResponseWriter
+}
+func (w responseWriter) Header() http.Header {
+	return w.w.Header()
+}
+func (w responseWriter) Write(data []byte) (int, error) {
+	return w.w.Write([]byte(data))
+}
+func (w responseWriter) WriteHeader(statusCode int) {
+	w.w.WriteHeader(statusCode)
+}
+func (w responseWriter) WriteString(s string) error {
+	_, err := w.w.Write([]byte(s))
+	return err
+}
 
 type Route struct {
 	Srv *Server
@@ -34,8 +56,10 @@ type Route struct {
 	Host string
 	RemoteAddress string
 	Website *Website
-	Domain string
-	Subdomain string
+	DomainName string
+	SubdomainName string
+	Domain *Domain
+	Subdomain *Subdomain
 	RequestURI string
 	logRequestURI string
 	QueryMap map[string]string
@@ -43,8 +67,8 @@ type Route struct {
 	AvoidLogging bool
 	Err int
 	LogMessage string
-	w http.ResponseWriter
-	r *http.Request
+	W ResponseWriter
+	R *http.Request
 	serveF ServeFunction
 }
 
@@ -119,8 +143,13 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	route.w = w
-	route.r = r
+	route.W = responseWriter { w }
+	w = route.W
+	route.R = r
+
+	if route.Subdomain.offline {
+		route.Err = ErrSubdomainNotFound
+	}
 
 	if route.Err != ErrNoErr {
 		var httpStatus int
@@ -138,14 +167,14 @@ func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 			route.AvoidLogging = true
 		case ErrDomainNotFound:
-			if route.Domain == "" {
+			if route.DomainName == "" {
 				route.LogMessage = "Invalid direct IP access"
 			} else {
 				route.LogMessage = "Domain not found"
 			}
 			httpStatus = http.StatusBadRequest
 		case ErrSubdomainNotFound:
-			route.LogMessage = fmt.Sprintf("Subdomain \"%s\" not found", route.Subdomain)
+			route.LogMessage = fmt.Sprintf("Subdomain \"%s\" not found", route.SubdomainName)
 			httpStatus = http.StatusBadRequest
 		}
 
@@ -159,10 +188,10 @@ func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if route.Subdomain == "www." {
+	if route.SubdomainName == "www." {
 		if !route.isInternalConnection() {
 			route.AvoidLogging = true
-			http.Redirect(w, r, "https://" + route.Domain + r.RequestURI, http.StatusMovedPermanently)
+			http.Redirect(w, r, "https://" + route.DomainName + r.RequestURI, http.StatusMovedPermanently)
 
 			return
 		}
@@ -174,7 +203,7 @@ func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	route.serveF(route, w, r)
+	route.serveF(route)
 }
 
 func (route *Route) avoidNoLogPages() {

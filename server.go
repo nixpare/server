@@ -27,6 +27,7 @@ type Subdomain struct {
 	website *Website
 	serveFunction ServeFunction
 	initFunction InitFunction
+	offline bool
 }
 
 type offlineClient struct {
@@ -95,10 +96,16 @@ const (
 
 func NewServer(cfg Config) (srv *Server, err error) {
 	if cfg.ServerPath == "" {
-		cfg.ServerPath, _ = os.Getwd()
+		cfg.ServerPath, err = os.Getwd()
+		if err != nil {
+			return nil, fmt.Errorf("serverPath error: %w", err)
+		}
 	}
-
 	cfg.ServerPath = strings.ReplaceAll(cfg.ServerPath, "\\", "/")
+
+	if cfg.LogFile == nil {
+		cfg.LogFile = os.Stdout
+	}
 
 	srv, err = newServer(
 		cfg.Port, cfg.Secure,
@@ -227,17 +234,11 @@ func (srv *Server) Domain(name string) *Domain {
 }
 
 func (d *Domain) RegisterSubdomain(name string, website Website, serveF ServeFunction, initF InitFunction) {
-	if name == "" {
-		name = "www."
-	} else if !strings.HasSuffix(name, ".") {
-		name += "."
-	}
+	name = prepSubdomainName(name)
 
 	if serveF == nil {
 		website.AllFolders = []string{""}
-		serveF = func(route *Route, w http.ResponseWriter, r *http.Request) {
-			route.StaticServe(true)
-		}
+		serveF = func(route *Route) { route.StaticServe(true) }
 	}
 
 	ws := new(Website)
@@ -246,7 +247,38 @@ func (d *Domain) RegisterSubdomain(name string, website Website, serveF ServeFun
 	d.subdomains[name] = &Subdomain {
 		name, ws,
 		serveF, initF,
+		false,
 	}
+}
+
+func (d *Domain) EnableSubdomain(name string) {
+	name = prepSubdomainName(name)
+	
+	sd := d.subdomains[name]
+	if (sd != nil) {
+		sd.Enable()
+	}
+}
+
+func (d *Domain) DisableSubdomain(name string) {
+	name = prepSubdomainName(name)
+	
+	sd := d.subdomains[name]
+	if (sd != nil) {
+		sd.Disable()
+	}
+}
+
+func (d *Domain) RemoveSubdomain(name string) {
+	delete(d.subdomains, prepSubdomainName(name))
+}
+
+func (sd *Subdomain) Enable() {
+	sd.offline = false
+}
+
+func (sd *Subdomain) Disable() {
+	sd.offline = true
 }
 
 func (srv *Server) StartServer() {
@@ -272,16 +304,16 @@ func (srv *Server) StartServer() {
 	srv.WriteLogStart(srv.StartTimestamp)
 
 	for _, d := range srv.domains {
-		for _, s := range d.subdomains {
-			for _, cookie := range s.website.cookies {
+		for _, sd := range d.subdomains {
+			for _, cookie := range sd.website.cookies {
 				err := srv.CreateCookie(cookie)
 				if err != nil {
 					panic(err)
 				}
 			}
 
-			if s.initFunction != nil {
-				s.initFunction(srv)
+			if sd.initFunction != nil {
+				sd.initFunction(srv, d, sd)
 			}
 		}
 	}

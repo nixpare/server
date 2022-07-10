@@ -143,7 +143,7 @@ func (srv *Server) SetCookie(route *Route, w http.ResponseWriter, name string, v
 	http.SetCookie(w, &http.Cookie{
 		Name: srv.obfuscateMap[name],
 		Value: encValue,
-		Domain: route.Domain,
+		Domain: route.DomainName,
 		MaxAge: maxAge,
 		Secure: route.Secure,
 		HttpOnly: route.Secure,
@@ -156,7 +156,7 @@ func (srv *Server) DeleteCookie(route *Route, w http.ResponseWriter, name string
 	http.SetCookie(w, &http.Cookie{
 		Name: srv.obfuscateMap[name],
 		Value: "",
-		Domain: route.Domain,
+		Domain: route.DomainName,
 		MaxAge: -1,
 		Secure: route.Secure,
 		HttpOnly: route.Secure,
@@ -180,7 +180,7 @@ func (srv *Server) SetCookiePerm(route *Route, w http.ResponseWriter, name strin
 	http.SetCookie(w, &http.Cookie{
 		Name: srv.obfuscateMap[name],
 		Value: encValue,
-		Domain: route.Domain,
+		Domain: route.DomainName,
 		MaxAge: maxAge,
 		Secure: route.Secure,
 		HttpOnly: route.Secure,

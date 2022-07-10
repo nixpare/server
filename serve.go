@@ -21,23 +21,23 @@ type xFile struct {
 }
 
 func (route *Route) StaticServe(serveHTML bool) {
-	StaticServe(route, route.w, route.r, serveHTML)
+	StaticServe(route, route.W, route.R, serveHTML)
 }
 
 func (route *Route) ServeFile(path string) {
-	ServeFile(route.w, route.r, path)
+	ServeFile(route.W, route.R, path)
 }
 
 func (route *Route) ServeRootedFile(path string) {
-	ServeFile(route.w, route.r, route.Website.Dir + path)
+	ServeFile(route.W, route.R, route.Website.Dir + path)
 }
 
 func (route *Route) ServePlainData(name string, data []byte) {
-	ServePlainData(route.w, route.r, name, data)
+	ServePlainData(route.W, route.R, name, data)
 }
 
 func (route *Route) ServePlainText(name, text string) {
-	ServePlainText(route.w, route.r, name, text)
+	ServePlainText(route.W, route.R, name, text)
 }
 
 func ServeFile(w http.ResponseWriter, r *http.Request, path string) {

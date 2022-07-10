@@ -118,6 +118,18 @@ func (route *Route) isInternalConnection() bool {
 	return false
 }
 
+func prepSubdomainName(name string) string {
+	if name != "" && name != "*" && !strings.HasSuffix(name, ".") {
+		name += "."
+	}
+
+	if name == "www." {
+		name = ""
+	}
+
+	return name
+}
+
 func (route *Route) parseDomainName() int {
 	if route.isInternalConnection() {
 		if errno := route.localParseDomainName(); errno != ErrNoErr {
@@ -126,25 +138,30 @@ func (route *Route) parseDomainName() int {
 	} else {
 		for key := range route.Srv.domains {
 			if strings.HasSuffix(route.Host, key) {
-				route.Domain = key
+				route.DomainName = key
 			}
 		}
 	
-		if route.Domain == "" {
+		if route.DomainName == "" {
 			return ErrDomainNotFound
 		}
 	
-		route.Subdomain = strings.Split(route.Host, route.Domain)[0]
+		route.SubdomainName = strings.Split(route.Host, route.DomainName)[0]
 	}
 
-	if route.Subdomain != "" && !strings.HasSuffix(route.Subdomain, ".") {
-		route.Subdomain += "."
-	}
+	route.SubdomainName = prepSubdomainName(route.SubdomainName)
 
-	subdomain := route.Srv.domains[route.Domain].subdomains[route.Subdomain]
+	domain := route.Srv.domains[route.DomainName]
+	subdomain := domain.subdomains[route.SubdomainName]
 	if subdomain == nil {
-		return ErrSubdomainNotFound
+		subdomain = domain.subdomains["*"]
+		if subdomain == nil {
+			return ErrSubdomainNotFound
+		}
 	}
+
+	route.Domain = domain
+	route.Subdomain = subdomain
 
 	route.Website = subdomain.website
 	route.serveF = subdomain.serveFunction
@@ -154,13 +171,13 @@ func (route *Route) parseDomainName() int {
 
 func (route *Route) localParseDomainName() int {
 	if strings.HasSuffix(route.Host, "localhost") {
-		route.Subdomain = strings.Split(route.Host, "localhost")[0]
+		route.SubdomainName = strings.Split(route.Host, "localhost")[0]
 
-		if route.Subdomain != "" {
-			route.Domain = "localhost"
+		if route.SubdomainName != "" {
+			route.DomainName = "localhost"
 			route.Srv.offlineClients[route.RemoteAddress] = offlineClient {
 				"localhost",
-				route.Subdomain,
+				route.SubdomainName,
 			}
 
 			return ErrNoErr
@@ -170,20 +187,20 @@ func (route *Route) localParseDomainName() int {
 	remoteAddress := strings.Split(route.RemoteAddress, ":")[0]
 
 	savedConfig := route.Srv.offlineClients[remoteAddress]
-	route.Domain = savedConfig.domain
+	route.DomainName = savedConfig.domain
 
 	queryDomain, ok := route.QueryMap["domain"]
 	if ok {
-		route.Domain = queryDomain
+		route.DomainName = queryDomain
 	}
 	
-	if route.Domain == "" {
-		route.Domain = "localhost"
+	if route.DomainName == "" {
+		route.DomainName = "localhost"
 	}
 
 	var domainFound bool
 	for key := range route.Srv.domains {
-		if route.Domain == key {
+		if route.DomainName == key {
 			domainFound = true
 			break
 		}
@@ -192,21 +209,17 @@ func (route *Route) localParseDomainName() int {
 		return ErrDomainNotFound
 	}
 
-	route.Subdomain = savedConfig.subdomain
+	route.SubdomainName = savedConfig.subdomain
 
 	querySubdomain, ok := route.QueryMap["subdomain"]
 	if ok {
-		route.Subdomain = querySubdomain
+		route.SubdomainName = querySubdomain
 		savedConfig.subdomain = querySubdomain
 		
 	}
 
-	if route.Subdomain == "" {
-		route.Subdomain = "www."
-	}
-
 	route.Srv.offlineClients[remoteAddress] = offlineClient {
-		route.Domain, route.Subdomain,
+		route.DomainName, route.SubdomainName,
 	}
 
 	return ErrNoErr
