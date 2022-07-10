@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"npipe"
 	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/alessio-pareto/npipe"
 )
 
 func (srv *Server) ListenNamedPipe(pipeName string) {

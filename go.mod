@@ -1,15 +1,15 @@
-module server
+module github.com/alessio-pareto/server
 
 go 1.18
 
 require (
+	github.com/alessio-pareto/npipe v1.0.1
 	github.com/felixge/httpsnoop v1.0.2
 	github.com/go-sql-driver/mysql v1.6.0
 	github.com/gorilla/handlers v1.5.1
 	github.com/gorilla/securecookie v1.1.1
 	golang.org/x/oauth2 v0.0.0-20210819190943-2bc19b11175f
 	google.golang.org/api v0.56.0
-	npipe v0.0.0
 )
 
 require (
@@ -26,5 +26,3 @@ require (
 	google.golang.org/grpc v1.40.0 // indirect
 	google.golang.org/protobuf v1.27.1 // indirect
 )
-
-replace npipe v0.0.0 => ../npipe
