@@ -101,9 +101,6 @@ func NewServer(cfg Config) (srv *Server, err error) {
 		cfg.ServerPath, cfg.LogFile,
 		cfg.Certs,
 	)
-	if err != nil {
-		return
-	}
 
 	return
 }
@@ -217,17 +214,17 @@ func (srv *Server) SetInternalConnFilter(f func(remoteAddress string) bool) {
 	}
 }
 
-func (srv *Server) RegisterDomain(name string) *Domain {
+func (srv *Server) RegisterDomain(name, domainName string) *Domain {
 	d := &Domain {
 		name, make(map[string]*Subdomain),
 	}
 
-	srv.domains[name] = d
+	srv.domains[domainName] = d
 	return d
 }
 
-func (srv *Server) Domain(name string) *Domain {
-	return srv.domains[name]
+func (srv *Server) Domain(domainName string) *Domain {
+	return srv.domains[domainName]
 }
 
 func (srv *Server) Start() {

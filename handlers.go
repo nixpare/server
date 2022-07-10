@@ -69,7 +69,6 @@ type Route struct {
 	LogMessage string
 	W ResponseWriter
 	R *http.Request
-	serveF ServeFunction
 }
 
 type handler struct {
@@ -86,9 +85,9 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Srv: h.srv,
 		Secure: h.secure,
 		RemoteAddress: r.RemoteAddr,
-		Host: r.Host,
 		RequestURI: r.RequestURI,
 		ConnectionTime: time.Now(),
+		R: r,
 	}
 
 	defer func() {
@@ -139,16 +138,14 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		route.logError(r, metrics)
 	}
-	
 }
 
 func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	route.W = responseWriter { w }
 	w = route.W
-	route.R = r
 
-	if route.Subdomain.offline {
-		route.Err = ErrSubdomainNotFound
+	if route.Subdomain.offline || !route.Srv.Online {
+		route.Err = ErrServerOffline
 	}
 
 	if route.Err != ErrNoErr {
@@ -182,16 +179,15 @@ func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !route.Srv.isInternalConn(route.RemoteAddress) && !route.Secure {
-		route.AvoidLogging = true
-		http.Redirect(w, r, "https://" + r.Host + r.RequestURI, http.StatusMovedPermanently)
-		return
-	}
-
 	if route.SubdomainName == "www." {
-		if !route.Srv.isInternalConn(route.RemoteAddress) {
+		if !route.IsInternalConn() {
 			route.AvoidLogging = true
-			http.Redirect(w, r, "https://" + route.DomainName + r.RequestURI, http.StatusMovedPermanently)
+
+			scheme := "http"
+			if route.Secure {
+				scheme += "s"
+			}
+			http.Redirect(w, r, scheme + "://" + strings.ReplaceAll(r.Host, "www.", "") + r.RequestURI, http.StatusMovedPermanently)
 
 			return
 		}
@@ -203,7 +199,7 @@ func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	route.serveF(route)
+	route.Subdomain.serveFunction(route)
 }
 
 func (route *Route) avoidNoLogPages() {

@@ -1,32 +1,39 @@
 package server
 
 type Domain struct {
-	name string
+	Name string
 	subdomains map[string]*Subdomain
 }
 
 type Subdomain struct {
-	name string
+	Name string
 	website *Website
 	serveFunction ServeFunction
 	initFunction InitFunction
 	offline bool
 }
 
-func (d *Domain) RegisterSubdomain(name string, website Website, serveF ServeFunction, initF InitFunction) {
-	name = prepSubdomainName(name)
+type SubdomainConfig struct {
+	Name string
+	Website Website
+	ServeF ServeFunction
+	InitF InitFunction
+}
 
-	if serveF == nil {
-		website.AllFolders = []string{""}
-		serveF = func(route *Route) { route.StaticServe(true) }
+func (d *Domain) RegisterSubdomain(c SubdomainConfig) {
+	c.Name = prepSubdomainName(c.Name)
+
+	if c.ServeF == nil {
+		c.Website.AllFolders = []string{""}
+		c.ServeF = func(route *Route) { route.StaticServe(true) }
 	}
 
 	ws := new(Website)
-	*ws = website
+	*ws = c.Website
 
-	d.subdomains[name] = &Subdomain {
-		name, ws,
-		serveF, initF,
+	d.subdomains[c.Name] = &Subdomain {
+		c.Name, ws,
+		c.ServeF, c.InitF,
 		false,
 	}
 }
