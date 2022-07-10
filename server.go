@@ -281,7 +281,7 @@ func (sd *Subdomain) Disable() {
 	sd.offline = true
 }
 
-func (srv *Server) StartServer() {
+func (srv *Server) Start() {
 	go func(){
 		if srv.Secure {
 			if err := srv.Server.ListenAndServeTLS("", ""); err != nil && err.Error() != "http: Server closed" {
@@ -334,7 +334,7 @@ func (srv *Server) Wait() {
 }
 
 func (srv *Server) Run() {
-	srv.StartServer()
+	srv.Start()
 	srv.Wait()
 }
 
