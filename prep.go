@@ -124,7 +124,7 @@ func (route *Route) parseDomainName() int {
 			return errno
 		}
 	} else {
-		for key := range route.Srv.domainsMap {
+		for key := range route.Srv.domains {
 			if strings.HasSuffix(route.Host, key) {
 				route.Domain = key
 			}
@@ -141,17 +141,13 @@ func (route *Route) parseDomainName() int {
 		route.Subdomain += "."
 	}
 
-	route.RR = route.Srv.domainsMap[route.Domain].subdomainRules[route.Subdomain]
-	if route.RR == nil {
-		if route.Subdomain == "www." {
-			route.RR = route.Srv.domainsMap[route.Domain].subdomainRules[""]
-			if route.RR == nil {
-				return ErrSubdomainNotFound
-			}
-		} else {
-			return ErrSubdomainNotFound
-		}
+	subdomain := route.Srv.domains[route.Domain].subdomains[route.Subdomain]
+	if subdomain == nil {
+		return ErrSubdomainNotFound
 	}
+
+	route.Website = subdomain.website
+	route.serveF = subdomain.serveFunction
 
 	return ErrNoErr
 }
@@ -189,7 +185,7 @@ func (route *Route) localParseDomainName() int {
 	}
 
 	var domainFound bool
-	for key := range route.Srv.domainsMap {
+	for key := range route.Srv.domains {
 		if route.Domain == key {
 			domainFound = true
 			break

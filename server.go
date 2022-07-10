@@ -9,20 +9,24 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"os/signal"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/gorilla/securecookie"
 )
 
-//DomainMap is the map that contains all the individual servers of a defined domain in relation to the
-//subdomain. For example if you registered a domain named "mydomain.com", and maybe you have also
-//subdomains registered, you will:
-// - create the domain map: domainMap := make(map[string]ProxyRule)
-// - have the main website for "https://mydomain.com" registered under "www." ->  domainMap["www."] = ProxyRule{Name: "Main Server", ServeFunction: mainServer.ServeFunction, PublicPath: "path/to/accessible/files", PrivatePath: "path/to/not/accessible/files"}
-// - have all other subdomain (e.g. "https://subdomain.mydomain.com") registered under "subdomain." -> domainMap["subdomain."] = ProxyRule{ ... }
-type domainMap struct {
-	subdomainRules map[string]*RouteRule
+type Domain struct {
+	name string
+	subdomains map[string]*Subdomain
+}
+
+type Subdomain struct {
+	name string
+	website *Website
+	serveFunction ServeFunction
+	initFunction InitFunction
 }
 
 type offlineClient struct {
@@ -30,10 +34,8 @@ type offlineClient struct {
 	subdomain string
 }
 
-//Server is the server used with this api
 type Server struct {
 
-	//Secure tells to all handlers and function if the server is in HTTPS mode
 	Secure 				bool
 
 	Running 			bool
@@ -46,42 +48,31 @@ type Server struct {
 
 	stopChannel			chan struct{}
 
-	//Server is the actual http.Server component
 	Server      		*http.Server
 
-	//DomainMap is a map to the struct that contains the proxy rules for that domain
-	domainsMap 			map[string]domainMap
+	domains 			map[string]*Domain
 
-	//FileLog is the file in which are written all the connection log, errors and warnings
 	LogFile     		*os.File
 
-	//ServerPath is the root folder of the server, meants as the executable, not the webserver.
-	//This must NOT end with a "/"
 	ServerPath  		string
 
-	//ObfuscateMap is a built-in place in which to place all the keywords that you want to
-	//obfuscate using the function Generate32bytesKey(), really neat for hiding the real
-	//meaning of something, like the name of a cookie
 	obfuscateMap 		map[string]string
 
-	//SecureCookieEncDec is the tool to decode and encode cookies
 	secureCookie 		*securecookie.SecureCookie
 
 	secureCookiePerm 	*securecookie.SecureCookie
 
 	// DB 					*sql.DB
 
-	//FileMutex is a map that associate to every domain a different set of file mutexes
 	fileMutexMap		map[string]*sync.Mutex
 
-	//OfflineClients through queries determines the subdomain to be accessed even from a single ip address
 	offlineClients      map[string]offlineClient
 
 	bgManager     		bgManager
 
 	backgroundMutex 	*Mutex
 
-	execMap 		map[string]*program
+	execMap 			map[string]*program
 }
 
 type Certificate struct {
@@ -216,14 +207,10 @@ func newServer(port int, secure bool, serverPath string, logFile *os.File, certs
 	}
 	srv.secureCookiePerm = securecookie.New(hashKey, blockKey).MaxAge(0)
 
-	/* if err = srv.StartDB(); err != nil {
-		return nil, fmt.Errorf("unable to connect to Database: %v", err)
-	} */
-
 	srv.fileMutexMap = make(map[string]*sync.Mutex)
 	srv.obfuscateMap = make(map[string]string)
 	srv.offlineClients = make(map[string]offlineClient)
-	srv.domainsMap = make(map[string]domainMap)
+	srv.domains = make(map[string]*Domain)
 
 	srv.bgManager.bgTasks = make(map[string]*bgTask)
 	srv.bgManager.tickerMinute = time.NewTicker(time.Minute)
@@ -236,6 +223,41 @@ func newServer(port int, secure bool, serverPath string, logFile *os.File, certs
 	srv.execMap = make(map[string]*program)
 
 	return srv, err
+}
+
+func (srv *Server) RegisterDomain(name string) *Domain {
+	d := &Domain {
+		name, make(map[string]*Subdomain),
+	}
+
+	srv.domains[name] = d
+	return d
+}
+
+func (srv *Server) Domain(name string) *Domain {
+	return srv.domains[name]
+}
+
+func (d *Domain) RegisterSubdomain(name string, website Website, serveF ServeFunction, initF InitFunction) {
+	if name == "" {
+		name = "www."
+	} else if !strings.HasSuffix(name, ".") {
+		name += "."
+	}
+
+	if serveF == nil {
+		serveF = func(route *Route, w http.ResponseWriter, r *http.Request) {
+			route.StaticServe(true)
+		}
+	}
+
+	ws := new(Website)
+	*ws = website
+
+	d.subdomains[name] = &Subdomain {
+		name, ws,
+		serveF, initF,
+	}
 }
 
 func (srv *Server) StartServer() {
@@ -260,7 +282,39 @@ func (srv *Server) StartServer() {
 	srv.OnlineTimeStamp = srv.StartTimestamp
 	srv.WriteLogStart(srv.StartTimestamp)
 
+	for _, d := range srv.domains {
+		for _, s := range d.subdomains {
+			for _, cookie := range s.website.cookies {
+				err := srv.CreateCookie(cookie)
+				if err != nil {
+					panic(err)
+				}
+			}
+
+			if s.initFunction != nil {
+				s.initFunction(srv)
+			}
+		}
+	}
+
 	go srv.backgroundTasks()
+}
+
+func (srv *Server) Wait() {
+	killChan := make(chan os.Signal, 10)
+	signal.Notify(killChan, os.Interrupt)
+
+	go func() {
+		<- killChan
+		srv.ShutdownServer()
+	}()
+	
+	<- srv.stopChannel
+}
+
+func (srv *Server) Run() {
+	srv.StartServer()
+	srv.Wait()
 }
 
 func (srv *Server) ShutdownServer() {
@@ -317,8 +371,4 @@ func (srv *Server) closeBackgroundTasks() {
 
 func (srv *Server) shutdownServices() {
 	//srv.DB.Close()
-}
-
-func (srv *Server) Wait() {
-	<- srv.stopChannel
 }

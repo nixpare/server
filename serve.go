@@ -20,6 +20,22 @@ type xFile struct {
 	c chan struct{}
 }
 
+func (route *Route) StaticServe(serveHTML bool) {
+	StaticServe(route, route.w, route.r, serveHTML)
+}
+
+func (route *Route) ServeFile(path string) {
+	ServeFile(route.w, route.r, route.Website.Dir + path)
+}
+
+func (route *Route) ServePlainData(name string, data []byte) {
+	ServePlainData(route.w, route.r, name, data)
+}
+
+func (route *Route) ServePlainText(name, text string) {
+	ServePlainText(route.w, route.r, name, text)
+}
+
 func ServeFile(w http.ResponseWriter, r *http.Request, path string) {
 	if strings.Contains(path, "..") {
 		http.Error(w, "Bad request URL", http.StatusBadRequest)
@@ -68,7 +84,7 @@ func StaticServe(route *Route, w http.ResponseWriter, r *http.Request, serveHTML
 	}
 
 	if route.RequestURI == "/" {
-		ServeFile(w, r, route.RR.Website.Root + "/index.html")
+		ServeFile(w, r, route.Website.Dir + "/index.html")
 		return
 	}
 
@@ -78,18 +94,18 @@ func StaticServe(route *Route, w http.ResponseWriter, r *http.Request, serveHTML
 	}
 
 	if strings.Count(route.RequestURI, "/") == 1 {
-		ServeFile(w, r, route.RR.Website.Root + route.RequestURI)
+		ServeFile(w, r, route.Website.Dir + route.RequestURI)
 		return
 	}
 
-	for _, s := range route.RR.Website.AllFolders {
+	for _, s := range route.Website.AllFolders {
 		if strings.HasPrefix(route.RequestURI, s) {
-			if strings.HasSuffix(route.RequestURI, ".css") && route.RR.Website.EnableCSSX {
-				ServeCSSX(route, w, r)
+			if strings.HasSuffix(route.RequestURI, ".css") && route.Website.EnableCSSX {
+				serveCSSX(route, w, r)
 				return
 			}
 
-			ServeFile(w, r, route.RR.Website.Root + route.RequestURI)
+			ServeFile(w, r, route.Website.Dir + route.RequestURI)
 			return
 		}
 	}
@@ -97,22 +113,22 @@ func StaticServe(route *Route, w http.ResponseWriter, r *http.Request, serveHTML
 	http.Error(w, "404 page not found", http.StatusNotFound)
 }
 
-func ServeCSSX(route *Route, w http.ResponseWriter, r *http.Request) {
-	info, err := os.Stat(route.RR.Website.Root + route.RequestURI + "x")
+func serveCSSX(route *Route, w http.ResponseWriter, r *http.Request) {
+	info, err := os.Stat(route.Website.Dir + route.RequestURI + "x")
 	if err != nil {
 		http.Error(w, "Error 404 not found", http.StatusNotFound)
 		return
 	}
 
-	cssx, err := os.Open(route.RR.Website.Root + route.RequestURI + "x")
+	cssx, err := os.Open(route.Website.Dir + route.RequestURI + "x")
 	if err != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		log.Printf("Error opening %s file\n", route.RR.Website.Root + route.RequestURI + "x")
+		log.Printf("Error opening %s file\n", route.Website.Dir + route.RequestURI + "x")
 		return
 	}
 	defer cssx.Close()
 
-	basePathSplit := strings.Split(route.RR.Website.Root + route.RequestURI, "/")
+	basePathSplit := strings.Split(route.Website.Dir + route.RequestURI, "/")
 	var basePath string
 	for _, s := range basePathSplit[:len(basePathSplit)-1] {
 		basePath += s + "/"

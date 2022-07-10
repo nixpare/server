@@ -14,33 +14,26 @@ import (
 
 type Website struct {
 	Name string
-	AllFolders []string
 	Dir string
-	Root string
 	MainPages []string
 	NoLogPages []string
+	AllFolders []string
 	PageHeaders map[string][][2]string
-	Cookies []string
+	cookies []string
 	EnableCSSX bool
 	AvoidCompression bool
 	AvoidMetricsAndLogging bool
 }
 
-type RouteServeFunction func(*Route, http.ResponseWriter, *http.Request)
-type RouteInitFunction func(srv *Server)
-
-type RouteRule struct {
-	Website *Website
-	ServeFunction RouteServeFunction
-	InitFunction RouteInitFunction
-}
+type ServeFunction func(route *Route, w http.ResponseWriter, r *http.Request)
+type InitFunction func(srv *Server)
 
 type Route struct {
 	Srv *Server
 	Secure bool
 	Host string
 	RemoteAddress string
-	RR *RouteRule
+	Website *Website
 	Domain string
 	Subdomain string
 	RequestURI string
@@ -50,6 +43,9 @@ type Route struct {
 	AvoidLogging bool
 	Err int
 	LogMessage string
+	w http.ResponseWriter
+	r *http.Request
+	serveF ServeFunction
 }
 
 type handler struct {
@@ -73,7 +69,10 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	defer func() {
 		if p := recover(); p != nil {
-			log.Printf("Captured panic ...\n\nRoute: %v\nRequest: %v\nWebsite: %v\nPanic error: %v\nStack trace:\n%v\n\n", route, r, route.RR.Website, p, string(debug.Stack()))
+			log.Printf(
+				"Captured panic ...\n\nRoute: %v\nRequest: %v\nWebsite: %v\nPanic error: %v\nStack trace:\n%v\n\n",
+				route, r, route.Website, p, string(debug.Stack()),
+			)
 		}
 	}()
 	
@@ -83,8 +82,8 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if route.Err != ErrNoErr {
 		metrics = httpsnoop.CaptureMetrics(route, w, r)
 	} else {
-		if route.RR.Website.AvoidMetricsAndLogging {
-			if route.RR.Website.AvoidCompression {
+		if route.Website.AvoidMetricsAndLogging {
+			if route.Website.AvoidCompression {
 				// AVOID LOGGING AND COMPRESSION
 				route.ServeHTTP(w, r)
 			} else {
@@ -93,7 +92,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		} else {
-			if route.RR.Website.AvoidCompression {
+			if route.Website.AvoidCompression {
 				// AVOID COMPRESSION
 				metrics = httpsnoop.CaptureMetrics(route, w, r)
 			} else {
@@ -175,23 +174,17 @@ func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if route.RR == nil {
-		route.LogMessage = "RouteRule not set"
-		http.Error(w, route.LogMessage, http.StatusInternalServerError)
-		return
-	}
-
-	if value, ok := route.RR.Website.PageHeaders[route.RequestURI]; ok {
+	if value, ok := route.Website.PageHeaders[route.RequestURI]; ok {
 		for _, h := range value {
 			w.Header().Add(h[0], h[1])
 		}
 	}
 
-	route.RR.ServeFunction(route, w, r)
+	route.serveF(route, w, r)
 }
 
 func (route *Route) avoidNoLogPages() {
-	for _, nlp := range route.RR.Website.NoLogPages {
+	for _, nlp := range route.Website.NoLogPages {
 		if strings.HasPrefix(route.RequestURI, nlp) {
 			route.AvoidLogging = true
 			break

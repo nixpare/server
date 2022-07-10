@@ -35,7 +35,7 @@ func (route *Route) logInfo(r *http.Request, metrics httpsnoop.Metrics) {
 		metrics.Code,
 		(float64(metrics.Written)/1000000.),
 		time.Since(route.ConnectionTime).Milliseconds(),
-		route.RR.Website.Name,
+		route.Website.Name,
 		route.Subdomain + route.Domain,
 	)
 }
@@ -56,7 +56,7 @@ func (route *Route) logWarning(r *http.Request, metrics httpsnoop.Metrics) {
 			metrics.Code,
 			(float64(metrics.Written)/1000000.),
 			time.Since(route.ConnectionTime).Milliseconds(),
-			route.RR.Website.Name,
+			route.Website.Name,
 			route.Subdomain + route.Domain,
 		)
 	} else {
