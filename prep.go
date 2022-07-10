@@ -14,26 +14,26 @@ const (
 )
 
 func (route *Route) prep() {
-	route.prepareRemoteAddress()
-	route.prepareHost()
+	route.prepRemoteAddress()
+	route.prepHost()
 
-	err := route.prepareRequestURI()
+	err := route.prepRequestURI()
 	if err != nil {
 		route.Err = ErrBadURL
 		return
 	}
 
-	route.prepareLogRequestURI()
+	route.prepLogRequestURI()
 
-	if !route.Srv.Online && !route.isInternalConnection() {
+	if !route.Srv.Online && !route.Srv.isInternalConn(route.RemoteAddress) {
 		route.Err = ErrServerOffline
 		return
 	}
 
-	route.Err = route.parseDomainName()
+	route.Err = route.prepDomainAndSubdomain()
 }
 
-func (route *Route) prepareRemoteAddress() {
+func (route *Route) prepRemoteAddress() {
 	route.RemoteAddress = strings.Replace(route.RemoteAddress, "[::1]", "localhost", 1)
 	route.RemoteAddress = strings.Replace(route.RemoteAddress, "127.0.0.1", "localhost", 1)
 
@@ -42,12 +42,12 @@ func (route *Route) prepareRemoteAddress() {
 	}
 }
 
-func (route *Route) prepareHost() {
+func (route *Route) prepHost() {
 	route.Host = strings.Replace(route.Host, "[::1]", "localhost", 1)
 	route.Host = strings.Replace(route.Host, "127.0.0.1", "localhost", 1)
 }
 
-func (route *Route) prepareRequestURI() (err error) {
+func (route *Route) prepRequestURI() (err error) {
 	splitPath := strings.Split(route.RequestURI, "?")
 	route.RequestURI, err = url.PathUnescape(splitPath[0])
 	if err != nil {
@@ -80,7 +80,7 @@ func (route *Route) prepareRequestURI() (err error) {
 	return
 }
 
-func (route *Route) prepareLogRequestURI() {
+func (route *Route) prepLogRequestURI() {
 	route.logRequestURI = "\"" + route.RequestURI + "\""
 
 	if len(route.QueryMap) != 0 {
@@ -106,17 +106,11 @@ func (route *Route) prepareLogRequestURI() {
 	}
 }
 
-func (route *Route) isInternalConnection() bool {
-	if route.RemoteAddress == "192.168.50.1" {
-		return false
-	}
+/* func prepDomainName(r *http.Request) string {
+	if strings.HasSuffix(r.Host, "localhost") {
 
-	if strings.Contains(route.RemoteAddress, "localhost") || strings.Contains(route.RemoteAddress, "192.168.50.") || strings.Contains(route.RemoteAddress, "10.10.10.") {
-		return true
 	}
-
-	return false
-}
+} */
 
 func prepSubdomainName(name string) string {
 	if name != "" && name != "*" && !strings.HasSuffix(name, ".") {
@@ -130,9 +124,9 @@ func prepSubdomainName(name string) string {
 	return name
 }
 
-func (route *Route) parseDomainName() int {
-	if route.isInternalConnection() {
-		if errno := route.localParseDomainName(); errno != ErrNoErr {
+func (route *Route) prepDomainAndSubdomain() int {
+	if route.Srv.isInternalConn(route.RemoteAddress) {
+		if errno := route.localPrepDomainAndSubdomain(); errno != ErrNoErr {
 			return errno
 		}
 	} else {
@@ -169,7 +163,7 @@ func (route *Route) parseDomainName() int {
 	return ErrNoErr
 }
 
-func (route *Route) localParseDomainName() int {
+func (route *Route) localPrepDomainAndSubdomain() int {
 	if strings.HasSuffix(route.Host, "localhost") {
 		route.SubdomainName = strings.Split(route.Host, "localhost")[0]
 

@@ -17,24 +17,6 @@ import (
 	"github.com/gorilla/securecookie"
 )
 
-type Domain struct {
-	name string
-	subdomains map[string]*Subdomain
-}
-
-type Subdomain struct {
-	name string
-	website *Website
-	serveFunction ServeFunction
-	initFunction InitFunction
-	offline bool
-}
-
-type offlineClient struct {
-	domain string
-	subdomain string
-}
-
 type Server struct {
 
 	Secure 				bool
@@ -67,6 +49,8 @@ type Server struct {
 
 	fileMutexMap		map[string]*sync.Mutex
 
+	isInternalConn 		func(remoteAddress string) bool
+
 	offlineClients      map[string]offlineClient
 
 	bgManager     		bgManager
@@ -89,9 +73,14 @@ type Config struct {
 	Certs 			[]Certificate
 }
 
-const (
-	hashKeyString = "NixPare Server"
-	blockKeyString = "DESKTOP-Pare"
+type offlineClient struct {
+	domain string
+	subdomain string
+}
+
+var (
+	HashKeyString = "NixPare Server"
+	BlockKeyString = "github.com/alessio-pareto/server"
 )
 
 func NewServer(cfg Config) (srv *Server, err error) {
@@ -193,11 +182,11 @@ func newServer(port int, secure bool, serverPath string, logFile *os.File, certs
 
 	//Generating hashKey and blockKey for the SecureCookiePerm
 	hashKey = make([]byte, 0, 32)
-	for _, b := range sha256.Sum256([]byte(hashKeyString)) {
+	for _, b := range sha256.Sum256([]byte(HashKeyString)) {
 		hashKey = append(hashKey, b)
 	}
 	blockKey = make([]byte, 0, 32)
-	for _, b := range sha256.Sum256([]byte(blockKeyString)) {
+	for _, b := range sha256.Sum256([]byte(BlockKeyString)) {
 		blockKey = append(blockKey, b)
 	}
 	srv.secureCookiePerm = securecookie.New(hashKey, blockKey).MaxAge(0)
@@ -206,6 +195,8 @@ func newServer(port int, secure bool, serverPath string, logFile *os.File, certs
 	srv.obfuscateMap = make(map[string]string)
 	srv.offlineClients = make(map[string]offlineClient)
 	srv.domains = make(map[string]*Domain)
+
+	srv.isInternalConn = func(remoteAddress string) bool { return false }
 
 	srv.bgManager.bgTasks = make(map[string]*bgTask)
 	srv.bgManager.tickerMinute = time.NewTicker(time.Minute)
@@ -220,6 +211,12 @@ func newServer(port int, secure bool, serverPath string, logFile *os.File, certs
 	return srv, err
 }
 
+func (srv *Server) SetInternalConnFilter(f func(remoteAddress string) bool) {
+	if f != nil {
+		srv.isInternalConn = f
+	}
+}
+
 func (srv *Server) RegisterDomain(name string) *Domain {
 	d := &Domain {
 		name, make(map[string]*Subdomain),
@@ -231,54 +228,6 @@ func (srv *Server) RegisterDomain(name string) *Domain {
 
 func (srv *Server) Domain(name string) *Domain {
 	return srv.domains[name]
-}
-
-func (d *Domain) RegisterSubdomain(name string, website Website, serveF ServeFunction, initF InitFunction) {
-	name = prepSubdomainName(name)
-
-	if serveF == nil {
-		website.AllFolders = []string{""}
-		serveF = func(route *Route) { route.StaticServe(true) }
-	}
-
-	ws := new(Website)
-	*ws = website
-
-	d.subdomains[name] = &Subdomain {
-		name, ws,
-		serveF, initF,
-		false,
-	}
-}
-
-func (d *Domain) EnableSubdomain(name string) {
-	name = prepSubdomainName(name)
-	
-	sd := d.subdomains[name]
-	if (sd != nil) {
-		sd.Enable()
-	}
-}
-
-func (d *Domain) DisableSubdomain(name string) {
-	name = prepSubdomainName(name)
-	
-	sd := d.subdomains[name]
-	if (sd != nil) {
-		sd.Disable()
-	}
-}
-
-func (d *Domain) RemoveSubdomain(name string) {
-	delete(d.subdomains, prepSubdomainName(name))
-}
-
-func (sd *Subdomain) Enable() {
-	sd.offline = false
-}
-
-func (sd *Subdomain) Disable() {
-	sd.offline = true
 }
 
 func (srv *Server) Start() {

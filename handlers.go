@@ -182,14 +182,14 @@ func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !route.isInternalConnection() && !route.Secure {
+	if !route.Srv.isInternalConn(route.RemoteAddress) && !route.Secure {
 		route.AvoidLogging = true
 		http.Redirect(w, r, "https://" + r.Host + r.RequestURI, http.StatusMovedPermanently)
 		return
 	}
 
 	if route.SubdomainName == "www." {
-		if !route.isInternalConnection() {
+		if !route.Srv.isInternalConn(route.RemoteAddress) {
 			route.AvoidLogging = true
 			http.Redirect(w, r, "https://" + route.DomainName + r.RequestURI, http.StatusMovedPermanently)
 
