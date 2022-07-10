@@ -94,6 +94,12 @@ const (
 )
 
 func NewServer(cfg Config) (srv *Server, err error) {
+	if cfg.ServerPath == "" {
+		cfg.ServerPath, _ = os.Getwd()
+	}
+
+	cfg.ServerPath = strings.ReplaceAll(cfg.ServerPath, "\\", "/")
+
 	srv, err = newServer(
 		cfg.Port, cfg.Secure,
 		cfg.ServerPath, cfg.LogFile,
@@ -102,24 +108,6 @@ func NewServer(cfg Config) (srv *Server, err error) {
 	if err != nil {
 		return
 	}
-	/* for key, value := range cfg.DomainsMap {
-		srv.DomainsMap[key] = value
-	}
-
-	for _, dm := range srv.DomainsMap {
-		for _, w := range dm.SubdomainRules {
-			for _, cookie := range w.Website.Cookies {
-				err = srv.CreateCookie(cookie)
-				if err != nil {
-					return
-				}
-			}
-
-			if w.InitFunction != nil {
-				w.InitFunction(srv)
-			}
-		}
-	} */
 
 	return
 }
@@ -246,6 +234,7 @@ func (d *Domain) RegisterSubdomain(name string, website Website, serveF ServeFun
 	}
 
 	if serveF == nil {
+		website.AllFolders = []string{""}
 		serveF = func(route *Route, w http.ResponseWriter, r *http.Request) {
 			route.StaticServe(true)
 		}

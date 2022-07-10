@@ -25,6 +25,10 @@ func (route *Route) StaticServe(serveHTML bool) {
 }
 
 func (route *Route) ServeFile(path string) {
+	ServeFile(route.w, route.r, path)
+}
+
+func (route *Route) ServeRootedFile(path string) {
 	ServeFile(route.w, route.r, route.Website.Dir + path)
 }
 
@@ -43,30 +47,30 @@ func ServeFile(w http.ResponseWriter, r *http.Request, path string) {
 	}
 	
 	fileInfo, err := os.Stat(path)
-	if err != nil {
-		fileInfo, err = os.Stat(path + ".html")
-		if err != nil {
+	if err == nil {
+		if fileInfo.IsDir() {
 			http.Error(w, "404 page not found", http.StatusNotFound)
 			return
 		}
-
-		f, err := os.Open(path + ".html")
-		if err != nil {
-			http.Error(w, "", http.StatusInternalServerError)
-			return
-		}
-		defer f.Close()
-
-		http.ServeContent(w, r, fileInfo.Name(), fileInfo.ModTime(), f)
+	
+		http.ServeFile(w, r, path)
 		return
 	}
 
-	if fileInfo.IsDir() {
+	fileInfo, err = os.Stat(path + ".html")
+	if err != nil {
 		http.Error(w, "404 page not found", http.StatusNotFound)
 		return
 	}
 
-	http.ServeFile(w, r, path)
+	f, err := os.Open(path + ".html")
+	if err != nil {
+		http.Error(w, "", http.StatusInternalServerError)
+		return
+	}
+	defer f.Close()
+
+	http.ServeContent(w, r, fileInfo.Name(), fileInfo.ModTime(), f)
 }
 
 func ServePlainData(w http.ResponseWriter, r *http.Request, name string, data []byte) {

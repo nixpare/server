@@ -175,9 +175,6 @@ func (route *Route) localParseDomainName() int {
 	queryDomain, ok := route.QueryMap["domain"]
 	if ok {
 		route.Domain = queryDomain
-		savedConfig.domain = queryDomain
-		savedConfig.subdomain = ""
-		route.Srv.offlineClients[remoteAddress] = savedConfig
 	}
 	
 	if route.Domain == "" {
@@ -201,7 +198,15 @@ func (route *Route) localParseDomainName() int {
 	if ok {
 		route.Subdomain = querySubdomain
 		savedConfig.subdomain = querySubdomain
-		route.Srv.offlineClients[remoteAddress] = savedConfig
+		
+	}
+
+	if route.Subdomain == "" {
+		route.Subdomain = "www."
+	}
+
+	route.Srv.offlineClients[remoteAddress] = offlineClient {
+		route.Domain, route.Subdomain,
 	}
 
 	return ErrNoErr

@@ -119,10 +119,8 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
-	w.Header().Set("X-Frame-Options", "sameorigin")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
+	route.w = w
+	route.r = r
 
 	if route.Err != ErrNoErr {
 		var httpStatus int
@@ -162,16 +160,12 @@ func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if route.Subdomain == "www." {
-		route.AvoidLogging = true
-		
-		if route.isInternalConnection() {
-			route.LogMessage = "Change subdomain to an empty one"
-			http.Error(w, route.LogMessage, http.StatusBadRequest)
-		} else {
+		if !route.isInternalConnection() {
+			route.AvoidLogging = true
 			http.Redirect(w, r, "https://" + route.Domain + r.RequestURI, http.StatusMovedPermanently)
+
+			return
 		}
-		
-		return
 	}
 
 	if value, ok := route.Website.PageHeaders[route.RequestURI]; ok {

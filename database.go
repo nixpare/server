@@ -3,14 +3,6 @@ package server
 import (
 	//"database/sql"
 	//"fmt"
-
-	_ "github.com/go-sql-driver/mysql"
-)
-
-const (
-	dbUserName = "user"
-	dbPassword = "password"
-	dbSchema = "schema"
 )
 
 /* func (srv *Server) StartDB() (err error) {
