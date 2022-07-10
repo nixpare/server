@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -17,52 +16,6 @@ import (
 type CustomLogRequest struct {
 	URL url.URL
 	RemoteAddr string
-}
-
-const (
-	PowerShell = "pwsh"
-)
-
-func RemoteShutDown(srv *Server, req CustomLogRequest, name string) {
-	f, _ := os.OpenFile(srv.LogsPath + "/pwroff-requests.log", os.O_RDWR | os.O_APPEND | os.O_CREATE | os.O_SYNC, 0777)
-	CustomLogLine(f, req, time.Now(), "User passed security check with id: \"" + name + "\"", "warning")
-	f.Close()
-
-	args := strings.Split(" | Stop-Computer | -ComputerName | localhost", " | ")
-	if _, err := srv.StartProgram(PowerShell, args, "", false, "", "", ""); err != nil {
-		srv.FileLog.Write([]byte("Error: [" + time.Now().Format("02/Jan/2006:15:04:05") + "] - PwrOffServer Error: " + err.Error() + "\n"))
-	}
-}
-
-func (srv *Server) RecompileServer() {
-	output := "\n| ------------------\n|\n|    Server Restart\n|\n|"
-	ok := true
-	
-	args := strings.Split(" | go build -o \"" + srv.ServerPath + "/testBuild.exe\" && rm \"" + srv.ServerPath + "/testBuild.exe\"", " | ")
-	exitCode, err := srv.StartProgram(PowerShell, args, srv.ServerPath, true, "", "INHERIT", "INHERIT")
-	if err != nil {
-		output += fmt.Sprintf("\n|    RestartServer error: %v\n|\n|", err.Error())
-		ok = false
-	}
-
-	if exitCode != 0 {
-		output += fmt.Sprintf("\n|    Error while compiling with exitCode %d\n|\n|", exitCode)
-		ok = false
-	}
-
-	output += " ------------------\n\n"
-	srv.FileLog.Write([]byte(output))
-	
-	if ok {
-		srv.RestartServer()
-	}
-}
-
-func (srv *Server) RestartServer() {
-	args := strings.Split(" | Stop-Service PareServer && go build -o \"" + srv.ServerPath + "/PareServer.exe\" && Start-Service PareServer", " | ")
-	if _, err := srv.StartProgram(PowerShell, args, srv.ServerPath, false, "", "", ""); err != nil {
-		log.Println("RestartServer Error:", err.Error())
-	}
 }
 
 func CustomLogLine(out io.Writer, req CustomLogRequest, ts time.Time, msg string, level string) {
@@ -88,14 +41,6 @@ func CustomLogLine(out io.Writer, req CustomLogRequest, ts time.Time, msg string
 	case "warning":
 		out.Write([]byte("Warning: " + host + " - " + username + " [" + timeStamp + "] - " + msg + "\n"))
 	}
-}
-
-func(srv *Server) RestartComputer(msg string) {
-	log.Printf("Restarting computer: %s\n", msg)
-	exec.Command(
-		"shutdown.exe", 
-		append(ParseCommandArgs("/r /d U:0:0 /c"), msg)...,
-	).Run()
 }
 
 func (srv *Server) StartProgram(name string, args []string, dir string, wait bool, stdin, stdout, stderr string) (exitCode int, err error) {
@@ -149,7 +94,7 @@ func (srv *Server) devNull(stdin, stdout, stderr string) (fStdin, fStdout, fStde
 		}
 	case "INHERIT":
 		//fStdout = os.Stdout
-		fStdout = srv.FileLog
+		fStdout = srv.LogFile
 	default:
 		fStdout, err = os.OpenFile(stdout, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0777)
 		if err != nil {
@@ -165,7 +110,7 @@ func (srv *Server) devNull(stdin, stdout, stderr string) (fStdin, fStdout, fStde
 		}
 	case "INHERIT":
 		//fStderr = os.Stderr
-		fStderr = srv.FileLog
+		fStderr = srv.LogFile
 	default:
 		fStderr, err = os.OpenFile(stderr, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0777)
 		if err != nil {
@@ -181,22 +126,22 @@ func HashToString(data []byte) string {
 }
 
 func (srv *Server) CreateCookie(name string) error {
-	if _, ok := srv.ObfuscateMap[name]; ok {
+	if _, ok := srv.obfuscateMap[name]; ok {
 		return fmt.Errorf("obfuscated map error: key %s already used", name)
 	}
 
-	srv.ObfuscateMap[name] = HashToString([]byte(name))
+	srv.obfuscateMap[name] = HashToString([]byte(name))
 	return nil
 }
 
 func (srv *Server) SetCookie(route *Route, w http.ResponseWriter, name string, value interface{}, maxAge int) error {
-	encValue, err := srv.SecureCookie.Encode(name, value)
+	encValue, err := srv.secureCookie.Encode(name, value)
 	if err != nil {
 		return err
 	}
 
 	http.SetCookie(w, &http.Cookie{
-		Name: srv.ObfuscateMap[name],
+		Name: srv.obfuscateMap[name],
 		Value: encValue,
 		Domain: route.Domain,
 		MaxAge: maxAge,
@@ -209,7 +154,7 @@ func (srv *Server) SetCookie(route *Route, w http.ResponseWriter, name string, v
 
 func (srv *Server) DeleteCookie(route *Route, w http.ResponseWriter, name string) {
 	http.SetCookie(w, &http.Cookie{
-		Name: srv.ObfuscateMap[name],
+		Name: srv.obfuscateMap[name],
 		Value: "",
 		Domain: route.Domain,
 		MaxAge: -1,
@@ -219,21 +164,21 @@ func (srv *Server) DeleteCookie(route *Route, w http.ResponseWriter, name string
 }
 
 func (srv *Server) DecodeCookie(r *http.Request, name string, value interface{}) (bool, error) {
-	if cookie, err := r.Cookie(srv.ObfuscateMap[name]); err == nil {
-		return true, srv.SecureCookie.Decode(name, cookie.Value, value)
+	if cookie, err := r.Cookie(srv.obfuscateMap[name]); err == nil {
+		return true, srv.secureCookie.Decode(name, cookie.Value, value)
 	}
 	
 	return false, nil
 }
 
 func (srv *Server) SetCookiePerm(route *Route, w http.ResponseWriter, name string, value interface{}, maxAge int) error {
-	encValue, err := srv.SecureCookiePerm.Encode(name, value)
+	encValue, err := srv.secureCookiePerm.Encode(name, value)
 	if err != nil {
 		return err
 	}
 
 	http.SetCookie(w, &http.Cookie{
-		Name: srv.ObfuscateMap[name],
+		Name: srv.obfuscateMap[name],
 		Value: encValue,
 		Domain: route.Domain,
 		MaxAge: maxAge,
@@ -245,8 +190,8 @@ func (srv *Server) SetCookiePerm(route *Route, w http.ResponseWriter, name strin
 }
 
 func (srv *Server) DecodeCookiePerm(r *http.Request, name string, value interface{}) (bool, error) {
-	if cookie, err := r.Cookie(srv.ObfuscateMap[name]); err == nil {
-		return true, srv.SecureCookiePerm.Decode(name, cookie.Value, value)
+	if cookie, err := r.Cookie(srv.obfuscateMap[name]); err == nil {
+		return true, srv.secureCookiePerm.Decode(name, cookie.Value, value)
 	}
 	
 	return false, nil

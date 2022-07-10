@@ -81,7 +81,7 @@ func (srv *Server) backgroundTasks() {
 		}
 	}()
 
-	srv.BackgroundMutex.ListenForSignal()
+	srv.backgroundMutex.ListenForSignal()
 	run = false
 
 	for _, t := range srv.bgManager.bgTasks {
@@ -90,7 +90,7 @@ func (srv *Server) backgroundTasks() {
 		}
 	}
 
-	srv.BackgroundMutex.Done()
+	srv.backgroundMutex.Done()
 }
 
 func (srv *Server) execBGTasks(timer BGTimer) {

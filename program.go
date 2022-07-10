@@ -86,7 +86,7 @@ func (srv *Server) RegisterExec(name, dir string, redirect bool, execName string
 	}
 
 	if redirect {
-		p.redirect = srv.FileLog
+		p.redirect = srv.LogFile
 	}
 
 	srv.execMap[name] = p

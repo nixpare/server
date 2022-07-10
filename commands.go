@@ -77,8 +77,6 @@ func (srv *Server) handleConnection(conn net.Conn) {
 
 func (srv *Server) executeCommand(cmd string, args ...string) (resp []byte, err error) {
 	switch cmd {
-	case "clear-logs":
-		srv.ClearLog()
 	case "offline":
 		srv.GoOffline()
 	case "online":

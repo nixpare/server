@@ -57,7 +57,7 @@ type handler struct {
 	srv *Server
 }
 
-func (srv *Server) Handler(isSecure bool) http.Handler {
+func (srv *Server) handler(isSecure bool) http.Handler {
 	return handler { isSecure, srv }
 }
 

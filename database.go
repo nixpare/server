@@ -1,19 +1,19 @@
 package server
 
 import (
-	"database/sql"
-	"fmt"
+	//"database/sql"
+	//"fmt"
 
 	_ "github.com/go-sql-driver/mysql"
 )
 
 const (
-	dbUserName = "nixpare"
-	dbPassword = "poproMopl2i?+wrI=Hu_"
-	dbSchema = "nixserver"
+	dbUserName = "user"
+	dbPassword = "password"
+	dbSchema = "schema"
 )
 
-func (srv *Server) StartDB() (err error) {
+/* func (srv *Server) StartDB() (err error) {
 	db, err := sql.Open("mysql", fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/%s", dbUserName, dbPassword, dbSchema))
     if err != nil {
         return
@@ -30,4 +30,4 @@ func (srv *Server) CloseDB() (err error) {
 	}
 
 	return
-}
+} */

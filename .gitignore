@@ -12,7 +12,8 @@
 *.out
 
 # Dependency directories (remove the comment below to include it)
-vendor/
+# vendor/
 
-# Main for testing a real application
+# For testing a real application
 main.go
+static/
