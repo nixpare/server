@@ -45,6 +45,8 @@ type Server struct {
 
 	secureCookiePerm 	*securecookie.SecureCookie
 
+	headers 			http.Header
+
 	// DB 					*sql.DB
 
 	fileMutexMap		map[string]*sync.Mutex
@@ -192,6 +194,7 @@ func newServer(port int, secure bool, serverPath string, logFile *os.File, certs
 	srv.obfuscateMap = make(map[string]string)
 	srv.offlineClients = make(map[string]offlineClient)
 	srv.domains = make(map[string]*Domain)
+	srv.headers = make(http.Header)
 
 	srv.isInternalConn = func(remoteAddress string) bool { return false }
 
@@ -208,23 +211,32 @@ func newServer(port int, secure bool, serverPath string, logFile *os.File, certs
 	return srv, err
 }
 
-func (srv *Server) SetInternalConnFilter(f func(remoteAddress string) bool) {
+func (srv *Server) SetInternalConnFilter(f func(remoteAddress string) bool) *Server {
 	if f != nil {
 		srv.isInternalConn = f
 	}
+	return srv
 }
 
-func (srv *Server) RegisterDomain(name, domainName string) *Domain {
-	d := &Domain {
-		name, make(map[string]*Subdomain),
+func (srv *Server) SetHeader(name, value string) *Server {
+	srv.headers.Set(name, value)
+	return srv
+}
+
+func (srv *Server) SetHeaders(headers [][2]string) *Server {
+	for _, header := range headers {
+		srv.SetHeader(header[0], header[1])
 	}
-
-	srv.domains[domainName] = d
-	return d
+	return srv
 }
 
-func (srv *Server) Domain(domainName string) *Domain {
-	return srv.domains[domainName]
+func (srv *Server) RemoveHeader(name string) *Server {
+	srv.headers.Del(name)
+	return srv
+}
+
+func (srv *Server) Header() http.Header {
+	return srv.headers
 }
 
 func (srv *Server) Start() {

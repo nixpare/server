@@ -12,6 +12,7 @@ const (
 	ErrNoErr = iota
 	ErrBadURL
 	ErrServerOffline
+	ErrWebsiteOffline
 	ErrDomainNotFound
 	ErrSubdomainNotFound
 )
@@ -21,7 +22,7 @@ func (route *Route) prep() {
 
 	err := route.prepRequestURI()
 	if err != nil {
-		route.Err = ErrBadURL
+		route.err = ErrBadURL
 		return
 	}
 
@@ -35,7 +36,7 @@ func (route *Route) prep() {
 
 	route.prepHost()
 	
-	route.Err = route.prepDomainAndSubdomain()
+	route.err = route.prepDomainAndSubdomain()
 	route.Website = route.Subdomain.website
 }
 

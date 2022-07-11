@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"html/template"
 	"log"
 	"net/http"
 	"runtime/debug"
@@ -28,29 +29,30 @@ type Website struct {
 type ServeFunction func(route *Route)
 type InitFunction func(srv *Server, domain *Domain, subdomain *Subdomain)
 
-type ResponseWriter interface {
-	http.ResponseWriter
-	WriteString(string) error
-}
-
-type responseWriter struct {
+type ResponseWriter struct {
 	w http.ResponseWriter
+	written bool
+	code int
 }
-func (w responseWriter) Header() http.Header {
+func (w *ResponseWriter) Header() http.Header {
 	return w.w.Header()
 }
-func (w responseWriter) Write(data []byte) (int, error) {
+func (w *ResponseWriter) Write(data []byte) (int, error) {
+	w.written = true
 	return w.w.Write([]byte(data))
 }
-func (w responseWriter) WriteHeader(statusCode int) {
+func (w *ResponseWriter) WriteHeader(statusCode int) {
+	w.code = statusCode
 	w.w.WriteHeader(statusCode)
 }
-func (w responseWriter) WriteString(s string) error {
-	_, err := w.w.Write([]byte(s))
+func (w *ResponseWriter) WriteString(s string) error {
+	_, err := w.Write([]byte(s))
 	return err
 }
 
 type Route struct {
+	W *ResponseWriter
+	R *http.Request
 	Srv *Server
 	Secure bool
 	Host string
@@ -65,10 +67,10 @@ type Route struct {
 	QueryMap map[string]string
 	ConnectionTime time.Time
 	AvoidLogging bool
-	Err int
-	LogMessage string
-	W ResponseWriter
-	R *http.Request
+	err int
+	errMessage string
+	logErrMessage string
+	errTemplate *template.Template
 }
 
 type handler struct {
@@ -90,6 +92,13 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		R: r,
 	}
 
+	t, err := template.ParseFiles(route.Srv.ServerPath + "/templates/error.html")
+	if err != nil {
+		fmt.Fprintf(route.Srv.LogFile, "Error parsing template file: %v\n", err)
+	} else {
+		route.errTemplate = t
+	}
+
 	defer func() {
 		if p := recover(); p != nil {
 			log.Printf(
@@ -98,11 +107,17 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			)
 		}
 	}()
+
+	for key, values := range h.srv.headers {
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
+	}
 	
 	route.prep()
 	var metrics httpsnoop.Metrics
 
-	if route.Err != ErrNoErr {
+	if route.err != ErrNoErr {
 		metrics = httpsnoop.CaptureMetrics(route, w, r)
 	} else {
 		if route.Website.AvoidMetricsAndLogging {
@@ -132,50 +147,66 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		
-		route.logInfo(r, metrics)
+		route.logInfo(metrics)
 	case metrics.Code >= 400 && metrics.Code < 500:
-		route.logWarning(r, metrics)
+		route.logWarning(metrics)
 	default:
-		route.logError(r, metrics)
+		route.logError(metrics)
 	}
 }
 
 func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	route.W = responseWriter { w }
-	w = route.W
+	route.W = &ResponseWriter { w: w }
 
-	if route.Subdomain.offline || !route.Srv.Online {
-		route.Err = ErrServerOffline
+	route.W.Header().Set("server", "NixServer")
+
+	domain := route.Domain
+	if domain != nil {
+		for key, values := range domain.headers {
+			for _, value := range values {
+				route.W.Header().Set(key, value)
+			}
+		}
 	}
 
-	if route.Err != ErrNoErr {
-		var httpStatus int
+	subdomain := route.Subdomain
+	if subdomain != nil {
+		for key, values := range subdomain.headers {
+			for _, value := range values {
+				route.W.Header().Set(key, value)
+			}
+		}
+	}
 
-		switch route.Err {
+	if route.Subdomain.offline {
+		route.err = ErrWebsiteOffline
+	}
+
+	if !route.Srv.Online {
+		route.err = ErrServerOffline
+	}
+
+	if route.err != ErrNoErr {
+		switch route.err {
 		case ErrBadURL:
-			route.LogMessage = "Bad Request URL"
-			httpStatus = http.StatusBadRequest
+			route.Error(http.StatusBadRequest, "Bad Request URL")
 		case ErrServerOffline:
 			t := route.Srv.OnlineTimeStamp.Add(time.Minute * 5)
-			w.Header().Set("Retry-After", t.Format(time.RFC1123))
+			route.W.Header().Set("Retry-After", t.Format(time.RFC1123))
 
-			route.LogMessage = "Server temporarly offline, retry in " + time.Until(t).Truncate(time.Second).String()
-			httpStatus = http.StatusServiceUnavailable
-
-			route.AvoidLogging = true
+			route.Error(http.StatusServiceUnavailable, "Server temporarly offline, retry in " + time.Until(t).Truncate(time.Second).String())
+		case ErrWebsiteOffline:
+			route.Error(http.StatusServiceUnavailable, "Website temporarly offline")
 		case ErrDomainNotFound:
 			if route.DomainName == "" {
-				route.LogMessage = "Invalid direct IP access"
+				route.Error(http.StatusBadRequest, "Invalid direct IP access")
 			} else {
-				route.LogMessage = "Domain not found"
+				route.Error(http.StatusBadRequest, "Domain not served by this server")
 			}
-			httpStatus = http.StatusBadRequest
 		case ErrSubdomainNotFound:
-			route.LogMessage = fmt.Sprintf("Subdomain \"%s\" not found", route.SubdomainName)
-			httpStatus = http.StatusBadRequest
+			route.Error(http.StatusBadRequest, fmt.Sprintf("Subdomain \"%s\" not found", route.SubdomainName))
 		}
 
-		http.Error(w, route.LogMessage, httpStatus)
 		return
 	}
 
@@ -187,7 +218,7 @@ func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if route.Secure {
 				scheme += "s"
 			}
-			http.Redirect(w, r, scheme + "://" + strings.ReplaceAll(r.Host, "www.", "") + r.RequestURI, http.StatusMovedPermanently)
+			http.Redirect(route.W, r, scheme + "://" + strings.ReplaceAll(r.Host, "www.", "") + r.RequestURI, http.StatusMovedPermanently)
 
 			return
 		}
@@ -195,11 +226,15 @@ func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if value, ok := route.Website.PageHeaders[route.RequestURI]; ok {
 		for _, h := range value {
-			w.Header().Add(h[0], h[1])
+			route.W.Header().Add(h[0], h[1])
 		}
 	}
 
 	route.Subdomain.serveFunction(route)
+
+	if route.W.code >= 400 {
+		route.serveError()
+	}
 }
 
 func (route *Route) avoidNoLogPages() {

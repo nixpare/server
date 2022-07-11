@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -20,114 +19,121 @@ type xFile struct {
 	c chan struct{}
 }
 
-func (route *Route) StaticServe(serveHTML bool) {
-	StaticServe(route, route.W, route.R, serveHTML)
-}
+func (route *Route) Error(statusCode int, messages ...string) {
+	route.W.WriteHeader(statusCode)
 
-func (route *Route) ServeFile(path string) {
-	ServeFile(route.W, route.R, path)
+	switch len(messages) {
+	case 0:
+		route.errMessage = "Error"
+		route.logErrMessage = "Error"
+	case 1:
+		route.errMessage = messages[0]
+		route.logErrMessage = messages[0]
+	default:
+		route.errMessage = messages[0]
+		route.logErrMessage = messages[1]
+	}
 }
 
 func (route *Route) ServeRootedFile(path string) {
-	ServeFile(route.W, route.R, route.Website.Dir + path)
+	route.ServeFile(route.Website.Dir + path)
 }
 
-func (route *Route) ServePlainData(name string, data []byte) {
-	ServePlainData(route.W, route.R, name, data)
-}
-
-func (route *Route) ServePlainText(name, text string) {
-	ServePlainText(route.W, route.R, name, text)
-}
-
-func ServeFile(w http.ResponseWriter, r *http.Request, path string) {
+func (route *Route) ServeFile(path string) {
 	if strings.Contains(path, "..") {
-		http.Error(w, "Bad request URL", http.StatusBadRequest)
+		route.Error(http.StatusBadRequest, "Bad request URL", "URL contains ..")
 		return
 	}
 	
 	fileInfo, err := os.Stat(path)
 	if err == nil {
 		if fileInfo.IsDir() {
-			http.Error(w, "404 page not found", http.StatusNotFound)
+			route.Error(http.StatusNotFound, "404 page not found", "Cannot serve directory " + path)
 			return
 		}
 	
-		http.ServeFile(w, r, path)
+		http.ServeFile(route.W, route.R, path)
 		return
 	}
 
 	fileInfo, err = os.Stat(path + ".html")
 	if err != nil {
-		http.Error(w, "404 page not found", http.StatusNotFound)
+		route.Error(http.StatusNotFound, "404 page not found")
 		return
 	}
 
 	f, err := os.Open(path + ".html")
 	if err != nil {
-		http.Error(w, "", http.StatusInternalServerError)
+		route.Error(http.StatusInternalServerError, "Error retreiving page", fmt.Sprintf("Error opening file %s: %v", path + ".html", err))
 		return
 	}
 	defer f.Close()
 
-	http.ServeContent(w, r, fileInfo.Name(), fileInfo.ModTime(), f)
+	http.ServeContent(route.W, route.R, fileInfo.Name(), fileInfo.ModTime(), f)
 }
 
-func ServePlainData(w http.ResponseWriter, r *http.Request, name string, data []byte) {
-	http.ServeContent(w, r, name, time.Now(), bytes.NewReader(data))
+func (route *Route) ServePlainDataWithTime(name string, data []byte, t time.Time) {
+	http.ServeContent(route.W, route.R, name, t, bytes.NewReader(data))
 }
 
-func ServePlainText(w http.ResponseWriter, r *http.Request, name, text string) {
-	http.ServeContent(w, r, name, time.Now(), bytes.NewReader([]byte(text)))
+func (route *Route) ServePlainData(name string, data []byte) {
+	route.ServePlainDataWithTime(name, data, time.Now())
 }
 
-func StaticServe(route *Route, w http.ResponseWriter, r *http.Request, serveHTML bool) {
-	if r.Method != "GET" && r.Method != "HEAD" {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+func (route *Route) ServePlainTextWithTime(name string, text string, t time.Time) {
+	route.ServePlainDataWithTime(name, []byte(text), t)
+}
+
+func (route *Route) ServePlainText(name, text string) {
+	route.ServePlainTextWithTime(name, text, time.Now())
+}
+
+func (route *Route) StaticServe(serveHTML bool) {
+	if route.R.Method != "GET" && route.R.Method != "HEAD" {
+		route.Error(http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
 
 	if route.RequestURI == "/" {
-		ServeFile(w, r, route.Website.Dir + "/index.html")
+		route.ServeFile(route.Website.Dir + "/index.html")
 		return
 	}
 
 	if strings.HasSuffix(route.RequestURI, ".html") && !serveHTML {
-		http.Error(w, "404 page not found", http.StatusNotFound)
+		route.Error(http.StatusNotFound, "404 page not found")
 		return
 	}
 
 	if strings.Count(route.RequestURI, "/") == 1 {
-		ServeFile(w, r, route.Website.Dir + route.RequestURI)
+		route.ServeFile(route.Website.Dir + route.RequestURI)
 		return
 	}
 
 	for _, s := range route.Website.AllFolders {
 		if strings.HasPrefix(route.RequestURI, s) {
 			if strings.HasSuffix(route.RequestURI, ".css") && route.Website.EnableCSSX {
-				serveCSSX(route, w, r)
+				route.serveCSSX()
 				return
 			}
 
-			ServeFile(w, r, route.Website.Dir + route.RequestURI)
+			route.ServeFile(route.Website.Dir + route.RequestURI)
 			return
 		}
 	}
 
-	http.Error(w, "404 page not found", http.StatusNotFound)
+	route.Error(http.StatusNotFound, "404 page not found")
 }
 
-func serveCSSX(route *Route, w http.ResponseWriter, r *http.Request) {
+func (route *Route) serveCSSX() {
 	info, err := os.Stat(route.Website.Dir + route.RequestURI + "x")
 	if err != nil {
-		http.Error(w, "Error 404 not found", http.StatusNotFound)
+		route.Error(http.StatusNotFound, "404 page not found")
 		return
 	}
 
 	cssx, err := os.Open(route.Website.Dir + route.RequestURI + "x")
 	if err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		log.Printf("Error opening %s file\n", route.Website.Dir + route.RequestURI + "x")
+		route.Error(http.StatusInternalServerError, "Internal server error", fmt.Sprintf("Error opening file %s: %v", route.Website.Dir + route.RequestURI + "x", err))
 		return
 	}
 	defer cssx.Close()
@@ -170,7 +176,7 @@ func serveCSSX(route *Route, w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	http.ServeContent(w, r, basePathSplit[len(basePathSplit)-1], modTime, css)
+	http.ServeContent(route.W, route.R, basePathSplit[len(basePathSplit)-1], modTime, css)
 }
 
 func newXFile(len int) *xFile {
