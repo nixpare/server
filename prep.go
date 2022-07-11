@@ -220,5 +220,5 @@ func  (route *Route) IsInternalConn() bool {
 		return true
 	}
 
-	return route.IsInternalConn()
+	return route.Srv.isInternalConn(route.RemoteAddress)
 }
