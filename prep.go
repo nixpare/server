@@ -37,7 +37,10 @@ func (route *Route) prep() {
 	route.prepHost()
 	
 	route.err = route.prepDomainAndSubdomain()
-	route.Website = route.Subdomain.website
+
+	if route.Subdomain != nil {
+		route.Website = route.Subdomain.website
+	}
 }
 
 func (route *Route) prepRemoteAddress() {
