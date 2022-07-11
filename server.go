@@ -275,7 +275,7 @@ func (srv *Server) Start() {
 
 	for _, d := range srv.domains {
 		for _, sd := range d.subdomains {
-			for _, cookie := range sd.website.cookies {
+			for _, cookie := range sd.website.Cookies {
 				err := srv.CreateCookie(cookie)
 				if err != nil {
 					panic(err)

@@ -20,7 +20,7 @@ type Website struct {
 	NoLogPages []string
 	AllFolders []string
 	PageHeaders map[string][][2]string
-	cookies []string
+	Cookies []string
 	EnableCSSX bool
 	AvoidCompression bool
 	AvoidMetricsAndLogging bool
@@ -63,6 +63,7 @@ type Route struct {
 	Domain *Domain
 	Subdomain *Subdomain
 	RequestURI string
+	Method string
 	logRequestURI string
 	QueryMap map[string]string
 	ConnectionTime time.Time
@@ -88,8 +89,13 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Secure: h.secure,
 		RemoteAddress: r.RemoteAddr,
 		RequestURI: r.RequestURI,
+		Method: r.Method,
 		ConnectionTime: time.Now(),
 		R: r,
+	}
+
+	if route.Method == "HEAD" {
+		route.Method = "GET"
 	}
 
 	defer func() {

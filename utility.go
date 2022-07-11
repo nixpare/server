@@ -1,6 +1,7 @@
 package server
 
 import (
+	"crypto/rand"
 	"io"
 	"os/exec"
 	"strings"
@@ -80,4 +81,30 @@ func ParseCommandArgs(args ...string) []string {
 	}
 
 	return a
+}
+
+func RandStr(strSize int, randType string) string {
+
+	var dictionary string
+
+	switch randType {
+	case "alphanum":
+		dictionary = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	case "alpha":
+		dictionary = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	case "alphalow":
+		dictionary = "abcdefghijklmnopqrstuvwxyz"
+	case "num":
+		dictionary = "0123456789"
+	default:
+		return ""
+	}
+
+	var strBytes = make([]byte, strSize)
+	_, _ = rand.Read(strBytes)
+	for k, v := range strBytes {
+		strBytes[k] = dictionary[v%byte(len(dictionary))]
+	}
+	return string(strBytes)
+
 }

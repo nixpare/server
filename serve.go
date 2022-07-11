@@ -179,6 +179,69 @@ func (route *Route) serveCSSX() {
 	http.ServeContent(route.W, route.R, basePathSplit[len(basePathSplit)-1], modTime, css)
 }
 
+func (route *Route) SetCookie(name string, value interface{}, maxAge int) error {
+	encValue, err := route.Srv.secureCookie.Encode(name, value)
+	if err != nil {
+		return err
+	}
+
+	http.SetCookie(route.W, &http.Cookie{
+		Name: route.Srv.obfuscateMap[name],
+		Value: encValue,
+		Domain: route.DomainName,
+		MaxAge: maxAge,
+		Secure: route.Secure,
+		HttpOnly: route.Secure,
+	})
+
+	return nil
+}
+
+func (route *Route) DeleteCookie(name string) {
+	http.SetCookie(route.W, &http.Cookie{
+		Name: route.Srv.obfuscateMap[name],
+		Value: "",
+		Domain: route.DomainName,
+		MaxAge: -1,
+		Secure: route.Secure,
+		HttpOnly: route.Secure,
+	})
+}
+
+func (route *Route) DecodeCookie(name string, value interface{}) (bool, error) {
+	if cookie, err := route.R.Cookie(route.Srv.obfuscateMap[name]); err == nil {
+		return true, route.Srv.secureCookie.Decode(name, cookie.Value, value)
+	}
+	
+	return false, nil
+}
+
+func (route *Route) SetCookiePerm(name string, value interface{}, maxAge int) error {
+	encValue, err := route.Srv.secureCookiePerm.Encode(name, value)
+	if err != nil {
+		return err
+	}
+
+	http.SetCookie(route.W, &http.Cookie{
+		Name: route.Srv.obfuscateMap[name],
+		Value: encValue,
+		Domain: route.DomainName,
+		MaxAge: maxAge,
+		Secure: route.Secure,
+		HttpOnly: route.Secure,
+	})
+
+	return nil
+}
+
+func (route *Route) DecodeCookiePerm(name string, value interface{}) (bool, error) {
+	if cookie, err := route.R.Cookie(route.Srv.obfuscateMap[name]); err == nil {
+		return true, route.Srv.secureCookiePerm.Decode(name, cookie.Value, value)
+	}
+	
+	return false, nil
+}
+
 func newXFile(len int) *xFile {
 	return &xFile {
 		size: len,

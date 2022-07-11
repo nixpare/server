@@ -134,69 +134,6 @@ func (srv *Server) CreateCookie(name string) error {
 	return nil
 }
 
-func (srv *Server) SetCookie(route *Route, w http.ResponseWriter, name string, value interface{}, maxAge int) error {
-	encValue, err := srv.secureCookie.Encode(name, value)
-	if err != nil {
-		return err
-	}
-
-	http.SetCookie(w, &http.Cookie{
-		Name: srv.obfuscateMap[name],
-		Value: encValue,
-		Domain: route.DomainName,
-		MaxAge: maxAge,
-		Secure: route.Secure,
-		HttpOnly: route.Secure,
-	})
-
-	return nil
-}
-
-func (srv *Server) DeleteCookie(route *Route, w http.ResponseWriter, name string) {
-	http.SetCookie(w, &http.Cookie{
-		Name: srv.obfuscateMap[name],
-		Value: "",
-		Domain: route.DomainName,
-		MaxAge: -1,
-		Secure: route.Secure,
-		HttpOnly: route.Secure,
-	})
-}
-
-func (srv *Server) DecodeCookie(r *http.Request, name string, value interface{}) (bool, error) {
-	if cookie, err := r.Cookie(srv.obfuscateMap[name]); err == nil {
-		return true, srv.secureCookie.Decode(name, cookie.Value, value)
-	}
-	
-	return false, nil
-}
-
-func (srv *Server) SetCookiePerm(route *Route, w http.ResponseWriter, name string, value interface{}, maxAge int) error {
-	encValue, err := srv.secureCookiePerm.Encode(name, value)
-	if err != nil {
-		return err
-	}
-
-	http.SetCookie(w, &http.Cookie{
-		Name: srv.obfuscateMap[name],
-		Value: encValue,
-		Domain: route.DomainName,
-		MaxAge: maxAge,
-		Secure: route.Secure,
-		HttpOnly: route.Secure,
-	})
-
-	return nil
-}
-
-func (srv *Server) DecodeCookiePerm(r *http.Request, name string, value interface{}) (bool, error) {
-	if cookie, err := r.Cookie(srv.obfuscateMap[name]); err == nil {
-		return true, srv.secureCookiePerm.Decode(name, cookie.Value, value)
-	}
-	
-	return false, nil
-}
-
 func FullRequestAddress(secure bool, r *http.Request, reqURI string) (req string) {
 	if secure {
 		req = "https://"
