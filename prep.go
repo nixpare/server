@@ -29,11 +29,10 @@ func (route *Route) prep() {
 	route.prepLogRequestURI()
 
 	route.DomainName, route.SubdomainName = prepDomainAndSubdomainNames(route.R)
-
 	if route.IsInternalConn() {
 		route.prepDomainAndSubdomainLocal()
 	}
-
+	
 	route.prepHost()
 	
 	route.err = route.prepDomainAndSubdomain()
@@ -113,7 +112,10 @@ func (route *Route) prepLogRequestURI() {
 func prepDomainAndSubdomainNames(r *http.Request) (string, string) {
 	host, _, err := net.SplitHostPort(r.Host)
 	if err != nil {
-		return r.Host, ""
+		host, _, err = net.SplitHostPort(r.Host + ":0")
+		if err != nil {
+			return r.Host, ""
+		}
 	}
 
 	if strings.HasSuffix(host, "127.0.0.1") || strings.HasSuffix(host, "::1") {

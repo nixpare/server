@@ -2,8 +2,10 @@ package server
 
 import (
 	"crypto/rand"
+	"fmt"
 	"io"
 	"os/exec"
+	"regexp"
 	"strings"
 )
 
@@ -107,4 +109,18 @@ func RandStr(strSize int, randType string) string {
 	}
 	return string(strBytes)
 
+}
+
+func isAbs(path string) bool {
+	if len(path) == 0 {
+		return false
+	}
+
+	matched, err := regexp.MatchString(`([A-Z]+):`, path)
+	fmt.Println(matched, err)
+	if err != nil {
+		return false
+	}
+
+	return matched || path[0] == '/'
 }

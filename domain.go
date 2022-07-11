@@ -72,6 +72,10 @@ func (d *Domain) RegisterSubdomain(subdomain string, c SubdomainConfig) *Subdoma
 		c.ServeF = func(route *Route) { route.StaticServe(true) }
 	}
 
+	if !isAbs(c.Website.Dir) {
+		c.Website.Dir = d.srv.ServerPath + "/" + c.Website.Dir
+	}
+
 	ws := new(Website)
 	*ws = c.Website
 
