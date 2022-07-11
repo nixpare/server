@@ -253,12 +253,12 @@ func (route *Route) DecodeCookiePerm(name string, value interface{}) (bool, erro
 }
 
 func (route *Route) ReverseProxy(URL string) error {
-	url, err := url.Parse(URL)
+	urlParsed, err := url.Parse(URL)
 	if err != nil {
 		return err
 	}
 
-	proxyServer := httputil.NewSingleHostReverseProxy(url)
+	proxyServer := httputil.NewSingleHostReverseProxy(urlParsed)
 
 	noLogFile, _ := os.Open(os.DevNull)
 	proxyServer.ErrorLog = log.New(noLogFile, "", 0)
