@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -247,6 +250,25 @@ func (route *Route) DecodeCookiePerm(name string, value interface{}) (bool, erro
 	}
 	
 	return false, nil
+}
+
+func (route *Route) ReverseProxy(URL string) error {
+	url, err := url.Parse(URL)
+	if err != nil {
+		return err
+	}
+
+	proxyServer := httputil.NewSingleHostReverseProxy(url)
+
+	noLogFile, _ := os.Open(os.DevNull)
+	proxyServer.ErrorLog = log.New(noLogFile, "", 0)
+
+	proxyServer.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		route.Error(http.StatusBadGateway, "Bad gateway", err.Error())
+	}
+
+	proxyServer.ServeHTTP(route.W, route.R)
+	return nil
 }
 
 func newXFile(len int) *xFile {
