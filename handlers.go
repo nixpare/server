@@ -19,6 +19,7 @@ type Website struct {
 	MainPages []string
 	NoLogPages []string
 	AllFolders []string
+	HiddenFolders []string
 	PageHeaders map[string][][2]string
 	Cookies []string
 	EnableCSSX bool

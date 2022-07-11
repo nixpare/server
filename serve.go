@@ -44,6 +44,13 @@ func (route *Route) ServeFile(path string) {
 		route.Error(http.StatusBadRequest, "Bad request URL", "URL contains ..")
 		return
 	}
+
+	for _, hidden := range route.Website.HiddenFolders {
+		if strings.HasPrefix(route.RequestURI, hidden) {
+			route.Error(http.StatusNotFound, "404 page not found", "Not serving potential file inside hidden directory " + hidden)
+			return
+		}
+	}
 	
 	fileInfo, err := os.Stat(path)
 	if err == nil {
@@ -89,7 +96,7 @@ func (route *Route) ServePlainText(name, text string) {
 }
 
 func (route *Route) StaticServe(serveHTML bool) {
-	if route.R.Method != "GET" && route.R.Method != "HEAD" {
+	if route.Method != "GET" {
 		route.Error(http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
