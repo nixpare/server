@@ -283,7 +283,7 @@ func (srv *Server) Start() {
 			}
 
 			if sd.initF != nil {
-				sd.initF(srv, d, sd)
+				sd.initF(srv, d, sd, sd.website)
 			}
 		}
 	}
