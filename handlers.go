@@ -92,13 +92,6 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		R: r,
 	}
 
-	t, err := template.ParseFiles(route.Srv.ServerPath + "/templates/error.html")
-	if err != nil {
-		fmt.Fprintf(route.Srv.LogFile, "Error parsing template file: %v\n", err)
-	} else {
-		route.errTemplate = t
-	}
-
 	defer func() {
 		if p := recover(); p != nil {
 			log.Printf(
@@ -178,6 +171,24 @@ func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	func() {
+		if subdomain != nil {
+			if subdomain.errTemplate != nil {
+				route.errTemplate = subdomain.errTemplate
+				return
+			}
+		}
+
+		if domain != nil {
+			if domain.errTemplate != nil {
+				route.errTemplate = domain.errTemplate
+				return
+			}
+		}
+
+		route.errTemplate = route.Srv.errTemplate
+	}()
+
 	if route.Subdomain.offline {
 		route.err = ErrWebsiteOffline
 	}
@@ -230,7 +241,7 @@ func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	route.Subdomain.serveFunction(route)
+	route.Subdomain.serveF(route)
 
 	if route.W.code >= 400 {
 		route.serveError()

@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
+	"embed"
 	"fmt"
+	"html/template"
 	"log"
 	"math/rand"
 	"net/http"
@@ -47,6 +49,8 @@ type Server struct {
 
 	headers 			http.Header
 
+	errTemplate 		*template.Template
+
 	// DB 					*sql.DB
 
 	fileMutexMap		map[string]*sync.Mutex
@@ -84,6 +88,9 @@ var (
 	HashKeyString = "NixPare Server"
 	BlockKeyString = "github.com/alessio-pareto/server"
 )
+
+//go:embed static
+var staticFS embed.FS
 
 func NewServer(cfg Config) (srv *Server, err error) {
 	if cfg.ServerPath == "" {
@@ -196,6 +203,11 @@ func newServer(port int, secure bool, serverPath string, logFile *os.File, certs
 	srv.domains = make(map[string]*Domain)
 	srv.headers = make(http.Header)
 
+	errorHTMLContent, err := staticFS.ReadFile("static/error.html")
+	if err == nil {
+		srv.SetErrorTemplate(string(errorHTMLContent))
+	}
+
 	srv.isInternalConn = func(remoteAddress string) bool { return false }
 
 	srv.bgManager.bgTasks = make(map[string]*bgTask)
@@ -270,8 +282,8 @@ func (srv *Server) Start() {
 				}
 			}
 
-			if sd.initFunction != nil {
-				sd.initFunction(srv, d, sd)
+			if sd.initF != nil {
+				sd.initF(srv, d, sd)
 			}
 		}
 	}

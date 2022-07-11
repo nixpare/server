@@ -1,21 +1,27 @@
 package server
 
-import "net/http"
+import (
+	"fmt"
+	"html/template"
+	"net/http"
+)
 
 type Domain struct {
-	Name       string
-	subdomains map[string]*Subdomain
-	srv        *Server
-	headers    http.Header
+	Name        string
+	subdomains  map[string]*Subdomain
+	srv         *Server
+	headers     http.Header
+	errTemplate *template.Template
 }
 
 type Subdomain struct {
-	Name          string
-	website       *Website
-	serveFunction ServeFunction
-	initFunction  InitFunction
-	headers       http.Header
-	offline       bool
+	Name        string
+	website     *Website
+	serveF 		ServeFunction
+	initF  		InitFunction
+	headers     http.Header
+	errTemplate *template.Template
+	offline     bool
 }
 
 type SubdomainConfig struct {
@@ -26,10 +32,10 @@ type SubdomainConfig struct {
 
 func (srv *Server) RegisterDomain(displayName, domain string) *Domain {
 	d := &Domain{
-		displayName,
-		make(map[string]*Subdomain),
-		srv,
-		make(http.Header),
+		Name: displayName,
+		subdomains: make(map[string]*Subdomain),
+		srv: srv,
+		headers: make(http.Header),
 	}
 
 	srv.domains[domain] = d
@@ -70,10 +76,9 @@ func (d *Domain) RegisterSubdomain(subdomain string, c SubdomainConfig) *Subdoma
 	*ws = c.Website
 
 	sd := &Subdomain{
-		subdomain, ws,
-		c.ServeF, c.InitF,
-		make(http.Header),
-		false,
+		Name: subdomain, website: ws,
+		serveF: c.ServeF, initF: c.InitF,
+		headers: make(http.Header),
 	}
 	d.subdomains[subdomain] = sd
 
@@ -169,4 +174,34 @@ func (sd *Subdomain) Enable() *Subdomain {
 func (sd *Subdomain) Disable() *Subdomain {
 	sd.offline = true
 	return sd
+}
+
+func (srv *Server) SetErrorTemplate(content string) error {
+	t, err := template.New("error.html").Parse(content)
+	if err != nil {
+		return fmt.Errorf("error parsing template file: %w", err)
+	}
+
+	srv.errTemplate = t
+	return nil
+}
+
+func (d *Domain) SetErrorTemplate(content string) error {
+	t, err := template.New("error.html").Parse(content)
+	if err != nil {
+		return fmt.Errorf("error parsing template file: %w", err)
+	}
+
+	d.errTemplate = t
+	return nil
+}
+
+func (sd *Subdomain) SetErrorTemplate(content string) error {
+	t, err := template.New("error.html").Parse(content)
+	if err != nil {
+		return fmt.Errorf("error parsing template file: %w", err)
+	}
+
+	sd.errTemplate = t
+	return nil
 }
