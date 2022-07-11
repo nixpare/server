@@ -2,7 +2,6 @@ package server
 
 import (
 	"crypto/rand"
-	"fmt"
 	"io"
 	"os/exec"
 	"regexp"
@@ -117,7 +116,6 @@ func isAbs(path string) bool {
 	}
 
 	matched, err := regexp.MatchString(`([A-Z]+):`, path)
-	fmt.Println(matched, err)
 	if err != nil {
 		return false
 	}
