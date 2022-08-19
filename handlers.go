@@ -28,7 +28,7 @@ type Website struct {
 }
 
 type ServeFunction func(route *Route)
-type InitFunction func(srv *Server, domain *Domain, subdomain *Subdomain, website *Website)
+type InitCloseFunction func(srv *Server, domain *Domain, subdomain *Subdomain, website *Website)
 
 type ResponseWriter struct {
 	w http.ResponseWriter

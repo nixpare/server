@@ -18,7 +18,8 @@ type Subdomain struct {
 	Name        string
 	website     *Website
 	serveF 		ServeFunction
-	initF  		InitFunction
+	initF  		InitCloseFunction
+	closeF  	InitCloseFunction
 	headers     http.Header
 	errTemplate *template.Template
 	offline     bool
@@ -27,7 +28,8 @@ type Subdomain struct {
 type SubdomainConfig struct {
 	Website Website
 	ServeF  ServeFunction
-	InitF   InitFunction
+	InitF   InitCloseFunction
+	CloseF  InitCloseFunction
 }
 
 func (srv *Server) RegisterDomain(displayName, domain string) *Domain {
@@ -81,7 +83,7 @@ func (d *Domain) RegisterSubdomain(subdomain string, c SubdomainConfig) *Subdoma
 
 	sd := &Subdomain{
 		Name: subdomain, website: ws,
-		serveF: c.ServeF, initF: c.InitF,
+		serveF: c.ServeF, initF: c.InitF, closeF: c.CloseF,
 		headers: make(http.Header),
 	}
 	d.subdomains[subdomain] = sd
