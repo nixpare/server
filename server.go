@@ -324,6 +324,14 @@ func (srv *Server) ShutdownServer() {
 
 	srv.Server.SetKeepAlivesEnabled(false)
 
+	for _, d := range srv.domains {
+		for _, sd := range d.subdomains {
+			if sd.closeF != nil {
+				sd.closeF(srv, d, sd, sd.website)
+			}
+		}
+	}
+
 	srv.closeBackgroundTasks()
 	srv.StopAllExecs()
 	srv.shutdownServices()
