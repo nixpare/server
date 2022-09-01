@@ -196,7 +196,7 @@ func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		route.errTemplate = route.Srv.errTemplate
 	}()
 
-	if route.Subdomain.offline {
+	if route.Subdomain != nil && route.Subdomain.offline {
 		route.err = ErrWebsiteOffline
 	}
 

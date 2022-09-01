@@ -165,6 +165,12 @@ func newServer(port int, secure bool, serverPath string, logFile *os.File, certs
 		srv.Server.TLSConfig = cfg
 	}
 
+	srv.Server.ErrorLog = log.New(srv.LogFile, "http-error: ", log.Flags())
+
+	srv.Server.ReadHeaderTimeout = time.Second * 10
+	srv.Server.IdleTimeout = time.Second * 30
+	srv.Server.SetKeepAlivesEnabled(true)
+
 	//Creates the pid file, writes it and closes the file
 	pid, _ := os.OpenFile(srv.ServerPath + "/PID.txt", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
 	fmt.Fprint(pid, os.Getpid())

@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -176,7 +175,7 @@ func (route *Route) serveCSSX() {
 	css := newXFile(size)
 	go func() {
 		for _, s := range fileNames {
-			data, err := ioutil.ReadFile(s)
+			data, err := os.ReadFile(s)
 			if err != nil {
 				continue
 			}

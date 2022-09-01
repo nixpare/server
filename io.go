@@ -1,7 +1,7 @@
 package server
 
 import (
-	"io/ioutil"
+	"os"
 	"sync"
 )
 
@@ -47,7 +47,7 @@ func (srv *Server) ReadFileConcurrent(filePath string) ([]byte, error) {
 	}
 	fm.Lock()
 
-	b, err := ioutil.ReadFile(filePath)
+	b, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, err
 	}
