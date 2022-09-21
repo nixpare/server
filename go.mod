@@ -1,4 +1,4 @@
-module github.com/alessio-pareto/server
+module github.com/nixpare/server
 
 go 1.19
 
