@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/felixge/httpsnoop"
@@ -94,4 +95,77 @@ func (route *Route) serveError() {
 		fmt.Fprintf(route.Srv.LogFile, "Error serving template file: %v\n", err)
 		return
 	}
+}
+
+type LogLevel int
+
+const (
+	LOG_LEVEL_INFO = 4
+	LOG_LEVEL_DEBUG = 3
+	LOG_LEVEL_WARNING = 2
+	LOG_LEVEL_ERROR = 1
+	LOG_LEVEL_FATAL = 0
+)
+
+func logInfo(w io.Writer, a ...any) {
+	fmt.Fprintf(w, "[%s]    INFO - %s", time.Now().Format(time.RFC3339), fmt.Sprint(a...))
+}
+
+func logDebug(w io.Writer, a ...any) {
+	fmt.Fprintf(w, "[%s]   DEBUG - %s", time.Now().Format(time.RFC3339), fmt.Sprint(a...))
+}
+
+func logWarning(w io.Writer, a ...any) {
+	fmt.Fprintf(w, "[%s] WARNING - %s", time.Now().Format(time.RFC3339), fmt.Sprint(a...))
+}
+
+func logError(w io.Writer, a ...any) {
+	fmt.Fprintf(w, "[%s]   ERROR - %s", time.Now().Format(time.RFC3339), fmt.Sprint(a...))
+}
+
+func logFatal(w io.Writer, a ...any) {
+	fmt.Fprintf(w, "[%s]   FATAL - %s", time.Now().Format(time.RFC3339), fmt.Sprint(a...))
+}
+
+func (srv *Server) Log(level LogLevel, a ...any) {
+	switch level {
+	case LOG_LEVEL_INFO:
+		logInfo(srv.LogFile, a...)
+	case LOG_LEVEL_DEBUG:
+		logDebug(srv.LogFile, a...)
+	case LOG_LEVEL_WARNING:
+		logWarning(srv.LogFile, a...)
+	case LOG_LEVEL_ERROR:
+		logError(srv.LogFile, a...)
+	case LOG_LEVEL_FATAL:
+		logFatal(srv.LogFile, a...)
+	}
+}
+
+func (srv *Server) Print(a ...any) {
+	fmt.Fprint(srv.LogFile, a...)
+}
+
+func (srv *Server) Println(a ...any) {
+	fmt.Fprintln(srv.LogFile, a...)
+}
+
+func (srv *Server) Printf(format string, a ...any) {
+	fmt.Fprintf(srv.LogFile, format, a...)
+}
+
+func (route *Route) Log(level LogLevel, a ...any) {
+	route.Srv.Log(level, a...)
+}
+
+func (route *Route) Print(a ...any) {
+	route.Srv.Print(a...)
+}
+
+func (route *Route) Println(a ...any) {
+	route.Srv.Println(a...)
+}
+
+func (route *Route) Printf(format string, a ...any) {
+	route.Srv.Printf(format, a...)
 }
