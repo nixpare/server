@@ -26,7 +26,6 @@ type bgManager struct {
 }
 
 type bgTask struct {
-	name string
 	t *Task
 	timer BGTimer
 }
@@ -34,23 +33,39 @@ type bgTask struct {
 type TaskFunc func(srv *Server, t *Task)
 
 type Task struct {
-	Object interface{}
-	StartupFunc TaskFunc
-	ExecFunc TaskFunc
-	CleanupFunc TaskFunc
+	name string
+	StartupF TaskFunc
+	ExecF TaskFunc
+	CleanupF TaskFunc
 }
 
-func (srv *Server) RegisterBackgroundTask(name string, task *Task, timer BGTimer) {
-	t := &bgTask{
+func (t Task) Name() string {
+	return t.name
+}
+
+type TaskInitFunc func() (startupF, execF, cleanupF TaskFunc)
+
+func NewTask(name string, f TaskInitFunc) *Task {
+	startupF, execF, cleanupF := f()
+
+	return &Task {
 		name: name,
+		StartupF: startupF,
+		ExecF: execF,
+		CleanupF: cleanupF,
+	}
+}
+
+func (srv *Server) RegisterBackgroundTask(task *Task, timer BGTimer) {
+	t := &bgTask{
 		t: task,
 		timer: timer,
 	}
 
-	if task.StartupFunc != nil {
-		task.StartupFunc(srv, task)
+	if task.StartupF != nil {
+		task.StartupF(srv, task)
 	}
-	srv.bgManager.bgTasks[name] = t
+	srv.bgManager.bgTasks[task.name] = t
 }
 
 func (srv *Server) SetBackgroundTaskState(name string, timer BGTimer) error {
@@ -85,8 +100,8 @@ func (srv *Server) backgroundTasks() {
 	run = false
 
 	for _, t := range srv.bgManager.bgTasks {
-		if t.t.CleanupFunc != nil {
-			t.t.CleanupFunc(srv, t.t)
+		if t.t.CleanupF != nil {
+			t.t.CleanupF(srv, t.t)
 		}
 	}
 
@@ -109,5 +124,5 @@ func (srv *Server) execBGTask(t *Task) {
 		}
 	}()
 
-	t.ExecFunc(srv, t)
+	t.ExecF(srv, t)
 }
