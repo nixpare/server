@@ -13,7 +13,6 @@ import (
 	"os"
 	"os/signal"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gorilla/securecookie"
@@ -27,17 +26,19 @@ type Server struct {
 
 	Online 				bool
 
-	OnlineTimeStamp 	time.Time
-
-	StartTimestamp 		time.Time
+	OnlineTime 			time.Time
 
 	stopChannel			chan struct{}
 
 	Server      		*http.Server
 
+	port 				int
+
+	Router 				*Router
+
 	domains 			map[string]*Domain
 
-	LogFile     		*os.File
+	logFile     		*os.File
 
 	ServerPath  		string
 
@@ -50,20 +51,6 @@ type Server struct {
 	headers 			http.Header
 
 	errTemplate 		*template.Template
-
-	// DB 					*sql.DB
-
-	fileMutexMap		map[string]*sync.Mutex
-
-	isInternalConn 		func(remoteAddress string) bool
-
-	offlineClients      map[string]offlineClient
-
-	bgManager     		bgManager
-
-	backgroundMutex 	*Mutex
-
-	execMap 			map[string]*program
 }
 
 type Certificate struct {
@@ -119,10 +106,11 @@ func newServer(port int, secure bool, serverPath string, logFile *os.File, certs
 
 	srv.Server = new(http.Server)
 	srv.Secure = secure
+	srv.port = port
 
 	srv.ServerPath = serverPath
 
-	srv.LogFile = logFile
+	srv.logFile = logFile
 
 	srv.stopChannel = make(chan struct{}, 1)
 
@@ -165,7 +153,7 @@ func newServer(port int, secure bool, serverPath string, logFile *os.File, certs
 		srv.Server.TLSConfig = cfg
 	}
 
-	srv.Server.ErrorLog = log.New(srv.LogFile, "http-error: ", log.Flags())
+	srv.Server.ErrorLog = log.New(srv.LogFile(), "http-error: ", log.Flags())
 
 	srv.Server.ReadHeaderTimeout = time.Second * 10
 	srv.Server.IdleTimeout = time.Second * 30
@@ -202,10 +190,8 @@ func newServer(port int, secure bool, serverPath string, logFile *os.File, certs
 		blockKey = append(blockKey, b)
 	}
 	srv.secureCookiePerm = securecookie.New(hashKey, blockKey).MaxAge(0)
-
-	srv.fileMutexMap = make(map[string]*sync.Mutex)
+	
 	srv.obfuscateMap = make(map[string]string)
-	srv.offlineClients = make(map[string]offlineClient)
 	srv.domains = make(map[string]*Domain)
 	srv.headers = make(http.Header)
 
@@ -214,26 +200,7 @@ func newServer(port int, secure bool, serverPath string, logFile *os.File, certs
 		srv.SetErrorTemplate(string(errorHTMLContent))
 	}
 
-	srv.isInternalConn = func(remoteAddress string) bool { return false }
-
-	srv.bgManager.bgTasks = make(map[string]*bgTask)
-	srv.bgManager.tickerMinute = time.NewTicker(time.Minute)
-	srv.bgManager.ticker10Minutes = time.NewTicker(time.Minute * 10)
-	srv.bgManager.ticker30Minutes = time.NewTicker(time.Minute * 30)
-	srv.bgManager.tickerHour = time.NewTicker(time.Minute * 60)
-
-	srv.backgroundMutex = NewMutex()
-
-	srv.execMap = make(map[string]*program)
-
 	return srv, err
-}
-
-func (srv *Server) SetInternalConnFilter(f func(remoteAddress string) bool) *Server {
-	if f != nil {
-		srv.isInternalConn = f
-	}
-	return srv
 }
 
 func (srv *Server) SetHeader(name, value string) *Server {
@@ -274,10 +241,8 @@ func (srv *Server) Start() {
 
 	srv.Running = true
 	srv.Online = true
-
-	srv.StartTimestamp = time.Now()
-	srv.OnlineTimeStamp = srv.StartTimestamp
-	srv.WriteLogStart(srv.StartTimestamp)
+	
+	srv.OnlineTime = time.Now()
 
 	for _, d := range srv.domains {
 		for _, sd := range d.subdomains {
@@ -293,8 +258,6 @@ func (srv *Server) Start() {
 			}
 		}
 	}
-
-	go srv.backgroundTasks()
 }
 
 func (srv *Server) Wait() {
@@ -332,48 +295,14 @@ func (srv *Server) ShutdownServer() {
 		}
 	}
 
-	srv.closeBackgroundTasks()
-	srv.StopAllExecs()
-	srv.shutdownServices()
-
 	if err := srv.Server.Shutdown(context.Background()); err != nil {
-		fmt.Fprint(srv.LogFile, "  Error: [" + time.Now().Format("02/Jan/2006:15:04:05") + "] Server shutdown crashed due to: " + err.Error())
+		srv.Logln(LOG_LEVEL_FATAL, "Server shutdown crashed due to: " + err.Error())
 	}
 	srv.Online = false
 	
-	srv.WriteLogClosure(time.Now())
+	//srv.WriteLogClosure(time.Now())
 	os.Remove(srv.ServerPath + "/PID.txt")
 
 	srv.stopChannel <- struct{}{}
-	srv.LogFile.Close()
-}
-
-func (srv *Server) closeBackgroundTasks() {
-	var shutdown sync.WaitGroup
-	done := false
-	shutdown.Add(1)
-
-	go func() {
-		time.Sleep(50 * time.Second)
-		if !done {
-			done = true
-			log.Println(" - Background Task stopped forcibly")
-			shutdown.Done()
-		}
-	}()
-
-	go func() {
-		srv.backgroundMutex.SendSignal()
-		if !done {
-			done = true
-			log.Println(" - Every Background Task stopped correctly")
-			shutdown.Done()
-		}
-	}()
-
-	shutdown.Wait()
-}
-
-func (srv *Server) shutdownServices() {
-	//srv.DB.Close()
+	srv.logFile.Close()
 }

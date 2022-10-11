@@ -30,7 +30,7 @@ type bgTask struct {
 	timer BGTimer
 }
 
-type TaskFunc func(srv *Server, t *Task)
+type TaskFunc func(router *Router, t *Task)
 
 type Task struct {
 	name string
@@ -56,20 +56,20 @@ func NewTask(name string, f TaskInitFunc) *Task {
 	}
 }
 
-func (srv *Server) RegisterBackgroundTask(task *Task, timer BGTimer) {
+func (router *Router) RegisterBackgroundTask(task *Task, timer BGTimer) {
 	t := &bgTask{
 		t: task,
 		timer: timer,
 	}
 
 	if task.StartupF != nil {
-		task.StartupF(srv, task)
+		task.StartupF(router, task)
 	}
-	srv.bgManager.bgTasks[task.name] = t
+	router.bgManager.bgTasks[task.name] = t
 }
 
-func (srv *Server) SetBackgroundTaskState(name string, timer BGTimer) error {
-	t, ok := srv.bgManager.bgTasks[name]
+func (router *Router) SetBackgroundTaskState(name string, timer BGTimer) error {
+	t, ok := router.bgManager.bgTasks[name]
 	if !ok {
 		return fmt.Errorf("background: task %s not found", name)
 	}
@@ -78,45 +78,45 @@ func (srv *Server) SetBackgroundTaskState(name string, timer BGTimer) error {
 	return nil
 }
 
-func (srv *Server) backgroundTasks() {
+func (router *Router) backgroundTasks() {
 	run := true
 
 	go func() {
 		for run {
 			select {
-			case <- srv.bgManager.tickerMinute.C:
-				srv.execBGTasks(BGTimerMinute)
-			case <- srv.bgManager.ticker10Minutes.C:
-				srv.execBGTasks(BGTimer10Minutes)
-			case <- srv.bgManager.ticker30Minutes.C:
-				srv.execBGTasks(BGTimer30Minutes)
-			case <- srv.bgManager.tickerHour.C:
-				srv.execBGTasks(BGTimerHour)
+			case <- router.bgManager.tickerMinute.C:
+				router.execBGTasks(BGTimerMinute)
+			case <- router.bgManager.ticker10Minutes.C:
+				router.execBGTasks(BGTimer10Minutes)
+			case <- router.bgManager.ticker30Minutes.C:
+				router.execBGTasks(BGTimer30Minutes)
+			case <- router.bgManager.tickerHour.C:
+				router.execBGTasks(BGTimerHour)
 			}
 		}
 	}()
 
-	srv.backgroundMutex.ListenForSignal()
+	router.backgroundMutex.ListenForSignal()
 	run = false
 
-	for _, t := range srv.bgManager.bgTasks {
+	for _, t := range router.bgManager.bgTasks {
 		if t.t.CleanupF != nil {
-			t.t.CleanupF(srv, t.t)
+			t.t.CleanupF(router, t.t)
 		}
 	}
 
-	srv.backgroundMutex.Done()
+	router.backgroundMutex.Done()
 }
 
-func (srv *Server) execBGTasks(timer BGTimer) {
-	for _, t := range srv.bgManager.bgTasks {
+func (router *Router) execBGTasks(timer BGTimer) {
+	for _, t := range router.bgManager.bgTasks {
 		if t.timer == timer {
-			go srv.execBGTask(t.t)
+			go router.execBGTask(t.t)
 		}
 	}
 }
 
-func (srv *Server) execBGTask(t *Task) {
+func (router *Router) execBGTask(t *Task) {
 	defer func() {
 		if err := recover(); err != nil {
 			log.Println("panic occurred:", err)
@@ -124,5 +124,5 @@ func (srv *Server) execBGTask(t *Task) {
 		}
 	}()
 
-	t.ExecF(srv, t)
+	t.ExecF(router, t)
 }

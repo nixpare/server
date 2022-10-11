@@ -55,6 +55,7 @@ type Route struct {
 	W *ResponseWriter
 	R *http.Request
 	Srv *Server
+	Router *Router
 	Secure bool
 	Host string
 	RemoteAddress string
@@ -87,6 +88,7 @@ func (srv *Server) handler(isSecure bool) http.Handler {
 func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	route := &Route {
 		Srv: h.srv,
+		Router: h.srv.Router,
 		Secure: h.secure,
 		RemoteAddress: r.RemoteAddr,
 		RequestURI: r.RequestURI,
@@ -209,7 +211,7 @@ func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case ErrBadURL:
 			route.Error(http.StatusBadRequest, "Bad Request URL")
 		case ErrServerOffline:
-			t := route.Srv.OnlineTimeStamp.Add(time.Minute * 5)
+			t := route.Srv.OnlineTime.Add(time.Minute * 5)
 			route.W.Header().Set("Retry-After", t.Format(time.RFC1123))
 
 			route.Error(http.StatusServiceUnavailable, "Server temporarly offline, retry in " + time.Until(t).Truncate(time.Second).String())

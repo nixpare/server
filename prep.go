@@ -181,7 +181,7 @@ func (route *Route) prepDomainAndSubdomainLocal() {
 	host := route.DomainName
 	hostSD := route.SubdomainName
 
-	savedConfig, ok := route.Srv.offlineClients[route.RemoteAddress]
+	savedConfig, ok := route.Router.offlineClients[route.RemoteAddress]
 	if ok {
 		route.DomainName = savedConfig.domain
 		route.SubdomainName = savedConfig.subdomain
@@ -207,7 +207,7 @@ func (route *Route) prepDomainAndSubdomainLocal() {
 
 	route.SubdomainName = prepSubdomainName(route.SubdomainName)
 
-	route.Srv.offlineClients[route.RemoteAddress] = offlineClient {
+	route.Router.offlineClients[route.RemoteAddress] = offlineClient {
 		route.DomainName, route.SubdomainName,
 	}
 }
@@ -225,5 +225,5 @@ func  (route *Route) IsInternalConn() bool {
 		return true
 	}
 
-	return route.Srv.isInternalConn(route.RemoteAddress)
+	return route.Router.isInternalConn(route.RemoteAddress)
 }

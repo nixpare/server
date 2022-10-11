@@ -43,7 +43,7 @@ func CustomLogLine(out io.Writer, req CustomLogRequest, ts time.Time, msg string
 	}
 }
 
-func (srv *Server) StartProgram(name string, args []string, dir string, wait bool, stdin, stdout, stderr string) (exitCode int, err error) {
+func (router *Router) StartProgram(name string, args []string, dir string, wait bool, stdin, stdout, stderr string) (exitCode int, err error) {
 	exitCode = -1
 
 	cmd := exec.Command(name, args...)
@@ -52,7 +52,7 @@ func (srv *Server) StartProgram(name string, args []string, dir string, wait boo
 		cmd.Dir = dir
 	}
 
-	cmd.Stdin, cmd.Stdout, cmd.Stderr, err = srv.devNull(stdin, stdout, stderr)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr, err = router.devNull(stdin, stdout, stderr)
 	if err != nil {
 		return
 	}
@@ -70,7 +70,7 @@ func (srv *Server) StartProgram(name string, args []string, dir string, wait boo
 	return
 }
 
-func (srv *Server) devNull(stdin, stdout, stderr string) (fStdin, fStdout, fStderr *os.File, err error) {
+func (router *Router) devNull(stdin, stdout, stderr string) (fStdin, fStdout, fStderr *os.File, err error) {
 	switch stdin {
 	case "":
 		fStdin, err = os.Open(os.DevNull)
@@ -94,7 +94,7 @@ func (srv *Server) devNull(stdin, stdout, stderr string) (fStdin, fStdout, fStde
 		}
 	case "INHERIT":
 		//fStdout = os.Stdout
-		fStdout = srv.LogFile
+		fStdout = router.logFile
 	default:
 		fStdout, err = os.OpenFile(stdout, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0777)
 		if err != nil {
@@ -110,7 +110,7 @@ func (srv *Server) devNull(stdin, stdout, stderr string) (fStdin, fStdout, fStde
 		}
 	case "INHERIT":
 		//fStderr = os.Stderr
-		fStderr = srv.LogFile
+		fStderr = router.logFile
 	default:
 		fStderr, err = os.OpenFile(stderr, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0777)
 		if err != nil {

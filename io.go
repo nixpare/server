@@ -40,10 +40,10 @@ func (m *Mutex) ListenForSignal() {
 }
 
 func (srv *Server) ReadFileConcurrent(filePath string) ([]byte, error) {
-	fm, ok := srv.fileMutexMap[filePath]
+	fm, ok := srv.Router.fileMutexMap[filePath]
 	if !ok {
 		fm = new(sync.Mutex)
-		srv.fileMutexMap[filePath] = fm
+		srv.Router.fileMutexMap[filePath] = fm
 	}
 	fm.Lock()
 

@@ -68,7 +68,7 @@ func (p *program) String() string {
 	return fmt.Sprintf("%s (%s)", p.name, state)
 }
 
-func (srv *Server) RegisterExec(name, dir string, redirect bool, execName string, args ...string) error {
+func (router *Router) RegisterExec(name, dir string, redirect bool, execName string, args ...string) error {
 	info, err := os.Stat(dir)
 	if err != nil {
 		return fmt.Errorf("exec: directory not found")
@@ -86,24 +86,24 @@ func (srv *Server) RegisterExec(name, dir string, redirect bool, execName string
 	}
 
 	if redirect {
-		p.redirect = srv.LogFile
+		p.redirect = router.logFile
 	}
 
-	srv.execMap[name] = p
+	router.execMap[name] = p
 	return nil
 }
 
-func (srv *Server) RegisterExecAndStart(name, dir string, redirect bool, execName string, args ...string) error {
-	err := srv.RegisterExec(name, dir, redirect, execName, args...)
+func (router *Router) RegisterExecAndStart(name, dir string, redirect bool, execName string, args ...string) error {
+	err := router.RegisterExec(name, dir, redirect, execName, args...)
 	if err != nil {
 		return err
 	}
 
-	return srv.StartExec(name)
+	return router.StartExec(name)
 }
 
-func (srv *Server) StartExec(name string) error {
-	p, ok := srv.execMap[name]
+func (router *Router) StartExec(name string) error {
+	p, ok := router.execMap[name]
 	if !ok {
 		return fmt.Errorf("exec: program not found with name %s", name)
 	}
@@ -120,8 +120,8 @@ func (srv *Server) StartExec(name string) error {
 	return nil
 }
 
-func (srv *Server) StopExec(name string) error {
-	p, ok := srv.execMap[name]
+func (router *Router) StopExec(name string) error {
+	p, ok := router.execMap[name]
 	if !ok {
 		return fmt.Errorf("exec: program not found with name %s", name)
 	}
@@ -134,18 +134,18 @@ func (srv *Server) StopExec(name string) error {
 	return nil
 }
 
-func (srv *Server) RestartExec(name string) error {
-	_, ok := srv.execMap[name]
+func (router *Router) RestartExec(name string) error {
+	_, ok := router.execMap[name]
 	if !ok {
 		return fmt.Errorf("exec: program not found with name %s", name)
 	}
 
-	err := srv.StopExec(name)
+	err := router.StopExec(name)
 	if err != nil {
 		return fmt.Errorf("exec: restart error: %v", err)
 	}
 
-	err = srv.StartExec(name)
+	err = router.StartExec(name)
 	if err != nil {
 		return fmt.Errorf("exec: restart error: %v", err)
 	}
@@ -153,8 +153,8 @@ func (srv *Server) RestartExec(name string) error {
 	return nil
 }
 
-func (srv *Server) ExecIsRunning(name string) (bool, error) {
-	p, ok := srv.execMap[name]
+func (router *Router) ExecIsRunning(name string) (bool, error) {
+	p, ok := router.execMap[name]
 	if !ok {
 		return false, fmt.Errorf("exec: program not found with name %s", name)
 	}
@@ -162,8 +162,8 @@ func (srv *Server) ExecIsRunning(name string) (bool, error) {
 	return p.isOnline(), nil
 }
 
-func (srv *Server) StopAllExecs() {
-	for _, p := range srv.execMap {
+func (router *Router) StopAllExecs() {
+	for _, p := range router.execMap {
 		p.stop()
 	}
 }
