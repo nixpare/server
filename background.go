@@ -198,13 +198,16 @@ func (router *Router) backgroundTasks() {
 // and then sets the flag Task.startupDone to true. If the function fails it deactivates
 // the task
 func (router *Router) runBGTaskStartup(t *Task) {
-	defer func() { t.startupDone = true }()
+	if t.StartupF == nil {
+		return
+	}
 
+	defer func() { t.startupDone = true }()
 	defer func() {
 		if err := recover(); err != nil {
 			var stack string
 			for _, s := range strings.Split(string(debug.Stack()), "\n") {
-				stack += "\t\\ " + s
+				stack += "\t\\ " + s + "\n"
 			}
 			stack = strings.TrimRight(stack, "\n ")
 
@@ -223,7 +226,7 @@ func (router *Router) runBGTaskStartup(t *Task) {
 // exec function has terminated. It also listens for the kill signal in case the server
 // is shutting down and the task is taking too long to execute
 func (router *Router) runBGTaskExec(t *Task) {
-	if !t.startupDone || t.running {
+	if t.ExecF == nil || !t.startupDone || t.running {
 		return
 	}
 
@@ -268,6 +271,10 @@ func (router *Router) runBGTaskExec(t *Task) {
 
 // runBGTaskCleanup runs the cleanup function, catching every possible error or panic
 func (router *Router) runBGTaskCleanup(t *Task) {
+	if t.CleanupF == nil {
+		return
+	}
+
 	defer func() {
 		if err := recover(); err != nil {
 			var stack string
