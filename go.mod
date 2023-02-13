@@ -1,6 +1,6 @@
 module github.com/nixpare/server
 
-go 1.19
+go 1.20
 
 require (
 	github.com/felixge/httpsnoop v1.0.3

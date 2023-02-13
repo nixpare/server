@@ -150,7 +150,7 @@ func newServer(port int, secure bool, serverPath string, logFile *os.File, certs
 		srv.Server.TLSConfig = cfg
 	}
 
-	srv.Server.ErrorLog = log.New(srv.LogFile(), "http-error: ", log.Flags())
+	srv.Server.ErrorLog = log.New(srv.LogFile(), "  ERROR: http-error: ", log.Flags())
 
 	srv.Server.ReadHeaderTimeout = time.Second * 10
 	srv.Server.IdleTimeout = time.Second * 30

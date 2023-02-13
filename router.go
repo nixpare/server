@@ -9,7 +9,7 @@ import (
 
 type Router struct {
 	servers 			map[int]*Server
-	cleanupF 			func() error
+	CleanupF 			func() error
 	startTime 			time.Time
 	logFile 			*os.File
 	fileMutexMap		map[string]*sync.Mutex
@@ -23,7 +23,7 @@ type Router struct {
 func NewRouter() *Router {
 	router := new(Router)
 
-
+	router.servers = make(map[int]*Server)
 
 	router.fileMutexMap = make(map[string]*sync.Mutex)
 	router.offlineClients = make(map[string]offlineClient)
@@ -60,6 +60,10 @@ func (router *Router) RegisterServer(srv *Server) error {
 	return nil
 }
 
+func (router *Router) Server(port int) *Server {
+	return router.servers[port]
+}
+
 func (router *Router) Start() (err error) {
 	router.startTime = time.Now()
 
@@ -83,12 +87,14 @@ func (router *Router) StopServer(port int) error {
 	return nil
 }
 
-func (router *Router) Stop() (err error) {
-	/* var errString string
+func (router *Router) Stop() (errs []error) {
 	for _, srv := range router.servers {
-		
-	} */
-	router.cleanupF()
+		srv.ShutdownServer()
+	}
+
+	if router.CleanupF != nil {
+		router.CleanupF()
+	}
 	router.closeBackgroundTasks()
 	router.StopAllExecs()
 	return

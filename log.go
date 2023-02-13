@@ -22,6 +22,13 @@ func WriteLogClosure(t time.Time) string {
 		   "\n     \\/ \\/ \\/                                             \\/ \\/ \\/\n\n"
 }
 
+func (router *Router) ClearLogs() {
+	router.logFile.Truncate(0)
+
+	router.Print(router.startTime)
+	router.Print(fmt.Sprintf("     -- -- --   Logs cleared at [%s]   -- -- --\n\n", time.Now().Format("02/Jan/2006:15:04:05")))
+}
+
 func (srv *Server) LogFile() io.Writer {
 	if srv.Router == nil {
 		return srv.logFile

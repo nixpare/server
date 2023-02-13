@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -21,19 +22,15 @@ type xFile struct {
 	c chan struct{}
 }
 
-func (route *Route) Error(statusCode int, messages ...string) {
+func (route *Route) Error(statusCode int, message string, a ...any) {
 	route.W.WriteHeader(statusCode)
 
-	switch len(messages) {
-	case 0:
+	if message == "" {
 		route.errMessage = "Error"
-		route.logErrMessage = "Error"
-	case 1:
-		route.errMessage = messages[0]
-		route.logErrMessage = messages[0]
-	default:
-		route.errMessage = messages[0]
-		route.logErrMessage = messages[1]
+	}
+
+	if len(a) > 0 {
+		route.logErrMessage = fmt.Sprint(a...)
 	}
 }
 
@@ -109,7 +106,7 @@ func (route *Route) StaticServe(serveHTML bool) {
 	}
 
 	if strings.HasSuffix(route.RequestURI, ".html") && !serveHTML {
-		route.Error(http.StatusNotFound, "404 page not found")
+		route.Error(http.StatusNotFound, "Not Found")
 		return
 	}
 
@@ -334,4 +331,19 @@ func (x *xFile) Seek(offset int64, whence int) (int64, error) {
 	default:
 		return 0, fmt.Errorf("invalid operation")
 	}
+}
+
+func (route *Route) UnmarshalJSON(value *any) error {
+	data, err := io.ReadAll(route.R.Body)
+	if err != nil {
+		route.Error(http.StatusBadRequest, "Invalid post request", err)
+		return err
+	}
+
+	if err = json.Unmarshal(data, value); err != nil {
+		route.Error(http.StatusBadRequest, "Invalid post request", err)
+		return err
+	}
+
+	return nil
 }
