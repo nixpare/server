@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"runtime/debug"
 	"strings"
@@ -107,14 +108,20 @@ func NewTask(name string, f TaskInitFunc) *Task {
 // can be changed (only by the user) and its not dependent only on the task,
 // but it belongs to the server, so it might happen that the first execution can
 // happen as soon as the Task is registered
-func (router *Router) RegisterBackgroundTask(task *Task, timer BGTimer) {
-	t := &bgTask{
+func (router *Router) RegisterBackgroundTask(task *Task, timer BGTimer) error {
+	if task == nil {
+		return errors.New("task can't be nil")
+	}
+
+	t := &bgTask {
 		t: task,
 		timer: timer,
 	}
 
 	router.bgManager.bgTasks[task.name] = t
 	router.runBGTaskStartup(task)
+
+	return nil
 }
 
 // SetBackgroundTaskState changes the timer of a task with the given name, if found

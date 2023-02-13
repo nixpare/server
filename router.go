@@ -15,7 +15,7 @@ type Router struct {
 	fileMutexMap		map[string]*sync.Mutex
 	offlineClients      map[string]offlineClient
 	isInternalConn 		func(remoteAddress string) bool
-	bgManager     		bgManager
+	bgManager     		*bgManager
 	backgroundMutex 	*Mutex
 	execMap 			map[string]*program
 }
@@ -30,11 +30,13 @@ func NewRouter() *Router {
 
 	router.isInternalConn = func(remoteAddress string) bool { return false }
 
-	router.bgManager.bgTasks = make(map[string]*bgTask)
-	router.bgManager.tickerMinute = time.NewTicker(time.Minute)
-	router.bgManager.ticker10Minutes = time.NewTicker(time.Minute * 10)
-	router.bgManager.ticker30Minutes = time.NewTicker(time.Minute * 30)
-	router.bgManager.tickerHour = time.NewTicker(time.Minute * 60)
+	router.bgManager = &bgManager {
+		bgTasks: make(map[string]*bgTask),
+		tickerMinute: time.NewTicker(time.Minute),
+		ticker10Minutes: time.NewTicker(time.Minute * 10),
+		ticker30Minutes: time.NewTicker(time.Minute * 30),
+		tickerHour: time.NewTicker(time.Minute * 60),
+	}
 
 	router.backgroundMutex = NewMutex()
 
