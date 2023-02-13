@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"html/template"
 	"log"
-	"math/rand"
 	"net/http"
 	"os"
 	"os/signal"
@@ -163,9 +162,6 @@ func newServer(port int, secure bool, serverPath string, logFile *os.File, certs
 	pid, _ := os.OpenFile(srv.ServerPath + "/PID.txt", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
 	fmt.Fprint(pid, os.Getpid())
 	pid.Close()
-
-	//Setting rand seed for generation of random keys
-	rand.Seed(time.Now().UnixNano())
 
 	//Generating hashKey and blockKey for the SecureCookie
 	hashKey := securecookie.GenerateRandomKey(64)

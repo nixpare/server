@@ -84,10 +84,10 @@ func (router *Router) StopServer(port int) error {
 }
 
 func (router *Router) Stop() (err error) {
-	var errString string
+	/* var errString string
 	for _, srv := range router.servers {
 		
-	}
+	} */
 	router.cleanupF()
 	router.closeBackgroundTasks()
 	router.StopAllExecs()
