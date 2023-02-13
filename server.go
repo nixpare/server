@@ -41,8 +41,6 @@ type Server struct {
 
 	ServerPath  		string
 
-	obfuscateMap 		map[string]string
-
 	secureCookie 		*securecookie.SecureCookie
 
 	secureCookiePerm 	*securecookie.SecureCookie
@@ -187,7 +185,6 @@ func newServer(port int, secure bool, serverPath string, logFile *os.File, certs
 	}
 	srv.secureCookiePerm = securecookie.New(hashKey, blockKey).MaxAge(0)
 	
-	srv.obfuscateMap = make(map[string]string)
 	srv.domains = make(map[string]*Domain)
 	srv.headers = make(http.Header)
 
@@ -242,13 +239,6 @@ func (srv *Server) Start() {
 
 	for _, d := range srv.domains {
 		for _, sd := range d.subdomains {
-			for _, cookie := range sd.website.Cookies {
-				err := srv.CreateCookie(cookie)
-				if err != nil {
-					panic(err)
-				}
-			}
-
 			if sd.initF != nil {
 				sd.initF(srv, d, sd, sd.website)
 			}

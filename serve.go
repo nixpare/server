@@ -195,7 +195,7 @@ func (route *Route) SetCookie(name string, value interface{}, maxAge int) error 
 	}
 
 	http.SetCookie(route.W, &http.Cookie{
-		Name: route.Srv.obfuscateMap[name],
+		Name: GenerateHashString([]byte(name)),
 		Value: encValue,
 		Domain: route.DomainName,
 		MaxAge: maxAge,
@@ -208,7 +208,7 @@ func (route *Route) SetCookie(name string, value interface{}, maxAge int) error 
 
 func (route *Route) DeleteCookie(name string) {
 	http.SetCookie(route.W, &http.Cookie{
-		Name: route.Srv.obfuscateMap[name],
+		Name: GenerateHashString([]byte(name)),
 		Value: "",
 		Domain: route.DomainName,
 		MaxAge: -1,
@@ -218,7 +218,7 @@ func (route *Route) DeleteCookie(name string) {
 }
 
 func (route *Route) DecodeCookie(name string, value interface{}) (bool, error) {
-	if cookie, err := route.R.Cookie(route.Srv.obfuscateMap[name]); err == nil {
+	if cookie, err := route.R.Cookie(GenerateHashString([]byte(name))); err == nil {
 		return true, route.Srv.secureCookie.Decode(name, cookie.Value, value)
 	}
 	
@@ -232,7 +232,7 @@ func (route *Route) SetCookiePerm(name string, value interface{}, maxAge int) er
 	}
 
 	http.SetCookie(route.W, &http.Cookie{
-		Name: route.Srv.obfuscateMap[name],
+		Name: GenerateHashString([]byte(name)),
 		Value: encValue,
 		Domain: route.DomainName,
 		MaxAge: maxAge,
@@ -244,7 +244,7 @@ func (route *Route) SetCookiePerm(name string, value interface{}, maxAge int) er
 }
 
 func (route *Route) DecodeCookiePerm(name string, value interface{}) (bool, error) {
-	if cookie, err := route.R.Cookie(route.Srv.obfuscateMap[name]); err == nil {
+	if cookie, err := route.R.Cookie(GenerateHashString([]byte(name))); err == nil {
 		return true, route.Srv.secureCookiePerm.Decode(name, cookie.Value, value)
 	}
 	
