@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 
 <head>
     <meta charset="UTF-8">
@@ -86,6 +86,10 @@ main {
     align-items: center;
 }
 
+main.container {
+    font-size: 2rem;
+}
+
 footer {
     padding: 1.5em;
     background: #212529;
@@ -124,7 +128,7 @@ footer a {
 
     <main class="container">
         <h2>Error {{ .Code }}</h2>
-        <p>{{ .Message }}</p>
+        <h4>{{ .Message }}</h4>
     </main>
 
     <footer>

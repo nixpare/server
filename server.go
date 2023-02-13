@@ -10,43 +10,25 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/signal"
-	"strings"
 	"time"
 
 	"github.com/gorilla/securecookie"
 )
 
 type Server struct {
-
 	Secure 				bool
-
 	Running 			bool
-
 	Online 				bool
-
 	OnlineTime 			time.Time
-
 	stopChannel			chan struct{}
-
 	Server      		*http.Server
-
 	port 				int
-
 	Router 				*Router
-
 	domains 			map[string]*Domain
-
-	logFile     		*os.File
-
 	ServerPath  		string
-
 	secureCookie 		*securecookie.SecureCookie
-
 	secureCookiePerm 	*securecookie.SecureCookie
-
 	headers 			http.Header
-
 	errTemplate 		*template.Template
 }
 
@@ -58,8 +40,6 @@ type Certificate struct {
 type Config struct {
 	Port			int
 	Secure 			bool
-	ServerPath 		string
-	LogFile 		*os.File
 	Certs 			[]Certificate
 }
 
@@ -76,29 +56,24 @@ var (
 //go:embed static
 var staticFS embed.FS
 
-func NewServer(cfg Config) (srv *Server, err error) {
-	if cfg.ServerPath == "" {
-		cfg.ServerPath, err = os.Getwd()
-		if err != nil {
-			return nil, fmt.Errorf("serverPath error: %w", err)
-		}
-	}
-	cfg.ServerPath = strings.ReplaceAll(cfg.ServerPath, "\\", "/")
-
-	if cfg.LogFile == nil {
-		cfg.LogFile = os.Stdout
+func (router *Router) NewServer(cfg Config) (srv *Server, err error) {
+	_, ok := router.servers[cfg.Port]
+	if ok {
+		return nil, fmt.Errorf("server listening to port %d already registered", srv.port)
 	}
 
-	srv, err = newServer(
+	srv, err = router.newServer(
 		cfg.Port, cfg.Secure,
-		cfg.ServerPath, cfg.LogFile,
-		cfg.Certs,
+		router.ServerPath, cfg.Certs,
 	)
+
+	router.servers[srv.port] = srv
+	srv.Router = router
 
 	return
 }
 
-func newServer(port int, secure bool, serverPath string, logFile *os.File, certs []Certificate) (srv *Server, err error) {
+func (router *Router) newServer(port int, secure bool, serverPath string, certs []Certificate) (srv *Server, err error) {
 	srv = new(Server)
 
 	srv.Server = new(http.Server)
@@ -106,8 +81,6 @@ func newServer(port int, secure bool, serverPath string, logFile *os.File, certs
 	srv.port = port
 
 	srv.ServerPath = serverPath
-
-	srv.logFile = logFile
 
 	srv.stopChannel = make(chan struct{}, 1)
 
@@ -150,7 +123,7 @@ func newServer(port int, secure bool, serverPath string, logFile *os.File, certs
 		srv.Server.TLSConfig = cfg
 	}
 
-	srv.Server.ErrorLog = log.New(srv.LogFile(), "  ERROR: http-error: ", log.Flags())
+	srv.Server.ErrorLog = log.New(router.logFile, "  ERROR: http-error: ", log.Flags())
 
 	srv.Server.ReadHeaderTimeout = time.Second * 10
 	srv.Server.IdleTimeout = time.Second * 30
@@ -222,12 +195,12 @@ func (srv *Server) Start() {
 		if srv.Secure {
 			if err := srv.Server.ListenAndServeTLS("", ""); err != nil && err.Error() != "http: Server closed" {
 				log.Println("Server Error:", err.Error())
-				srv.ShutdownServer()
+				srv.Shutdown()
 			}
 		} else {
 			if err := srv.Server.ListenAndServe(); err != nil && err.Error() != "http: Server closed" {
 				log.Println("Server Error:", err.Error())
-				srv.ShutdownServer()
+				srv.Shutdown()
 			}
 		}
 	}()
@@ -246,30 +219,13 @@ func (srv *Server) Start() {
 	}
 }
 
-func (srv *Server) Wait() {
-	killChan := make(chan os.Signal, 10)
-	signal.Notify(killChan, os.Interrupt)
-
-	go func() {
-		<- killChan
-		srv.ShutdownServer()
-	}()
-	
-	<- srv.stopChannel
-}
-
-func (srv *Server) Run() {
-	srv.Start()
-	srv.Wait()
-}
-
-func (srv *Server) ShutdownServer() {
+func (srv *Server) Shutdown() {
 	if !srv.Running {
 		return
 	}
 
 	srv.Running = false
-	log.Println(" - Server Shutdown started")
+	srv.Logf(LOG_LEVEL_INFO, "Server %s shutdown started\n", srv.Server.Addr)
 
 	srv.Server.SetKeepAlivesEnabled(false)
 
@@ -282,13 +238,10 @@ func (srv *Server) ShutdownServer() {
 	}
 
 	if err := srv.Server.Shutdown(context.Background()); err != nil {
-		srv.Logln(LOG_LEVEL_FATAL, "Server shutdown crashed due to: " + err.Error())
+		srv.Logf(LOG_LEVEL_FATAL, "Server %s shutdown crashed due to: %v\n", srv.Server.Addr, err.Error())
 	}
 	srv.Online = false
-	
-	//srv.WriteLogClosure(time.Now())
-	os.Remove(srv.ServerPath + "/PID.txt")
 
 	srv.stopChannel <- struct{}{}
-	srv.logFile.Close()
+	srv.Logf(LOG_LEVEL_INFO, "Server %s shutdown finished\n", srv.Server.Addr)
 }

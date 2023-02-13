@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -10,6 +11,7 @@ import (
 type Router struct {
 	servers 			map[int]*Server
 	CleanupF 			func() error
+	ServerPath 			string
 	startTime 			time.Time
 	logFile 			*os.File
 	fileMutexMap		map[string]*sync.Mutex
@@ -20,14 +22,27 @@ type Router struct {
 	execMap 			map[string]*program
 }
 
-func NewRouter() *Router {
-	router := new(Router)
-
+func NewRouter(logFile *os.File, serverPath string) (router *Router, err error) {
+	router = new(Router)
 	router.servers = make(map[int]*Server)
+	
+	if logFile == nil {
+		router.logFile = os.Stdout
+	} else {
+		router.logFile = logFile
+	}
+
+	if serverPath == "" {
+		serverPath, err = os.Getwd()
+		if err != nil {
+			return nil, fmt.Errorf("serverPath error: %w", err)
+		}
+	}
+	serverPath = strings.ReplaceAll(serverPath, "\\", "/")
+	router.ServerPath = serverPath
 
 	router.fileMutexMap = make(map[string]*sync.Mutex)
 	router.offlineClients = make(map[string]offlineClient)
-
 	router.isInternalConn = func(remoteAddress string) bool { return false }
 
 	router.bgManager = &bgManager {
@@ -37,12 +52,10 @@ func NewRouter() *Router {
 		ticker30Minutes: time.NewTicker(time.Minute * 30),
 		tickerHour: time.NewTicker(time.Minute * 60),
 	}
-
 	router.backgroundMutex = NewMutex()
-
 	router.execMap = make(map[string]*program)
 
-	return router
+	return
 }
 
 func (router *Router) SetInternalConnFilter(f func(remoteAddress string) bool) *Router {
@@ -52,30 +65,36 @@ func (router *Router) SetInternalConnFilter(f func(remoteAddress string) bool) *
 	return router
 }
 
-func (router *Router) RegisterServer(srv *Server) error {
-	_, ok := router.servers[srv.port]
-	if ok {
-		return fmt.Errorf("server listening to port %d already registered", srv.port)
-	}
-
-	router.servers[srv.port] = srv
-	return nil
-}
-
 func (router *Router) Server(port int) *Server {
 	return router.servers[port]
 }
 
-func (router *Router) Start() (err error) {
+func (router *Router) Start() () {
 	router.startTime = time.Now()
 
 	for _, srv := range router.servers {
 		srv.Start()
 	}
 
-	router.Print(WriteLogStart(router.startTime))
+	router.PlainPrintf(WriteLogStart(router.startTime))
 
 	go router.backgroundTasks()
+	return
+}
+
+func (router *Router) Stop() () {
+	for _, srv := range router.servers {
+		srv.Shutdown()
+	}
+
+	if router.CleanupF != nil {
+		router.CleanupF()
+	}
+	router.closeBackgroundTasks()
+	router.StopAllExecs()
+
+	os.Remove(router.ServerPath + "/PID.txt")
+	router.PlainPrintf(WriteLogClosure(time.Now()))
 	return
 }
 
@@ -85,21 +104,8 @@ func (router *Router) StopServer(port int) error {
 		return fmt.Errorf("server with port %d not found", port)
 	}
 
-	srv.ShutdownServer()
+	srv.Shutdown()
 	return nil
-}
-
-func (router *Router) Stop() (errs []error) {
-	for _, srv := range router.servers {
-		srv.ShutdownServer()
-	}
-
-	if router.CleanupF != nil {
-		router.CleanupF()
-	}
-	router.closeBackgroundTasks()
-	router.StopAllExecs()
-	return
 }
 
 func (router *Router) closeBackgroundTasks() {
@@ -111,7 +117,7 @@ func (router *Router) closeBackgroundTasks() {
 		time.Sleep(50 * time.Second)
 		if !done {
 			done = true
-			router.Println(" - Background Task stopped forcibly")
+			router.Logln(LOG_LEVEL_WARNING, "Background Tasks stopped forcibly")
 			shutdown.Done()
 		}
 	}()
@@ -120,7 +126,7 @@ func (router *Router) closeBackgroundTasks() {
 		router.backgroundMutex.SendSignal()
 		if !done {
 			done = true
-			router.Println(" - Every Background Task stopped correctly")
+			router.Logln(LOG_LEVEL_WARNING, "Every Background Task stopped correctly")
 			shutdown.Done()
 		}
 	}()

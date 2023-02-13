@@ -170,16 +170,24 @@ func (router *Router) backgroundTasks() {
 	router.backgroundMutex.ListenForSignal()
 	run = false
 
+	stillRunning := false
+
 	for _, t := range router.bgManager.bgTasks {
-		t.t.exitChan <- struct{}{}
+		if t.t.running {
+			stillRunning = true
+			t.t.exitChan <- struct{}{}
+		}
 	}
 
-	time.Sleep(time.Second * 10)
+	if stillRunning {
+		time.Sleep(time.Second * 10)
+
+		for _, t := range router.bgManager.bgTasks {
+			t.t.killChan <- struct{}{}
+		}
+	}
 
 	for _, t := range router.bgManager.bgTasks {
-		t.t.killChan <- struct{}{}
-		time.Sleep(time.Millisecond)
-
 		router.runBGTaskCleanup(t.t)
 	}
 

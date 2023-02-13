@@ -25,16 +25,8 @@ func WriteLogClosure(t time.Time) string {
 func (router *Router) ClearLogs() {
 	router.logFile.Truncate(0)
 
-	router.Print(router.startTime)
-	router.Print(fmt.Sprintf("     -- -- --   Logs cleared at [%s]   -- -- --\n\n", time.Now().Format("02/Jan/2006:15:04:05")))
-}
-
-func (srv *Server) LogFile() io.Writer {
-	if srv.Router == nil {
-		return srv.logFile
-	}
-
-	return srv.Router.logFile
+	router.PlainPrintf(WriteLogStart(router.startTime))
+	router.PlainPrintf("     -- -- --   Logs cleared at [%s]   -- -- --\n\n", time.Now().Format("02/Jan/2006:15:04:05"))
 }
 
 func (route *Route) logInfo(metrics httpsnoop.Metrics) {
@@ -43,7 +35,7 @@ func (route *Route) logInfo(metrics httpsnoop.Metrics) {
 		lock = "\U0001F512"
 	}
 
-	route.Srv.Logf(LOG_LEVEL_INFO, "%-16s - %-4s %-65s %s %d %10.3f MB - (%6d ms) \u279C %s (%s) via %s\n",
+	route.Logf(LOG_LEVEL_INFO, "%-16s - %-4s %-65s %s %d %10.3f MB - (%6d ms) \u279C %s (%s) via %s\n",
 		route.RemoteAddress,
 		route.R.Method,
 		route.logRequestURI,
@@ -63,7 +55,7 @@ func (route *Route) logWarning(metrics httpsnoop.Metrics) {
 		lock = "\U0001F512"
 	}
 
-	route.Srv.Logf(LOG_LEVEL_WARNING, "%-16s - %-4s %-65s %s %d %10.3f MB - (%6d ms) \u279C %s (%s) via %s \u279C %s\n",
+	route.Logf(LOG_LEVEL_WARNING, "%-16s - %-4s %-65s %s %d %10.3f MB - (%6d ms) \u279C %s (%s) via %s \u279C %s\n",
 		route.RemoteAddress,
 		route.R.Method,
 		route.logRequestURI,
@@ -84,7 +76,7 @@ func (route *Route) logError(metrics httpsnoop.Metrics) {
 		lock = "\U0001F512"
 	}
 
-	route.Srv.Logf(LOG_LEVEL_ERROR, "%-16s - %-4s %-65s %s %d %10.3f MB - (%6d ms) \u279C %s (%s) via %s \u279C %s\n",
+	route.Logf(LOG_LEVEL_ERROR, "%-16s - %-4s %-65s %s %d %10.3f MB - (%6d ms) \u279C %s (%s) via %s \u279C %s\n",
 		route.RemoteAddress,
 		route.R.Method,
 		route.logRequestURI,
@@ -106,7 +98,7 @@ func (route *Route) serveError() {
 
 	err := route.errTemplate.Execute(route.W, struct{ Code int; Message string }{ Code: route.W.code, Message: route.errMessage })
 	if err != nil {
-		route.Srv.Logf(LOG_LEVEL_ERROR, "Error serving template file: %v\n", err)
+		route.Logf(LOG_LEVEL_ERROR, "Error serving template file: %v\n", err)
 		return
 	}
 }
@@ -120,6 +112,8 @@ const (
 	LOG_LEVEL_ERROR = 1
 	LOG_LEVEL_FATAL = 0
 )
+
+// Standard
 
 func logInfo(w io.Writer, a ...any) {
 	fmt.Fprintf(w, "[%s]    INFO - %s", time.Now().Format(time.RFC3339), fmt.Sprint(a...))
@@ -141,51 +135,7 @@ func logFatal(w io.Writer, a ...any) {
 	fmt.Fprintf(w, "[%s]   FATAL - %s", time.Now().Format(time.RFC3339), fmt.Sprint(a...))
 }
 
-func (srv *Server) Log(level LogLevel, a ...any) {
-	switch level {
-	case LOG_LEVEL_INFO:
-		logInfo(srv.LogFile(), a...)
-	case LOG_LEVEL_DEBUG:
-		logDebug(srv.LogFile(), a...)
-	case LOG_LEVEL_WARNING:
-		logWarning(srv.LogFile(), a...)
-	case LOG_LEVEL_ERROR:
-		logError(srv.LogFile(), a...)
-	case LOG_LEVEL_FATAL:
-		logFatal(srv.LogFile(), a...)
-	}
-}
-
-func (srv *Server) Logf(level LogLevel, format string, a ...any) {
-	switch level {
-	case LOG_LEVEL_INFO:
-		logInfo(srv.LogFile(), fmt.Sprintf(format, a...))
-	case LOG_LEVEL_DEBUG:
-		logDebug(srv.LogFile(), fmt.Sprintf(format, a...))
-	case LOG_LEVEL_WARNING:
-		logWarning(srv.LogFile(), fmt.Sprintf(format, a...))
-	case LOG_LEVEL_ERROR:
-		logError(srv.LogFile(), fmt.Sprintf(format, a...))
-	case LOG_LEVEL_FATAL:
-		logFatal(srv.LogFile(), fmt.Sprintf(format, a...))
-	}
-}
-
-func (srv *Server) Logln(level LogLevel, format string, a ...any) {
-	srv.Log(level, append(a, "\n"))
-}
-
-func (srv *Server) Print(a ...any) {
-	fmt.Fprint(srv.LogFile(), a...)
-}
-
-func (srv *Server) Println(a ...any) {
-	fmt.Fprintln(srv.LogFile(), a...)
-}
-
-func (srv *Server) Printf(format string, a ...any) {
-	fmt.Fprintf(srv.LogFile(), format, a...)
-}
+// Router
 
 func (router *Router) Log(level LogLevel, a ...any) {
 	switch level {
@@ -200,6 +150,10 @@ func (router *Router) Log(level LogLevel, a ...any) {
 	case LOG_LEVEL_FATAL:
 		logFatal(router.logFile, a...)
 	}
+}
+
+func (router *Router) Logln(level LogLevel, a ...any) {
+	router.Log(level, append(a, "\n")...)
 }
 
 func (router *Router) Logf(level LogLevel, format string, a ...any) {
@@ -217,24 +171,60 @@ func (router *Router) Logf(level LogLevel, format string, a ...any) {
 	}
 }
 
-func (router *Router) Logln(level LogLevel, format string, a ...any) {
-	router.Log(level, append(a, "\n"))
-}
-
 func (router *Router) Print(a ...any) {
-	fmt.Fprint(router.logFile, a...)
+	router.Log(LOG_LEVEL_DEBUG, fmt.Sprint(a...))
 }
 
 func (router *Router) Println(a ...any) {
-	fmt.Fprintln(router.logFile, a...)
+	router.Log(LOG_LEVEL_DEBUG, fmt.Sprintln(a...))
 }
 
 func (router *Router) Printf(format string, a ...any) {
+	router.Logf(LOG_LEVEL_DEBUG, fmt.Sprintf(format, a...))
+}
+
+func (router *Router) PlainPrintf(format string, a ...any) {
 	fmt.Fprintf(router.logFile, format, a...)
 }
 
+// Server
+
+func (srv *Server) Log(level LogLevel, a ...any) {
+	srv.Router.Log(level, a...)
+}
+
+func (srv *Server) Logln(level LogLevel, a ...any) {
+	srv.Router.Logln(level, a...)
+}
+
+func (srv *Server) Logf(level LogLevel, format string, a ...any) {
+	srv.Router.Logf(level, format, a...)
+}
+
+func (srv *Server) Print(a ...any) {
+	srv.Router.Print(a...)
+}
+
+func (srv *Server) Println(a ...any) {
+	srv.Router.Println(a...)
+}
+
+func (srv *Server) Printf(format string, a ...any) {
+	srv.Router.Printf(format, a...)
+}
+
+// Route
+
 func (route *Route) Log(level LogLevel, a ...any) {
 	route.Srv.Log(level, a...)
+}
+
+func (route *Route) Logln(level LogLevel, a ...any) {
+	route.Srv.Logln(level, a...)
+}
+
+func (route *Route) Logf(level LogLevel, format string, a ...any) {
+	route.Srv.Logf(level, format, a...)
 }
 
 func (route *Route) Print(a ...any) {

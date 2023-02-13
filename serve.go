@@ -25,12 +25,15 @@ type xFile struct {
 func (route *Route) Error(statusCode int, message string, a ...any) {
 	route.W.WriteHeader(statusCode)
 
+	route.errMessage = message
 	if message == "" {
 		route.errMessage = "Error"
 	}
 
 	if len(a) > 0 {
 		route.logErrMessage = fmt.Sprint(a...)
+	} else {
+		route.logErrMessage = route.errMessage
 	}
 }
 
@@ -46,7 +49,7 @@ func (route *Route) ServeFile(path string) {
 
 	for _, hidden := range route.Website.HiddenFolders {
 		if strings.HasPrefix(route.RequestURI, hidden) {
-			route.Error(http.StatusNotFound, "404 page not found", "Not serving potential file inside hidden directory " + hidden)
+			route.Error(http.StatusNotFound, "Not found", "Not serving potential file inside hidden directory " + hidden)
 			return
 		}
 	}
@@ -54,7 +57,7 @@ func (route *Route) ServeFile(path string) {
 	fileInfo, err := os.Stat(path)
 	if err == nil {
 		if fileInfo.IsDir() {
-			route.Error(http.StatusNotFound, "404 page not found", "Cannot serve directory " + path)
+			route.Error(http.StatusNotFound, "Not found", "Cannot serve directory " + path)
 			return
 		}
 	
@@ -64,7 +67,7 @@ func (route *Route) ServeFile(path string) {
 
 	fileInfo, err = os.Stat(path + ".html")
 	if err != nil {
-		route.Error(http.StatusNotFound, "404 page not found")
+		route.Error(http.StatusNotFound, "Not found")
 		return
 	}
 
@@ -127,13 +130,13 @@ func (route *Route) StaticServe(serveHTML bool) {
 		}
 	}
 
-	route.Error(http.StatusNotFound, "404 page not found")
+	route.Error(http.StatusNotFound, "Not Found")
 }
 
 func (route *Route) serveCSSX() {
 	info, err := os.Stat(route.Website.Dir + route.RequestURI + "x")
 	if err != nil {
-		route.Error(http.StatusNotFound, "404 page not found")
+		route.Error(http.StatusNotFound, "Not Found")
 		return
 	}
 
