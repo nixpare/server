@@ -39,6 +39,7 @@ func (route *Route) prep() {
 
 	if route.Subdomain != nil {
 		route.Website = route.Subdomain.website
+		return
 	}
 }
 
@@ -50,6 +51,10 @@ func (route *Route) prepRemoteAddress() {
 	}
 }
 
+// prepRequestURI parses the requestURI incoming; in particular:
+//  - it sanitizes the path of the url
+//	- it sanitizes the query part of the url
+//	- creates the query map looking both for keys with or without a value
 func (route *Route) prepRequestURI() (err error) {
 	splitPath := strings.Split(route.RequestURI, "?")
 	route.RequestURI, err = url.PathUnescape(splitPath[0])
@@ -109,6 +114,8 @@ func (route *Route) prepLogRequestURI() {
 	}
 }
 
+// prepDomainAndSubdomainNames parses the incoming request and separates
+// the domain part from the subdomain part, just from a "string" standpoint
 func prepDomainAndSubdomainNames(r *http.Request) (string, string) {
 	host, _, err := net.SplitHostPort(r.Host)
 	if err != nil {
@@ -157,6 +164,9 @@ func prepSubdomainName(name string) string {
 	return name
 }
 
+// prepDomainAndSubdomain uses the previously parsed domain and subdomain
+// to find the effective Domain and Subdomain structures and link them to
+// the Route
 func (route *Route) prepDomainAndSubdomain() int {
 	route.Domain = route.Srv.domains[route.DomainName]
 	if route.Domain == nil {
@@ -177,6 +187,12 @@ func (route *Route) prepDomainAndSubdomain() int {
 	return ErrNoErr
 }
 
+// prepDomainAndSubdomainLocal should be called only when the connection is local:
+// this gives the capability of a local network user to access all the domains and
+// subdomains served by the server from a local, insecure connection (for example
+// via "http://localhost/?domain=mydomain.com&subdomain=mysubdomain").
+// This feature is available for testing: an offline domain/subdomain can still be
+// accessed from the local network
 func (route *Route) prepDomainAndSubdomainLocal() {
 	host := route.DomainName
 	hostSD := route.SubdomainName
@@ -212,6 +228,8 @@ func (route *Route) prepDomainAndSubdomainLocal() {
 	}
 }
 
+// prepHost joins the previously parsed domain and subdomain to create the
+// full host name
 func (route *Route) prepHost() {
 	if route.SubdomainName != "" {
 		route.Host = route.SubdomainName
@@ -220,6 +238,9 @@ func (route *Route) prepHost() {
 	route.Host += route.DomainName
 }
 
+// IsInternalConn tells wheather the incoming connection should be treated
+// as a local connection. The user can add a filter that can extend this
+// selection to match their needs
 func  (route *Route) IsInternalConn() bool {
 	if strings.Contains(route.RemoteAddress, "localhost") || strings.Contains(route.RemoteAddress, "127.0.0.1") || strings.Contains(route.RemoteAddress, "::1") {
 		return true

@@ -96,11 +96,15 @@ func (route *Route) serveError() {
 		return
 	}
 
-	err := route.errTemplate.Execute(route.W, struct{ Code int; Message string }{ Code: route.W.code, Message: route.errMessage })
-	if err != nil {
-		route.Logf(LOG_LEVEL_ERROR, "Error serving template file: %v\n", err)
+	if route.Method == "GET" {
+		err := route.errTemplate.Execute(route.W, struct{ Code int; Message string }{ Code: route.W.code, Message: route.errMessage })
+		if err != nil {
+			route.Logf(LOG_LEVEL_ERROR, "Error serving template file: %v\n", err)
+		}
 		return
 	}
+
+	route.W.w.Write([]byte(route.errMessage))
 }
 
 type LogLevel int
