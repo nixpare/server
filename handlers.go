@@ -213,13 +213,17 @@ func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		switch route.err {
 		case ErrBadURL:
 			route.Error(http.StatusBadRequest, "Bad Request URL")
+		
 		case ErrServerOffline:
-			t := route.Srv.OnlineTime.Add(time.Minute * 5)
+			t := route.Srv.OnlineTime.Add(time.Minute * 30)
 			route.W.Header().Set("Retry-After", t.Format(time.RFC1123))
-
 			route.Error(http.StatusServiceUnavailable, "Server temporarly offline, retry in " + time.Until(t).Truncate(time.Second).String())
+		
 		case ErrWebsiteOffline:
+			t := route.Srv.OnlineTime.Add(time.Minute * 30)
+			route.W.Header().Set("Retry-After", t.Format(time.RFC1123))
 			route.Error(http.StatusServiceUnavailable, "Website temporarly offline")
+		
 		case ErrDomainNotFound:
 			route.Domain = new(Domain)
 			route.Subdomain = &Subdomain { Name: "" }
@@ -232,10 +236,12 @@ func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				route.Domain.Name = "Domain NF"
 				route.Error(http.StatusBadRequest, "Domain not served by this server")
 			}
+		
 		case ErrSubdomainNotFound:
 			route.Subdomain = &Subdomain { Name: "Subdomain NF" }
 			route.Website = notFoundWebsite
 			route.Error(http.StatusBadRequest, fmt.Sprintf("Subdomain \"%s\" not found", route.SubdomainName))
+		
 		}
 
 		route.serveError()
