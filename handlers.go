@@ -222,7 +222,8 @@ func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			route.Error(http.StatusServiceUnavailable, "Website temporarly offline")
 		case ErrDomainNotFound:
 			route.Domain = new(Domain)
-			route.Subdomain = &Subdomain { Name: "", website: notFoundWebsite }
+			route.Subdomain = &Subdomain { Name: "" }
+			route.Website = notFoundWebsite
 
 			if route.DomainName == "" {
 				route.Domain.Name = "DIPA"
@@ -232,7 +233,8 @@ func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				route.Error(http.StatusBadRequest, "Domain not served by this server")
 			}
 		case ErrSubdomainNotFound:
-			route.Subdomain = &Subdomain { Name: "Subdomain NF", website: notFoundWebsite }
+			route.Subdomain = &Subdomain { Name: "Subdomain NF" }
+			route.Website = notFoundWebsite
 			route.Error(http.StatusBadRequest, fmt.Sprintf("Subdomain \"%s\" not found", route.SubdomainName))
 		}
 
