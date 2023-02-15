@@ -32,15 +32,9 @@ func (route *Route) prep() {
 	if route.IsInternalConn() {
 		route.prepDomainAndSubdomainLocal()
 	}
-	
 	route.prepHost()
 	
 	route.err = route.prepDomainAndSubdomain()
-
-	if route.Subdomain != nil {
-		route.Website = route.Subdomain.website
-		return
-	}
 }
 
 func (route *Route) prepRemoteAddress() {
@@ -172,6 +166,16 @@ func (route *Route) prepDomainAndSubdomain() int {
 	if route.Domain == nil {
 		route.Domain = route.Srv.domains[""]
 		if route.Domain == nil {
+			route.Domain = new(Domain)
+			route.Subdomain = &Subdomain { Name: "" }
+			route.Website = &Website { Name: "Not Found" }
+
+			if route.DomainName == "" {
+				route.Domain.Name = "DIPA"
+			} else {
+				route.Domain.Name = "Domain NF"
+			}
+
 			return ErrDomainNotFound
 		}
 	}
@@ -180,10 +184,14 @@ func (route *Route) prepDomainAndSubdomain() int {
 	if route.Subdomain == nil {
 		route.Subdomain = route.Domain.subdomains["*"]
 		if route.Subdomain == nil {
+			route.Subdomain = &Subdomain { Name: "Subdomain NF" }
+			route.Website = &Website { Name: "Not Found" }
+
 			return ErrSubdomainNotFound
 		}
 	}
 
+	route.Website = route.Subdomain.website
 	return ErrNoErr
 }
 

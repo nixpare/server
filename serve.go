@@ -30,10 +30,9 @@ func (route *Route) Error(statusCode int, message string, a ...any) {
 		route.errMessage = "Error"
 	}
 
+	route.logErrMessage = route.errMessage
 	if len(a) > 0 {
 		route.logErrMessage = fmt.Sprint(a...)
-	} else {
-		route.logErrMessage = route.errMessage
 	}
 }
 

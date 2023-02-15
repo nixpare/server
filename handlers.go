@@ -24,10 +24,6 @@ type Website struct {
 	AvoidMetricsAndLogging bool
 }
 
-var (
-	notFoundWebsite = &Website { Name: "Not Found" }
-)
-
 type ServeFunction func(route *Route)
 type InitCloseFunction func(srv *Server, domain *Domain, subdomain *Subdomain, website *Website)
 
@@ -206,23 +202,14 @@ func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			route.Error(http.StatusServiceUnavailable, "Website temporarly offline")
 		
 		case ErrDomainNotFound:
-			route.Domain = new(Domain)
-			route.Subdomain = &Subdomain { Name: "" }
-			route.Website = notFoundWebsite
-
 			if route.DomainName == "" {
-				route.Domain.Name = "DIPA"
 				route.Error(http.StatusBadRequest, "Invalid direct IP access")
 			} else {
-				route.Domain.Name = "Domain NF"
 				route.Error(http.StatusBadRequest, "Domain not served by this server")
 			}
 		
 		case ErrSubdomainNotFound:
-			route.Subdomain = &Subdomain { Name: "Subdomain NF" }
-			route.Website = notFoundWebsite
 			route.Error(http.StatusBadRequest, fmt.Sprintf("Subdomain \"%s\" not found", route.SubdomainName))
-		
 		}
 
 		route.serveError()
