@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"time"
@@ -97,20 +98,21 @@ func (route *Route) serveError() {
 	}
 
 	if route.Method == "GET" {
-		rPipe, wPipe := io.Pipe()
-		err := route.errTemplate.Execute(wPipe, struct{ Code int; Message string }{ Code: route.W.code, Message: route.errMessage })
-		if err != nil {
+		data := struct{
+			Code int
+			Message string
+		}{
+			Code: route.W.code,
+			Message: route.errMessage,
+		}
+
+		var buf bytes.Buffer
+		if err := route.errTemplate.Execute(&buf, data); err != nil {
 			route.Logf(LOG_LEVEL_ERROR, "Error serving template file: %v\n", err)
 			return
 		}
 
-		data, err := io.ReadAll(rPipe)
-		if err != nil {
-			route.Logf(LOG_LEVEL_ERROR, "Error serving template file: %v\n", err)
-			return
-		}
-
-		route.ServePlainData("error.html", data)
+		route.ServePlainData("error.html", buf.Bytes())
 		return
 	}
 

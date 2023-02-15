@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/felixge/httpsnoop"
-	"github.com/gorilla/handlers"
 )
 
 type Website struct {
@@ -22,7 +21,6 @@ type Website struct {
 	HiddenFolders []string
 	PageHeaders map[string][][2]string
 	EnableCSSX bool
-	AvoidCompression bool
 	AvoidMetricsAndLogging bool
 }
 
@@ -120,30 +118,13 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	route.prep()
-	var metrics httpsnoop.Metrics
 
-	if route.err != ErrNoErr {
-		metrics = httpsnoop.CaptureMetrics(route, w, r)
-	} else {
-		if route.Website.AvoidMetricsAndLogging {
-			if route.Website.AvoidCompression {
-				// AVOID LOGGING AND COMPRESSION
-				route.ServeHTTP(w, r)
-			} else {
-				// AVOID LOGGING
-				handlers.CompressHandler(route).ServeHTTP(w, r)
-			}
-			return
-		} else {
-			if route.Website.AvoidCompression {
-				// AVOID COMPRESSION
-				metrics = httpsnoop.CaptureMetrics(route, w, r)
-			} else {
-				// DEFAULT
-				metrics = httpsnoop.CaptureMetrics(handlers.CompressHandler(route), w, r)
-			}
-		}
+	if route.Website.AvoidMetricsAndLogging {
+		route.ServeHTTP(w, r)
+		return
 	}
+
+	metrics := httpsnoop.CaptureMetrics(route, w, r)
 	
 	switch {
 	case metrics.Code < 400:
