@@ -222,24 +222,17 @@ func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			route.Error(http.StatusServiceUnavailable, "Website temporarly offline")
 		case ErrDomainNotFound:
 			route.Domain = new(Domain)
-			route.Subdomain = new(Subdomain)
-
-			route.Subdomain.Name = ""
-			route.Subdomain.website = notFoundWebsite
+			route.Subdomain = &Subdomain { Name: "", website: notFoundWebsite }
 
 			if route.DomainName == "" {
 				route.Domain.Name = "DIPA"
-
 				route.Error(http.StatusBadRequest, "Invalid direct IP access")
 			} else {
 				route.Domain.Name = "Domain NF"
-
 				route.Error(http.StatusBadRequest, "Domain not served by this server")
 			}
 		case ErrSubdomainNotFound:
-			route.Subdomain.Name = "Subdomain NF"
-			route.Subdomain.website = notFoundWebsite
-
+			route.Subdomain = &Subdomain { Name: "Subdomain NF", website: notFoundWebsite }
 			route.Error(http.StatusBadRequest, fmt.Sprintf("Subdomain \"%s\" not found", route.SubdomainName))
 		}
 
