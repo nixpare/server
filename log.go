@@ -97,10 +97,20 @@ func (route *Route) serveError() {
 	}
 
 	if route.Method == "GET" {
-		err := route.errTemplate.Execute(route.W, struct{ Code int; Message string }{ Code: route.W.code, Message: route.errMessage })
+		rPipe, wPipe := io.Pipe()
+		err := route.errTemplate.Execute(wPipe, struct{ Code int; Message string }{ Code: route.W.code, Message: route.errMessage })
 		if err != nil {
 			route.Logf(LOG_LEVEL_ERROR, "Error serving template file: %v\n", err)
+			return
 		}
+
+		data, err := io.ReadAll(rPipe)
+		if err != nil {
+			route.Logf(LOG_LEVEL_ERROR, "Error serving template file: %v\n", err)
+			return
+		}
+
+		route.ServePlainData("error.html", data)
 		return
 	}
 
