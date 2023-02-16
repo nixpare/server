@@ -47,6 +47,10 @@ func (w *ResponseWriter) WriteString(s string) error {
 	return err
 }
 func (w *ResponseWriter) WriteHeader(statusCode int) {
+	if w.code != 0 {
+		return
+	}
+
 	w.code = statusCode
 	w.w.WriteHeader(statusCode)
 }
