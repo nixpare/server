@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"os"
 	"time"
 )
 
@@ -22,7 +23,10 @@ func WriteLogClosure(t time.Time) string {
 }
 
 func (router *Router) ClearLogs() {
-	router.logFile.Truncate(0)
+	oldFile := router.logFile
+	oldFile.Close()
+
+	router.logFile, _ = os.OpenFile(oldFile.Name(), os.O_TRUNC | os.O_CREATE | os.O_WRONLY | os.O_SYNC, 0777)
 
 	router.PlainPrintf(WriteLogStart(router.startTime))
 	router.PlainPrintf("     -- -- --   Logs cleared at [%s]   -- -- --\n\n", time.Now().Format("02/Jan/2006:15:04:05"))
