@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"html/template"
+	"net"
 	"net/http"
 	"runtime/debug"
 	"strings"
@@ -207,10 +208,10 @@ func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			route.Error(http.StatusServiceUnavailable, "Website temporarly offline")
 		
 		case ErrDomainNotFound:
-			if route.DomainName == "" {
-				route.Error(http.StatusBadRequest, "Invalid direct IP access")
+			if net.ParseIP(route.DomainName) == nil {
+				route.Error(http.StatusBadRequest, fmt.Sprintf("Domain \"%s\" not served by this server", route.DomainName))
 			} else {
-				route.Error(http.StatusBadRequest, "Domain not served by this server")
+				route.Error(http.StatusBadRequest, "Invalid direct IP access")
 			}
 		
 		case ErrSubdomainNotFound:

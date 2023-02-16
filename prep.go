@@ -170,10 +170,10 @@ func (route *Route) prepDomainAndSubdomain() int {
 			route.Subdomain = &Subdomain { Name: "" }
 			route.Website = &Website { Name: "Not Found" }
 
-			if route.DomainName == "" {
-				route.Domain.Name = "DIPA"
-			} else {
+			if net.ParseIP(route.DomainName) == nil {
 				route.Domain.Name = "Domain NF"
+			} else {
+				route.Domain.Name = "DIPA"
 			}
 
 			return ErrDomainNotFound
