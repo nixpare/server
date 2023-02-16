@@ -99,7 +99,7 @@ func (route *Route) serveError() {
 		return
 	}
 
-	if route.Method == "GET" {
+	if route.Method == "GET" || route.Method == "HEAD" {
 		data := struct{
 			Code int
 			Message string
@@ -114,11 +114,11 @@ func (route *Route) serveError() {
 			return
 		}
 
-		route.ServePlainData("error.html", buf.Bytes())
+		route.ServeData(buf.Bytes())
 		return
 	}
 
-	route.W.Write([]byte(route.errMessage))
+	route.ServeText(route.errMessage)
 }
 
 type LogLevel int

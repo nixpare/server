@@ -80,24 +80,24 @@ func (route *Route) ServeFile(path string) {
 	http.ServeContent(route.W, route.R, fileInfo.Name(), fileInfo.ModTime(), f)
 }
 
-func (route *Route) ServePlainDataWithTime(name string, data []byte, t time.Time) {
-	http.ServeContent(route.W, route.R, name, t, bytes.NewReader(data))
+func (route *Route) ServeCustomFileWithTime(name string, data []byte, t time.Time) {
+	http.ServeContent(route.W, route.R, "", t, bytes.NewReader(data))
 }
 
-func (route *Route) ServePlainData(name string, data []byte) {
-	route.ServePlainDataWithTime(name, data, time.Now())
+func (route *Route) ServeCustomFile(name string, data []byte) {
+	http.ServeContent(route.W, route.R, "", time.Now(), bytes.NewReader(data))
 }
 
-func (route *Route) ServePlainTextWithTime(name string, text string, t time.Time) {
-	route.ServePlainDataWithTime(name, []byte(text), t)
+func (route *Route) ServeData(data []byte) {
+	route.W.Write(data)
 }
 
-func (route *Route) ServePlainText(name, text string) {
-	route.ServePlainTextWithTime(name, text, time.Now())
+func (route *Route) ServeText(text string) {
+	route.ServeData([]byte(text))
 }
 
 func (route *Route) StaticServe(serveHTML bool) {
-	if route.Method != "GET" {
+	if route.Method != "GET" && route.Method != "HEAD" {
 		route.Error(http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
@@ -335,17 +335,16 @@ func (x *xFile) Seek(offset int64, whence int) (int64, error) {
 	}
 }
 
-func (route *Route) UnmarshalJSON(value *any) error {
-	data, err := io.ReadAll(route.R.Body)
+func ReadJSON[T any](route *Route) (value T, err error) {
+	var data []byte
+	data, err = io.ReadAll(route.R.Body)
 	if err != nil {
-		route.Error(http.StatusBadRequest, "Invalid post request", err)
-		return err
+		return value, err
 	}
 
-	if err = json.Unmarshal(data, value); err != nil {
-		route.Error(http.StatusBadRequest, "Invalid post request", err)
-		return err
+	if err = json.Unmarshal(data, &value); err != nil {
+		return value, err
 	}
 
-	return nil
+	return value, nil
 }

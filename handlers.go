@@ -42,10 +42,6 @@ func (w *ResponseWriter) Write(data []byte) (int, error) {
 
 	return n, err
 }
-func (w *ResponseWriter) WriteString(s string) error {
-	_, err := w.Write([]byte(s))
-	return err
-}
 func (w *ResponseWriter) WriteHeader(statusCode int) {
 	if w.code != 0 {
 		return
