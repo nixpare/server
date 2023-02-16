@@ -3,13 +3,10 @@ package server
 import (
 	"fmt"
 	"html/template"
-	"log"
 	"net/http"
 	"runtime/debug"
 	"strings"
 	"time"
-
-	"github.com/felixge/httpsnoop"
 )
 
 type Website struct {
@@ -29,23 +26,35 @@ type InitCloseFunction func(srv *Server, domain *Domain, subdomain *Subdomain, w
 
 type ResponseWriter struct {
 	w http.ResponseWriter
-	written bool
+	hasWrote bool
 	code int
+	written int64
 }
 func (w *ResponseWriter) Header() http.Header {
 	return w.w.Header()
 }
 func (w *ResponseWriter) Write(data []byte) (int, error) {
-	w.written = true
-	return w.w.Write([]byte(data))
+	n, err := w.w.Write(data)
+	w.written += int64(n)
+	if n > 0 {
+		w.hasWrote = true
+	}
+
+	return n, err
+}
+func (w *ResponseWriter) WriteString(s string) error {
+	_, err := w.Write([]byte(s))
+	return err
 }
 func (w *ResponseWriter) WriteHeader(statusCode int) {
 	w.code = statusCode
 	w.w.WriteHeader(statusCode)
 }
-func (w *ResponseWriter) WriteString(s string) error {
-	_, err := w.Write([]byte(s))
-	return err
+
+type metrics struct {
+	Code int
+	Duration time.Duration
+	Written int64
 }
 
 type Route struct {
@@ -94,13 +103,10 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		R: r,
 	}
 
-	if route.Method == "HEAD" {
-		route.Method = "GET"
-	}
-
 	defer func() {
 		if p := recover(); p != nil {
-			log.Printf(
+			route.Logf(
+				LOG_LEVEL_FATAL,
 				"Captured panic ...\n\nRoute: %v\nRequest: %v\nWebsite: %v\nPanic error: %v\nStack trace:\n%v\n\n",
 				route, r, route.Website, p, string(debug.Stack()),
 			)
@@ -120,7 +126,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	metrics := httpsnoop.CaptureMetrics(route, w, r)
+	metrics := route.captureMetrics(w, r)
 	
 	switch {
 	case metrics.Code < 400:
@@ -139,7 +145,6 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	route.W = &ResponseWriter { w: w }
-
 	route.W.Header().Set("server", "NixServer")
 
 	domain := route.Domain
@@ -240,6 +245,15 @@ func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if route.W.code >= 400 {
 		route.serveError()
+	}
+}
+
+func (route *Route) captureMetrics(w http.ResponseWriter, r *http.Request) metrics {
+	route.ServeHTTP(w, r)
+	return metrics {
+		Code: route.W.code,
+		Duration: time.Since(route.ConnectionTime),
+		Written: route.W.written,
 	}
 }
 

@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"io"
 	"time"
-
-	"github.com/felixge/httpsnoop"
 )
 
 const LogFormat string = "02/Jan/2006:15:04:05"
@@ -30,7 +28,7 @@ func (router *Router) ClearLogs() {
 	router.PlainPrintf("     -- -- --   Logs cleared at [%s]   -- -- --\n\n", time.Now().Format("02/Jan/2006:15:04:05"))
 }
 
-func (route *Route) logInfo(metrics httpsnoop.Metrics) {
+func (route *Route) logInfo(m metrics) {
 	lock := "\U0000274C"
 	if route.Secure {
 		lock = "\U0001F512"
@@ -41,16 +39,16 @@ func (route *Route) logInfo(metrics httpsnoop.Metrics) {
 		route.R.Method,
 		route.logRequestURI,
 		lock,
-		metrics.Code,
-		(float64(metrics.Written)/1000000.),
-		time.Since(route.ConnectionTime).Milliseconds(),
+		m.Code,
+		(float64(m.Written)/1000000.),
+		m.Duration.Milliseconds(),
 		route.Website.Name,
 		route.Domain.Name,
 		route.Host,
 	)
 }
 
-func (route *Route) logWarning(metrics httpsnoop.Metrics) {
+func (route *Route) logWarning(m metrics) {
 	lock := "\U0000274C"
 	if route.Secure {
 		lock = "\U0001F512"
@@ -61,9 +59,9 @@ func (route *Route) logWarning(metrics httpsnoop.Metrics) {
 		route.R.Method,
 		route.logRequestURI,
 		lock,
-		metrics.Code,
-		(float64(metrics.Written)/1000000.),
-		time.Since(route.ConnectionTime).Milliseconds(),
+		m.Code,
+		(float64(m.Written)/1000000.),
+		m.Duration.Milliseconds(),
 		route.Website.Name,
 		route.Domain.Name,
 		route.Host,
@@ -71,7 +69,7 @@ func (route *Route) logWarning(metrics httpsnoop.Metrics) {
 	)
 }
 
-func (route *Route) logError(metrics httpsnoop.Metrics) {
+func (route *Route) logError(m metrics) {
 	lock := "\U0000274C"
 	if route.Secure {
 		lock = "\U0001F512"
@@ -82,9 +80,9 @@ func (route *Route) logError(metrics httpsnoop.Metrics) {
 		route.R.Method,
 		route.logRequestURI,
 		lock,
-		metrics.Code,
-		(float64(metrics.Written)/1000000.),
-		time.Since(route.ConnectionTime).Milliseconds(),
+		m.Code,
+		(float64(m.Written)/1000000.),
+		m.Duration.Milliseconds(),
 		route.Website.Name,
 		route.Domain.Name,
 		route.Host,
@@ -93,7 +91,7 @@ func (route *Route) logError(metrics httpsnoop.Metrics) {
 }
 
 func (route *Route) serveError() {
-	if route.W.written || route.errTemplate == nil {
+	if route.W.hasWrote || route.errTemplate == nil {
 		return
 	}
 
@@ -116,7 +114,7 @@ func (route *Route) serveError() {
 		return
 	}
 
-	route.W.w.Write([]byte(route.errMessage))
+	route.W.Write([]byte(route.errMessage))
 }
 
 type LogLevel int
