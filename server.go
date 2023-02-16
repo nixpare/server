@@ -50,7 +50,7 @@ type offlineClient struct {
 
 var (
 	HashKeyString = "NixPare Server"
-	BlockKeyString = "github.com/alessio-pareto/server"
+	BlockKeyString = "github.com/nixpare/server"
 )
 
 //go:embed static
