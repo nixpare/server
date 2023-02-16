@@ -32,7 +32,11 @@ func (route *Route) Error(statusCode int, message string, a ...any) {
 
 	route.logErrMessage = route.errMessage
 	if len(a) > 0 {
-		route.logErrMessage = fmt.Sprint(a...)
+		var v []string
+		for _, el := range a {
+			v = append(v, fmt.Sprint(el))
+		}
+		route.logErrMessage = strings.Join(v, " ")
 	}
 }
 
@@ -41,6 +45,21 @@ func (route *Route) ServeRootedFile(path string) {
 }
 
 func (route *Route) ServeFile(path string) {
+	if !isAbs(path) {
+		if route.Website.Dir != "" {
+			path = route.Website.Dir + "/" + path
+		} else {
+			path = route.Srv.ServerPath + "/" + path
+		}
+	}
+
+	if strings.HasPrefix(path, "~") {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			path = strings.Replace(path, "~", home, 1)
+		}
+	}
+
 	if strings.Contains(path, "..") {
 		route.Error(http.StatusBadRequest, "Bad request URL", "URL contains ..")
 		return
@@ -48,7 +67,7 @@ func (route *Route) ServeFile(path string) {
 
 	for _, hidden := range route.Website.HiddenFolders {
 		if strings.HasPrefix(route.RequestURI, hidden) {
-			route.Error(http.StatusNotFound, "Not found", "Not serving potential file inside hidden directory " + hidden)
+			route.Error(http.StatusNotFound, "Not found", "Not serving potential file inside hidden directory", hidden)
 			return
 		}
 	}
@@ -56,7 +75,7 @@ func (route *Route) ServeFile(path string) {
 	fileInfo, err := os.Stat(path)
 	if err == nil {
 		if fileInfo.IsDir() {
-			route.Error(http.StatusNotFound, "Not found", "Cannot serve directory " + path)
+			route.Error(http.StatusNotFound, "Not found", "Cannot serve directory", path)
 			return
 		}
 	

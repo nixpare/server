@@ -13,13 +13,15 @@ type Router struct {
 	CleanupF 			func() error
 	ServerPath 			string
 	startTime 			time.Time
-	logFile 			*os.File
 	fileMutexMap		map[string]*sync.Mutex
 	offlineClients      map[string]offlineClient
 	isInternalConn 		func(remoteAddress string) bool
 	bgManager     		*bgManager
 	backgroundMutex 	*Mutex
 	execMap 			map[string]*program
+	logFile 			*os.File
+	logs      			[]Log
+	mLog         		*sync.Mutex
 }
 
 func NewRouter(logFile *os.File, serverPath string) (router *Router, err error) {
@@ -31,6 +33,7 @@ func NewRouter(logFile *os.File, serverPath string) (router *Router, err error) 
 	} else {
 		router.logFile = logFile
 	}
+	router.mLog = new(sync.Mutex)
 
 	if serverPath == "" {
 		serverPath, err = os.Getwd()
@@ -76,7 +79,7 @@ func (router *Router) Start() () {
 		srv.Start()
 	}
 
-	router.PlainPrintf(WriteLogStart(router.startTime))
+	router.plainPrintf(WriteLogStart(router.startTime))
 
 	go router.backgroundTasks()
 	return
@@ -94,7 +97,7 @@ func (router *Router) Stop() () {
 	router.StopAllExecs()
 
 	os.Remove(router.ServerPath + "/PID.txt")
-	router.PlainPrintf(WriteLogClosure(time.Now()))
+	router.plainPrintf(WriteLogClosure(time.Now()))
 	return
 }
 
@@ -117,7 +120,7 @@ func (router *Router) closeBackgroundTasks() {
 		time.Sleep(50 * time.Second)
 		if !done {
 			done = true
-			router.Logln(LOG_LEVEL_WARNING, "Background Tasks stopped forcibly")
+			router.Log(LOG_LEVEL_WARNING, "Background Tasks stopped forcibly")
 			shutdown.Done()
 		}
 	}()
@@ -126,7 +129,7 @@ func (router *Router) closeBackgroundTasks() {
 		router.backgroundMutex.SendSignal()
 		if !done {
 			done = true
-			router.Logln(LOG_LEVEL_WARNING, "Every Background Task stopped correctly")
+			router.Log(LOG_LEVEL_WARNING, "Every Background Task stopped correctly")
 			shutdown.Done()
 		}
 	}()

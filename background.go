@@ -211,12 +211,18 @@ func (router *Router) runBGTaskStartup(t *Task) {
 			}
 			stack = strings.TrimRight(stack, "\n ")
 
-			router.Logf(LOG_LEVEL_ERROR, "Task %s panicked on startup: %v\n%s\n", t.name, err, stack)
+			router.Log(LOG_LEVEL_ERROR, fmt.Sprintf(
+				"Task %s panicked on startup: %v",
+				t.name, err,
+			), stack)
 		}
 	}()
 
 	if err := t.StartupF(router, t); err != nil {
-		router.Logf(LOG_LEVEL_ERROR, "Task %s failed on startup: %v\n", t.name, err)
+		router.Log(LOG_LEVEL_ERROR, fmt.Sprintf(
+			"Task %s failed on startup: %v",
+			t.name, err,
+		))
 		router.SetBackgroundTaskState(t.name, BGTimerInactive)
 	}
 }
@@ -241,7 +247,10 @@ func (router *Router) runBGTaskExec(t *Task) {
 			}
 			stack = strings.TrimRight(stack, "\n ")
 
-			router.Logf(LOG_LEVEL_ERROR, "Task %s panicked on exec: %v\n%s\n", t.name, err, stack)
+			router.Log(LOG_LEVEL_ERROR, fmt.Sprintf(
+				"Task %s panicked on exec: %v",
+				t.name, err,
+			), stack)
 		}
 	}()
 
@@ -256,14 +265,23 @@ func (router *Router) runBGTaskExec(t *Task) {
 
 	case <- execDone:
 		if err != nil {
-			router.Logf(LOG_LEVEL_WARNING, "Task %s failed on exec: %v\n", t.name, err)
+			router.Log(LOG_LEVEL_WARNING, fmt.Sprintf(
+				"Task %s failed on exec: %v",
+				t.name, err,
+			))
 		} else {
-			router.Logf(LOG_LEVEL_INFO, "Task %s exited with success\n", t.name)
+			router.Log(LOG_LEVEL_INFO, fmt.Sprintf(
+				"Task %s exited with success",
+				t.name,
+			))
 		}
 		return
 
 	case <- t.killChan:
-		router.Logf(LOG_LEVEL_WARNING, "Task %s exec function was forcibly killed\n", t.name)
+		router.Log(LOG_LEVEL_WARNING, fmt.Sprintf(
+			"Task %s exec function was forcibly killed\n",
+			t.name,
+		))
 		return
 
 	}
@@ -283,11 +301,17 @@ func (router *Router) runBGTaskCleanup(t *Task) {
 			}
 			stack = strings.TrimRight(stack, "\n ")
 
-			router.Logf(LOG_LEVEL_ERROR, "Task %s panicked on cleanup: %v\n%s\n", t.name, err, stack)
+			router.Log(LOG_LEVEL_ERROR, fmt.Sprintf(
+				"Task %s panicked on cleanup: %v",
+				t.name, err,
+			), stack)
 		}
 	}()
 
 	if err := t.CleanupF(router, t); err != nil {
-		router.Logf(LOG_LEVEL_ERROR, "Task %s failed on cleanup: %v\n", t.name, err)
+		router.Log(LOG_LEVEL_ERROR, fmt.Sprintf(
+			"Task %s failed on cleanup: %v",
+			t.name, err,
+		))
 	}
 }

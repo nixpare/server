@@ -106,11 +106,10 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	defer func() {
 		if p := recover(); p != nil {
-			route.Logf(
-				LOG_LEVEL_FATAL,
-				"Captured panic ...\n\nRoute: %v\nRequest: %v\nWebsite: %v\nPanic error: %v\nStack trace:\n%v\n\n",
-				route, r, route.Website, p, string(debug.Stack()),
-			)
+			route.Log(LOG_LEVEL_FATAL, fmt.Sprintf("Captured panic: %v", p), fmt.Sprintf(
+				"Route: %v\nRequest: %v\nWebsite: %v\nStack trace:\n%v",
+				route, r, route.Website, string(debug.Stack()),
+			))
 		}
 	}()
 
@@ -136,11 +135,11 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		
-		route.logInfo(metrics)
+		route.logHTTPInfo(metrics)
 	case metrics.Code >= 400 && metrics.Code < 500:
-		route.logWarning(metrics)
+		route.logHTTPWarning(metrics)
 	default:
-		route.logError(metrics)
+		route.logHTTPError(metrics)
 	}
 }
 

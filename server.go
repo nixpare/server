@@ -113,7 +113,7 @@ func (router *Router) newServer(port int, secure bool, serverPath string, certs 
 		for _, x := range certs {
 			cert, err := tls.LoadX509KeyPair(x.CertPemPath, x.KeyPemPath)
 			if err != nil {
-				log.Printf("Load Certificate Error: %v", err)
+				srv.Log(LOG_LEVEL_ERROR, fmt.Sprintf("Load Certificate Error: %v", err))
 				continue
 			}
 
@@ -194,12 +194,12 @@ func (srv *Server) Start() {
 	go func(){
 		if srv.Secure {
 			if err := srv.Server.ListenAndServeTLS("", ""); err != nil && err.Error() != "http: Server closed" {
-				log.Println("Server Error:", err.Error())
+				srv.Log(LOG_LEVEL_FATAL, fmt.Sprintf("Server Error: %v", err))
 				srv.Shutdown()
 			}
 		} else {
 			if err := srv.Server.ListenAndServe(); err != nil && err.Error() != "http: Server closed" {
-				log.Println("Server Error:", err.Error())
+				srv.Log(LOG_LEVEL_FATAL, fmt.Sprintf("Server Error: %v", err))
 				srv.Shutdown()
 			}
 		}
@@ -225,7 +225,7 @@ func (srv *Server) Shutdown() {
 	}
 
 	srv.Running = false
-	srv.Logf(LOG_LEVEL_INFO, "Server %s shutdown started\n", srv.Server.Addr)
+	srv.Log(LOG_LEVEL_INFO, fmt.Sprintf("Server %s shutdown started", srv.Server.Addr))
 
 	srv.Server.SetKeepAlivesEnabled(false)
 
@@ -238,10 +238,13 @@ func (srv *Server) Shutdown() {
 	}
 
 	if err := srv.Server.Shutdown(context.Background()); err != nil {
-		srv.Logf(LOG_LEVEL_FATAL, "Server %s shutdown crashed due to: %v\n", srv.Server.Addr, err.Error())
+		srv.Log(LOG_LEVEL_FATAL, fmt.Sprintf(
+			"Server %s shutdown crashed due to: %v",
+			srv.Server.Addr, err.Error(),
+		))
 	}
 	srv.Online = false
 
 	srv.stopChannel <- struct{}{}
-	srv.Logf(LOG_LEVEL_INFO, "Server %s shutdown finished\n", srv.Server.Addr)
+	srv.Log(LOG_LEVEL_INFO, fmt.Sprintf("Server %s shutdown finished", srv.Server.Addr))
 }

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"os"
+	"strings"
 )
 
 // Domain rapresents a website domain with all its
@@ -107,7 +109,18 @@ func (d *Domain) RegisterSubdomain(subdomain string, c SubdomainConfig) *Subdoma
 	}
 
 	if !isAbs(c.Website.Dir) {
-		c.Website.Dir = d.srv.ServerPath + "/" + c.Website.Dir
+		if c.Website.Dir == "" {
+			c.Website.Dir = d.srv.ServerPath + "/public"
+		} else {
+			c.Website.Dir = d.srv.ServerPath + "/" + c.Website.Dir
+		}
+	} else {
+		if strings.HasPrefix(c.Website.Dir, "~") {
+			home, err := os.UserHomeDir()
+			if err == nil {
+				c.Website.Dir = strings.Replace(c.Website.Dir, "~", home, 1)
+			}
+		}
 	}
 
 	ws := new(Website)
