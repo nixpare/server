@@ -1,4 +1,4 @@
-module github.com/nixpare/server
+module github.com/nixpare/server/v2
 
 go 1.20
 
