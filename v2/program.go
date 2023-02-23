@@ -250,6 +250,20 @@ func (tm *TaskManager) ProgramIsRunning(name string) (bool, error) {
 	return p.isRunning(), nil
 }
 
+// GetProgramPID returns the program PID (-1 if is not running)
+func (tm *TaskManager) GetProgramPID(name string) (int, error) {
+	p, err := tm.findProgram(name)
+	if err != nil {
+		return -1, err
+	}
+
+	if !p.isRunning() {
+		return -1, nil
+	}
+
+	return p.exec.Process.Pid, nil
+}
+
 // GetProgramsNames returns a slice containing all the names
 // of the registered programs
 func (tm *TaskManager) GetProgramsNames() []string {
@@ -260,21 +274,6 @@ func (tm *TaskManager) GetProgramsNames() []string {
 	}
 
 	return names
-}
-
-// StopAllPrograms stops all the running programs registered in the
-// TaskManager. In case of errors, they will be logged automatically
-// with the Router
-func (tm *TaskManager) StopAllPrograms() {
-	for _, p := range tm.programs {
-		if !p.isRunning() {
-			continue
-		}
-
-		if err := p.stop(); err != nil {
-			tm.Router.Log(LOG_LEVEL_ERROR, err.Error())
-		}
-	}
 }
 
 // checkProgramName checks if a new program can be created with the giver name. If there is an

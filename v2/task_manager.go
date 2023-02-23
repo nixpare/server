@@ -64,6 +64,11 @@ func (tm *TaskManager) start() {
 }
 
 func (tm *TaskManager) stop() {
+	tm.stopAllTasks()
+	tm.stopAllPrograms()
+}
+
+func (tm *TaskManager) stopAllTasks() {
 	tm.running = false
 
 	tm.ticker1m.Stop()
@@ -100,4 +105,27 @@ func (tm *TaskManager) stop() {
 
 	wg.Wait()
 	tm.Router.Log(LOG_LEVEL_INFO, "Tasks cleanup completed")
+}
+
+// stopAllPrograms stops all the running programs registered in the
+// TaskManager. In case of errors, they will be logged automatically
+// with the Router
+func (tm *TaskManager) stopAllPrograms() {
+	wg := new(sync.WaitGroup)
+	for _, p := range tm.programs {
+		if !p.isRunning() {
+			continue
+		}
+		wg.Add(1)
+
+		go func(program *program) {
+			if err := program.stop(); err != nil {
+				tm.Router.Log(LOG_LEVEL_ERROR, err.Error())
+			}
+			wg.Done()
+		}(p)
+	}
+
+	wg.Wait()
+	tm.Router.Log(LOG_LEVEL_INFO, "Programs stopped")
 }
