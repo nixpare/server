@@ -299,7 +299,7 @@ func (tm *TaskManager) execTask(t *Task) {
 	}
 
 	if !t.startupDone {
-		tm.Router.Log(LOG_LEVEL_WARNING, fmt.Sprintf("Can't execute task %s: startup was not done", t.name))
+		tm.Router.Log(LOG_LEVEL_WARNING, fmt.Sprintf("Can't execute task %s: startup is not done", t.name))
 		return
 	}
 
@@ -351,6 +351,11 @@ func (tm *TaskManager) execTask(t *Task) {
 // stopTask runs the cleanup function, catching every possible error or panic
 func (tm *TaskManager) stopTask(t *Task) {
 	if t == nil || t.CleanupF == nil {
+		return
+	}
+
+	if !t.startupDone {
+		tm.Router.Log(LOG_LEVEL_WARNING, fmt.Sprintf("Can't stop task %s: startup is not done", t.name))
 		return
 	}
 
