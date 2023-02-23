@@ -1,7 +1,6 @@
 package server
 
 import (
-	"os"
 	"sync"
 )
 
@@ -37,21 +36,4 @@ func (m *Mutex) SendSignal() {
 
 func (m *Mutex) ListenForSignal() {
 	<- m.c
-}
-
-func (srv *Server) ReadFileConcurrent(filePath string) ([]byte, error) {
-	fm, ok := srv.Router.fileMutexMap[filePath]
-	if !ok {
-		fm = new(sync.Mutex)
-		srv.Router.fileMutexMap[filePath] = fm
-	}
-	fm.Lock()
-
-	b, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, err
-	}
-
-	fm.Unlock()
-	return b, nil
 }

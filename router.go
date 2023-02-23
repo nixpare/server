@@ -13,7 +13,6 @@ type Router struct {
 	CleanupF 			func() error
 	ServerPath 			string
 	startTime 			time.Time
-	fileMutexMap		map[string]*sync.Mutex
 	offlineClients      map[string]offlineClient
 	isInternalConn 		func(remoteAddress string) bool
 	bgManager     		*bgManager
@@ -44,7 +43,6 @@ func NewRouter(logFile *os.File, serverPath string) (router *Router, err error) 
 	serverPath = strings.ReplaceAll(serverPath, "\\", "/")
 	router.ServerPath = serverPath
 
-	router.fileMutexMap = make(map[string]*sync.Mutex)
 	router.offlineClients = make(map[string]offlineClient)
 	router.isInternalConn = func(remoteAddress string) bool { return false }
 
@@ -74,12 +72,11 @@ func (router *Router) Server(port int) *Server {
 
 func (router *Router) Start() () {
 	router.startTime = time.Now()
+	router.plainPrintf(WriteLogStart(router.startTime))
 
 	for _, srv := range router.servers {
 		srv.Start()
 	}
-
-	router.plainPrintf(WriteLogStart(router.startTime))
 
 	go router.backgroundTasks()
 	return
