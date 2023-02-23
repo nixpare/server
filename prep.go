@@ -9,12 +9,12 @@ import (
 )
 
 const (
-	ErrNoErr = iota
-	ErrBadURL
-	ErrServerOffline
-	ErrWebsiteOffline
-	ErrDomainNotFound
-	ErrSubdomainNotFound
+	ERR_NO_ERR = iota
+	ERR_BAD_URL
+	ERR_SERVER_OFFLINE
+	ERR_WEBSITE_OFFLINE
+	ERR_DOMAIN_NOT_FOUND
+	ERR_SUBDOMAIN_NOT_FOUND
 )
 
 func (route *Route) prep() {
@@ -22,7 +22,7 @@ func (route *Route) prep() {
 
 	err := route.prepRequestURI()
 	if err != nil {
-		route.err = ErrBadURL
+		route.err = ERR_BAD_URL
 		return
 	}
 
@@ -176,7 +176,7 @@ func (route *Route) prepDomainAndSubdomain() int {
 				route.Domain.Name = "DIPA"
 			}
 
-			return ErrDomainNotFound
+			return ERR_DOMAIN_NOT_FOUND
 		}
 	}
 
@@ -187,12 +187,12 @@ func (route *Route) prepDomainAndSubdomain() int {
 			route.Subdomain = &Subdomain { Name: "Subdomain NF" }
 			route.Website = &Website { Name: "Not Found" }
 
-			return ErrSubdomainNotFound
+			return ERR_SUBDOMAIN_NOT_FOUND
 		}
 	}
 
 	route.Website = route.Subdomain.website
-	return ErrNoErr
+	return ERR_NO_ERR
 }
 
 // prepDomainAndSubdomainLocal should be called only when the connection is local:

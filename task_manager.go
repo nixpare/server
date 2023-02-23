@@ -1,137 +1,103 @@
 package server
 
-import "fmt"
+import (
+	"sync"
+	"time"
+)
 
-// startTask runs the startup function, catching every possible error or panic,
-// and then sets the flag Task.startupDone to true. If the function fails it deactivates
-// the task
-func (tm *TaskManager) startTask(t *Task) {
-	if t == nil || t.StartupF == nil || t.startupDone {
-		return
-	}
+// TaskManager is a component of the Router that controls the execution of external programs
+// and tasks registered by the user
+type TaskManager struct {
+	Router    		*Router
+	running   		bool
+	backgroundMutex *Mutex
+	programs  		map[string]*program
+	tasks     		map[string]*Task
+	ticker10s  		*time.Ticker
+	ticker1m  		*time.Ticker
+	ticker10m 		*time.Ticker
+	ticker30m 		*time.Ticker
+	ticker1h  		*time.Ticker
+}
 
-	err := PanicToErr(func() error {
-		return t.StartupF(tm, t)
-	})
-
-	if err == nil {
-		tm.Router.Log(LOG_LEVEL_INFO, fmt.Sprintf("Task \"%s\" started successfully", t.name))
-		t.startupDone = true
-		return
-	}
-
-	if err.err != nil {
-		tm.Router.Log(LOG_LEVEL_ERROR, fmt.Sprintf("Task \"%s\" startup error: %v", t.name, err.err))
-		return
-	}
-	if err.panicErr != nil {
-		tm.Router.Log(
-			LOG_LEVEL_FATAL,
-			fmt.Sprintf("Task \"%s\" startup panic: %v", t.name, err.panicErr),
-			err.stack,
-		)
-		return
+func (router *Router) newTaskManager() {
+	router.TaskMgr = &TaskManager {
+		Router: router, backgroundMutex: NewMutex(),
+		programs: make(map[string]*program), tasks: make(map[string]*Task),
+		ticker10s: time.NewTicker(time.Second * 10), ticker1m: time.NewTicker(time.Minute),
+		ticker10m: time.NewTicker(time.Minute * 10), ticker30m: time.NewTicker(time.Minute * 30),
+		ticker1h: time.NewTicker(time.Hour),
 	}
 }
 
-// execTask runs the exec function, catching every possible error or panic,
-// only if the manager has already executed the startup function and if the previous
-// exec function has terminated. It also listens for the kill signal in case the server
-// is shutting down and the task is taking too long to execute
-func (tm *TaskManager) execTask(t *Task) error {
-	if t == nil || t.ExecF == nil || t.running {
-		return nil
+func (tm *TaskManager) start() {
+	tm.running = true
+	wg := new(sync.WaitGroup)
+
+	for _, t := range tm.tasks {
+		wg.Add(1)
+		go func(task *Task) {
+			tm.startTask(task)
+			wg.Done()
+		}(t)
 	}
 
-	if !t.startupDone {
-		return fmt.Errorf("can't execute task \"%s\": startup is not done", t.name)
-	}
-
-	t.exitChan = make(chan struct{})
-	t.killChan = make(chan struct{})
-	t.running = true
-
-	defer func() {
-		t.running = false
-		close(t.exitChan)
-		close(t.killChan)
-		
-		t.bc.Send(struct{}{})
-	}()
-
-	execDone := make(chan struct{})
+	wg.Wait()
+	tm.Router.Log(LOG_LEVEL_INFO, "Tasks startup completed")
 
 	go func() {
-		defer func() { execDone <- struct{}{} }()
-
-		err := PanicToErr(func() error {
-			return t.ExecF(tm, t)
-		})
-
-		if err == nil {
-			return
-		}
-
-		t.timer = TASK_TIMER_INACTIVE
-		
-		if err.err != nil {
-			tm.Router.Log(LOG_LEVEL_WARNING, fmt.Sprintf("Task \"%s\" exec error: %v", t.name, err.err))
-			return
-		}
-		if err.panicErr != nil {
-			tm.Router.Log(
-				LOG_LEVEL_FATAL,
-				fmt.Sprintf("Task \"%s\" exec panic: %v", t.name, err.panicErr),
-				err.stack,
-			)
-			return
+		for tm.running {
+			select {
+			case <-tm.ticker10s.C:
+				tm.runTasksWithTimer(TASK_TIMER_10_SECONDS)
+			case <-tm.ticker1m.C:
+				tm.runTasksWithTimer(TASK_TIMER_1_MINUTE)
+			case <-tm.ticker10m.C:
+				tm.runTasksWithTimer(TASK_TIMER_10_MINUTES)
+			case <-tm.ticker30m.C:
+				tm.runTasksWithTimer(TASK_TIMER_30_MINUTES)
+			case <-tm.ticker1h.C:
+				tm.runTasksWithTimer(TASK_TIMER_1_HOUR)
+			}
 		}
 	}()
-
-	select {
-	case <- execDone:
-		return nil
-	case <- t.killChan:
-		tm.Router.Log(LOG_LEVEL_ERROR, fmt.Sprintf(
-			"Task \"%s\" execution was forcibly killed\n",
-			t.name,
-		))
-		return nil
-	}
 }
 
-// stopTask runs the cleanup function, catching every possible error or panic
-func (tm *TaskManager) stopTask(t *Task) {
-	if t == nil || t.CleanupF == nil || !t.startupDone {
-		return
+func (tm *TaskManager) stop() {
+	tm.running = false
+
+	tm.ticker1m.Stop()
+	tm.ticker10m.Stop()
+	tm.ticker30m.Stop()
+	tm.ticker1h.Stop()
+
+	var stillRunning int
+	wg := new(sync.WaitGroup)
+
+	for _, t := range tm.tasks {
+		stillRunning ++
+		wg.Add(1)
+
+		go func(task *Task) {
+			tm.stopTask(task)
+
+			stillRunning --
+			wg.Done()
+		}(t)
 	}
 
-	if t.running {
-		t.exitChan <- struct{}{}
-		t.Wait()
+	counter := 100
+	for stillRunning > 0 && counter > 0 {
+		time.Sleep(time.Millisecond * 100)
+		counter --
 	}
 
-	t.startupDone = false
-
-	err := PanicToErr(func() error {
-		return t.CleanupF(tm, t)
-	})
-
-	if err == nil {
-		tm.Router.Log(LOG_LEVEL_INFO, fmt.Sprintf("Task \"%s\" stopped successfully", t.name))
-		return
+	if counter == 0 {
+		for _, t := range tm.tasks {
+			t.killChan <- struct{}{}
+		}
 	}
 
-	if err.err != nil {
-		tm.Router.Log(LOG_LEVEL_ERROR, fmt.Sprintf("Task \"%s\" cleanup error: %v", t.name, err.err))
-		return
-	}
-	if err.panicErr != nil {
-		tm.Router.Log(
-			LOG_LEVEL_FATAL,
-			fmt.Sprintf("Task \"%s\" cleanup panic: %v", t.name, err.panicErr),
-			err.stack,
-		)
-		return
-	}
+	wg.Wait()
+	tm.Router.Log(LOG_LEVEL_INFO, "Tasks cleanup completed")
 }

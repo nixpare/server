@@ -17,7 +17,6 @@ type Router struct {
 	offlineClients      map[string]offlineClient
 	isInternalConn 		func(remoteAddress string) bool
 	TaskMgr   			*TaskManager
-	execMap 			map[string]*program
 	logFile 			*os.File
 	logs      			[]Log
 	mLog         		*sync.Mutex
@@ -47,7 +46,6 @@ func NewRouter(logFile *os.File, serverPath string) (router *Router, err error) 
 	router.isInternalConn = func(remoteAddress string) bool { return false }
 
 	router.newTaskManager()
-	router.execMap = make(map[string]*program)
 
 	router.startTime = time.Now()
 	router.plainPrintf(WriteLogStart(router.startTime))
@@ -81,7 +79,6 @@ func (router *Router) Stop() () {
 	router.running = false
 
 	router.TaskMgr.stop()
-	router.StopAllExecs()
 
 	for _, srv := range router.servers {
 		srv.Shutdown()
