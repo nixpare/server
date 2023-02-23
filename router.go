@@ -49,6 +49,9 @@ func NewRouter(logFile *os.File, serverPath string) (router *Router, err error) 
 	router.newTaskManager()
 	router.execMap = make(map[string]*program)
 
+	router.startTime = time.Now()
+	router.plainPrintf(WriteLogStart(router.startTime))
+
 	return
 }
 
@@ -64,9 +67,6 @@ func (router *Router) Server(port int) *Server {
 }
 
 func (router *Router) Start() () {
-	router.startTime = time.Now()
-	router.plainPrintf(WriteLogStart(router.startTime))
-
 	for _, srv := range router.servers {
 		srv.Start()
 	}
@@ -77,6 +77,7 @@ func (router *Router) Start() () {
 }
 
 func (router *Router) Stop() () {
+	router.Log(LOG_LEVEL_INFO, "Router shutdown procedure started")
 	router.running = false
 
 	router.TaskMgr.stop()

@@ -152,6 +152,7 @@ func PanicToErr(f func() error) *panicError {
 	go func() {
 		defer func() {
 			err := recover()
+			
 			if err == nil {
 				errChan <- nil
 			} else {
@@ -168,13 +169,18 @@ func PanicToErr(f func() error) *panicError {
 					}
 				}
 			}
+
+			close(errChan)
 		}()
-		errChan <- &panicError { err: f() }
+		
+		if err := f(); err == nil {
+			errChan <- nil
+		} else {
+			errChan <- &panicError { err: err }
+		}
 	}()
 
-	res := <-errChan
-	close(errChan)
-
+	res := <- errChan
 	return res
 }
 

@@ -13,11 +13,18 @@ import (
 type TaskTimer int
 
 const (
-	TASK_TIMER_1_MINUTE   TaskTimer = 1  // A Task with this value will be executed every minute
-	TASK_TIMER_10_MINUTES TaskTimer = 10 // A Task with this value will be executed every 10 minutes
-	TASK_TIMER_30_MINUTES TaskTimer = 30 // A Task with this value will be executed every 30 minutes
-	TASK_TIMER_1_HOUR     TaskTimer = 60 // A Task with this value will be executed every hour
-	TASK_TIMER_INACTIVE   TaskTimer = -1 // A Task with this value will be never be executed automatically
+	// A Task with this value will be executed every minute
+	TASK_TIMER_10_SECONDS TaskTimer = TaskTimer(time.Second * 10)
+	// A Task with this value will be executed every minute
+	TASK_TIMER_1_MINUTE   TaskTimer = TaskTimer(time.Minute * 1)
+	// A Task with this value will be executed every 10 minutes
+	TASK_TIMER_10_MINUTES TaskTimer = TaskTimer(time.Minute * 10)
+	// A Task with this value will be executed every 30 minutes
+	TASK_TIMER_30_MINUTES TaskTimer = TaskTimer(time.Minute * 30)
+	// A Task with this value will be executed every hour
+	TASK_TIMER_1_HOUR     TaskTimer = TaskTimer(time.Hour)
+	// A Task with this value will be never be executed automatically
+	TASK_TIMER_INACTIVE   TaskTimer = -1
 )
 
 // TaskManager is a component of the Router that controls the execution of external programs
@@ -28,6 +35,7 @@ type TaskManager struct {
 	backgroundMutex *Mutex
 	programs  		map[string]*program
 	tasks     		map[string]*Task
+	ticker10s  		*time.Ticker
 	ticker1m  		*time.Ticker
 	ticker10m 		*time.Ticker
 	ticker30m 		*time.Ticker
@@ -38,8 +46,9 @@ func (router *Router) newTaskManager() {
 	router.TaskMgr = &TaskManager {
 		Router: router, backgroundMutex: NewMutex(),
 		programs: make(map[string]*program), tasks: make(map[string]*Task),
-		ticker1m: time.NewTicker(time.Minute), ticker10m: time.NewTicker(time.Minute * 10),
-		ticker30m: time.NewTicker(time.Minute * 30), ticker1h: time.NewTicker(time.Hour),
+		ticker10s: time.NewTicker(time.Second * 10), ticker1m: time.NewTicker(time.Minute),
+		ticker10m: time.NewTicker(time.Minute * 10), ticker30m: time.NewTicker(time.Minute * 30),
+		ticker1h: time.NewTicker(time.Hour),
 	}
 }
 
@@ -61,6 +70,8 @@ func (tm *TaskManager) start() {
 	go func() {
 		for tm.running {
 			select {
+			case <-tm.ticker10s.C:
+				tm.runTasksWithTimer(TASK_TIMER_10_SECONDS)
 			case <-tm.ticker1m.C:
 				tm.runTasksWithTimer(TASK_TIMER_1_MINUTE)
 			case <-tm.ticker10m.C:
@@ -85,21 +96,17 @@ func (tm *TaskManager) stop() {
 	var stillRunning int
 	wg := new(sync.WaitGroup)
 
-	go func() {
-		for _, t := range tm.tasks {
-			stillRunning ++
-			wg.Add(1)
+	for _, t := range tm.tasks {
+		stillRunning ++
+		wg.Add(1)
 
-			go func(task *Task) {
-				tm.stopTask(task)
+		go func(task *Task) {
+			tm.stopTask(task)
 
-				stillRunning --
-				wg.Done()
-			}(t)
-		}
-
-		wg.Wait()
-	}()
+			stillRunning --
+			wg.Done()
+		}(t)
+	}
 
 	counter := 100
 	for stillRunning > 0 && counter > 0 {
@@ -114,6 +121,7 @@ func (tm *TaskManager) stop() {
 	}
 
 	wg.Wait()
+	tm.Router.Log(LOG_LEVEL_INFO, "Tasks cleanup completed")
 }
 
 func (tm *TaskManager) runTasksWithTimer(timer TaskTimer) {
@@ -127,7 +135,7 @@ func (tm *TaskManager) runTasksWithTimer(timer TaskTimer) {
 func (tm *TaskManager) getTask(name string) (*Task, error) {
 	t := tm.tasks[name]
 	if t == nil {
-		return nil, fmt.Errorf("task %s not found", name)
+		return nil, fmt.Errorf("task \"%s\" not found", name)
 	}
 
 	return t, nil
@@ -151,7 +159,7 @@ type Task struct {
 	killChan 	chan struct{} 	// killChan will kill the exec function after the 10 seconds are gone
 	startupDone bool
 	running 	bool
-	bc 			goutils.Broadcaster[struct{}]
+	bc 			*goutils.Broadcaster[struct{}]
 }
 
 // Name returns the name of the function
@@ -164,8 +172,24 @@ func (t *Task) Name() string {
 // down: in the last case the manager will wait for a maximum of 10 seconds,
 // after those, if the execution is not finished, it will first kill the task
 // and then call the cleanup function.
-func (t *Task) ListenForServerShutdown() {
-	<- t.exitChan
+// This function is intended to be called in a goroutine listening for the signal:
+// considering that the goroutine could stay alive even after the task exec function
+// has exited, if this function returns true, this means that the signal is received
+// correctly for that execution and you should exit, otherwise this means that the
+// execution of the task has already exited and thus you should not do anything
+// Example:
+// 	execF = func(tm *server.TaskManager, t *server.Task) error {
+//		go func () {
+//			if !t.ListenForExit() {
+//				return 		// doing nothing because it returned false
+//			}
+//			// DO SOME FAST RECOVERY
+//		}()
+//		// SOME LONG RUNNING EXECUTION
+//	}
+func (t *Task) ListenForExit() bool {
+	_, ok := <- t.exitChan
+	return ok
 }
 
 func (t *Task) IsReady() bool {
@@ -184,7 +208,7 @@ func (t *Task) Wait() {
 	l := t.bc.Subscribe()
 	defer l.Unsubscribe()
 
-	t.bc.Subscribe().Listen()
+	l.Get()
 }
 
 // TaskFunc is the executable part of the program. The manager will provide, upon
@@ -234,7 +258,7 @@ type TaskInitFunc func() (startupF, execF, cleanupF TaskFunc)
 // registered in the TaskManager.
 func (tm *TaskManager) NewTask(name string, f TaskInitFunc, timer TaskTimer) error {
 	if t, _ := tm.getTask(name); t != nil {
-		return fmt.Errorf("task %s already registered", name)
+		return fmt.Errorf("task \"%s\" already registered", name)
 	}
 
 	startupF, execF, cleanupF := f()
@@ -242,8 +266,7 @@ func (tm *TaskManager) NewTask(name string, f TaskInitFunc, timer TaskTimer) err
 		name: name, StartupF: startupF,
 		ExecF: execF, CleanupF: cleanupF,
 		timer: timer,
-		exitChan: make(chan struct{}),
-		killChan: make(chan struct{}),
+		bc: goutils.NewBroadcaster[struct{}](),
 	}
 
 	tm.tasks[name] = t
@@ -252,142 +275,6 @@ func (tm *TaskManager) NewTask(name string, f TaskInitFunc, timer TaskTimer) err
 		tm.startTask(t)
 	}
 	return nil
-}
-
-// startTask runs the startup function, catching every possible error or panic,
-// and then sets the flag Task.startupDone to true. If the function fails it deactivates
-// the task
-func (tm *TaskManager) startTask(t *Task) {
-	if t == nil || t.StartupF == nil || t.startupDone {
-		return
-	}
-
-	defer func() { t.startupDone = true }()
-
-	err := PanicToErr(func() error {
-		return t.StartupF(tm, t)
-	})
-
-	if err == nil {
-		tm.Router.Log(LOG_LEVEL_INFO, fmt.Sprintf("Task %s started successfully", t.name))
-		return
-	}
-
-	t.timer = TASK_TIMER_INACTIVE
-
-	if err.err != nil {
-		tm.Router.Log(LOG_LEVEL_INFO, fmt.Sprintf("Task %s startup error: %v", t.name, err.err))
-		return
-	}
-	if err.panicErr != nil {
-		tm.Router.Log(
-			LOG_LEVEL_INFO,
-			fmt.Sprintf("Task %s startup panic: %v", t.name, err.panicErr),
-			err.stack,
-		)
-		return
-	}
-}
-
-// execTask runs the exec function, catching every possible error or panic,
-// only if the manager has already executed the startup function and if the previous
-// exec function has terminated. It also listens for the kill signal in case the server
-// is shutting down and the task is taking too long to execute
-func (tm *TaskManager) execTask(t *Task) {
-	if t == nil || t.ExecF == nil || t.running {
-		return
-	}
-
-	if !t.startupDone {
-		tm.Router.Log(LOG_LEVEL_WARNING, fmt.Sprintf("Can't execute task %s: startup is not done", t.name))
-		return
-	}
-
-	t.running = true
-	defer func() {
-		t.running = false
-		t.bc.Send(struct{}{})
-	}()
-
-	execDone := make(chan struct{})
-
-	go func() {
-		defer func() { execDone <- struct{}{} }()
-
-		err := PanicToErr(func() error {
-			return t.ExecF(tm, t)
-		})
-
-		if err == nil {
-			return
-		}
-		
-		if err.err != nil {
-			tm.Router.Log(LOG_LEVEL_INFO, fmt.Sprintf("Task %s exec error: %v", t.name, err.err))
-			return
-		}
-		if err.panicErr != nil {
-			tm.Router.Log(
-				LOG_LEVEL_INFO,
-				fmt.Sprintf("Task %s exec panic: %v", t.name, err.panicErr),
-				err.stack,
-			)
-			return
-		}
-	}()
-
-	select {
-	case <- execDone:
-		return
-	case <- t.killChan:
-		tm.Router.Log(LOG_LEVEL_WARNING, fmt.Sprintf(
-			"Task %s execution was forcibly killed\n",
-			t.name,
-		))
-		return
-	}
-}
-
-// stopTask runs the cleanup function, catching every possible error or panic
-func (tm *TaskManager) stopTask(t *Task) {
-	if t == nil || t.CleanupF == nil {
-		return
-	}
-
-	if !t.startupDone {
-		tm.Router.Log(LOG_LEVEL_WARNING, fmt.Sprintf("Can't stop task %s: startup is not done", t.name))
-		return
-	}
-
-	if t.running {
-		t.exitChan <- struct{}{}
-		t.Wait()
-	}
-
-	t.timer = TASK_TIMER_INACTIVE
-	t.startupDone = false
-
-	err := PanicToErr(func() error {
-		return t.CleanupF(tm, t)
-	})
-
-	if err == nil {
-		tm.Router.Log(LOG_LEVEL_INFO, fmt.Sprintf("Task %s stopped successfully", t.name))
-		return
-	}
-
-	if err.err != nil {
-		tm.Router.Log(LOG_LEVEL_INFO, fmt.Sprintf("Task %s cleanup error: %v", t.name, err.err))
-		return
-	}
-	if err.panicErr != nil {
-		tm.Router.Log(
-			LOG_LEVEL_INFO,
-			fmt.Sprintf("Task %s cleanup panic: %v", t.name, err.panicErr),
-			err.stack,
-		)
-		return
-	}
 }
 
 // SetTaskTimer sets the Task timer to the given one and activates the startup
@@ -403,14 +290,36 @@ func (tm *TaskManager) SetTaskTimer(name string, timer TaskTimer) error {
 	return nil
 }
 
-// ExecuteTask runs the Task immediatly
-func (tm *TaskManager) ExecuteTask(name string) error {
+// StartTask runs the Task immediatly
+func (tm *TaskManager) StartTask(name string) error {
 	t, err := tm.getTask(name)
 	if err != nil {
 		return err
 	}
 
-	tm.execTask(t)
+	tm.startTask(t)
+	return nil
+}
+
+// ExecuteTask runs the Task immediatly
+func (tm *TaskManager) ExecTask(name string) error {
+	t, err := tm.getTask(name)
+	if err != nil {
+		return err
+	}
+
+	return tm.execTask(t)
+}
+
+// StopTask runs the cleanup function provided and stops the Task, but can
+// be restarted afterwards
+func (tm *TaskManager) StopTask(name string) error {
+	t, err := tm.getTask(name)
+	if err != nil {
+		return err
+	}
+
+	tm.stopTask(t)
 	return nil
 }
 
@@ -424,8 +333,7 @@ func (tm *TaskManager) RemoveTask(name string) error {
 
 	tm.stopTask(t)
 	delete(tm.tasks, name)
-
-	return err
+	return nil
 }
 
 // GetTasksNames returns all the names of the registered tasks in the
