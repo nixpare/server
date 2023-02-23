@@ -13,10 +13,10 @@ type Router struct {
 	CleanupF 			func() error
 	ServerPath 			string
 	startTime 			time.Time
+	running 			bool
 	offlineClients      map[string]offlineClient
 	isInternalConn 		func(remoteAddress string) bool
-	bgManager     		*bgManager
-	backgroundMutex 	*Mutex
+	TaskMgr   			*TaskManager
 	execMap 			map[string]*program
 	logFile 			*os.File
 	logs      			[]Log
@@ -46,14 +46,7 @@ func NewRouter(logFile *os.File, serverPath string) (router *Router, err error) 
 	router.offlineClients = make(map[string]offlineClient)
 	router.isInternalConn = func(remoteAddress string) bool { return false }
 
-	router.bgManager = &bgManager {
-		bgTasks: make(map[string]*bgTask),
-		tickerMinute: time.NewTicker(time.Minute),
-		ticker10Minutes: time.NewTicker(time.Minute * 10),
-		ticker30Minutes: time.NewTicker(time.Minute * 30),
-		tickerHour: time.NewTicker(time.Minute * 60),
-	}
-	router.backgroundMutex = NewMutex()
+	router.newTaskManager()
 	router.execMap = make(map[string]*program)
 
 	return
@@ -78,11 +71,17 @@ func (router *Router) Start() () {
 		srv.Start()
 	}
 
-	go router.backgroundTasks()
+	router.TaskMgr.start()
+	router.running = true
 	return
 }
 
 func (router *Router) Stop() () {
+	router.running = false
+
+	router.TaskMgr.stop()
+	router.StopAllExecs()
+
 	for _, srv := range router.servers {
 		srv.Shutdown()
 	}
@@ -90,8 +89,6 @@ func (router *Router) Stop() () {
 	if router.CleanupF != nil {
 		router.CleanupF()
 	}
-	router.closeBackgroundTasks()
-	router.StopAllExecs()
 
 	os.Remove(router.ServerPath + "/PID.txt")
 	router.plainPrintf(WriteLogClosure(time.Now()))
@@ -106,30 +103,4 @@ func (router *Router) StopServer(port int) error {
 
 	srv.Shutdown()
 	return nil
-}
-
-func (router *Router) closeBackgroundTasks() {
-	var shutdown sync.WaitGroup
-	done := false
-	shutdown.Add(1)
-
-	go func() {
-		time.Sleep(50 * time.Second)
-		if !done {
-			done = true
-			router.Log(LOG_LEVEL_WARNING, "Background Tasks stopped forcibly")
-			shutdown.Done()
-		}
-	}()
-
-	go func() {
-		router.backgroundMutex.SendSignal()
-		if !done {
-			done = true
-			router.Log(LOG_LEVEL_WARNING, "Every Background Task stopped correctly")
-			shutdown.Done()
-		}
-	}()
-
-	shutdown.Wait()
 }

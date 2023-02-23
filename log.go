@@ -131,6 +131,12 @@ func (route *Route) serveError() {
 	route.ServeText(route.errMessage)
 }
 
+type panicError struct {
+	err 	 error
+	panicErr error
+	stack 	 string
+}
+
 // LogLevel defines the severity of a Log. See the constants
 type LogLevel int
 
@@ -217,7 +223,7 @@ func (l Log) Full() string {
 // and saved locally in memory, so that they can be retreived
 // programmatically and used (for example to make a view in a website)
 type Logger interface {
-	Log(level LogLevel, message string, extra ...string)
+	Log(level LogLevel, message string, extra ...any)
 	Logs() []Log
 	JSON() []byte
 }
@@ -268,14 +274,8 @@ func (router *Router) Log(level LogLevel, message string, extra ...any) {
 	}
 
 	if router.logFile != nil {
-		var extra string
-		for _, s := range strings.Split(log.Extra, "\n") {
-			extra += "\t" + s + "\n"
-		}
-		extra = strings.TrimRight(extra, "\n ")
-
-		if extra != "" {
-			fmt.Fprintf(router.logFile, "%v\n%s\n", log, extra)
+		if log.Extra != "" {
+			fmt.Fprintf(router.logFile, "%v\n%s\n", log, IndentString(log.Extra, 1))
 		} else {
 			fmt.Fprintln(router.logFile, log)
 		}		
