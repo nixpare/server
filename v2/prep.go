@@ -151,10 +151,6 @@ func prepSubdomainName(name string) string {
 		name += "."
 	}
 
-	if name == "www." {
-		name = ""
-	}
-
 	return name
 }
 
