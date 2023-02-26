@@ -367,3 +367,7 @@ func ReadJSON[T any](route *Route) (value T, err error) {
 
 	return value, nil
 }
+
+func (route *Route) Redirect(url string) {
+
+}

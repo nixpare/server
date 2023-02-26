@@ -99,6 +99,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Secure: h.secure,
 		RemoteAddress: r.RemoteAddr,
 		RequestURI: r.RequestURI,
+		Host: r.URL.Hostname(),
 		Method: r.Method,
 		ConnectionTime: time.Now(),
 		R: r,

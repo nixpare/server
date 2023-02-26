@@ -32,7 +32,6 @@ func (route *Route) prep() {
 	if route.IsInternalConn() {
 		route.prepDomainAndSubdomainLocal()
 	}
-	route.prepHost()
 	
 	route.err = route.prepDomainAndSubdomain()
 }
@@ -230,16 +229,6 @@ func (route *Route) prepDomainAndSubdomainLocal() {
 	route.Router.offlineClients[route.RemoteAddress] = offlineClient {
 		route.DomainName, route.SubdomainName,
 	}
-}
-
-// prepHost joins the previously parsed domain and subdomain to create the
-// full host name
-func (route *Route) prepHost() {
-	if route.SubdomainName != "" {
-		route.Host = route.SubdomainName
-	}
-
-	route.Host += route.DomainName
 }
 
 // IsInternalConn tells wheather the incoming connection should be treated
