@@ -65,6 +65,10 @@ func (router *Router) Server(port int) *Server {
 }
 
 func (router *Router) Start() () {
+	if router.running {
+		return
+	}
+
 	for _, srv := range router.servers {
 		srv.Start()
 	}
@@ -75,6 +79,10 @@ func (router *Router) Start() () {
 }
 
 func (router *Router) Stop() () {
+	if !router.running {
+		return
+	}
+
 	router.Log(LOG_LEVEL_INFO, "Router shutdown procedure started")
 	router.running = false
 
