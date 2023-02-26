@@ -81,10 +81,7 @@ func (p *program) start() (<-chan error, error) {
 // afterStart waits for the process with the already provided function by *os.Process,
 // then closes the exitC channel to segnal its termination
 func (p *program) afterStart(errChan chan error) {
-	err := p.exec.Wait()
-	if err != nil {
-		errChan <- fmt.Errorf("program \"%s\" waiting error: %w", p.name, err)
-	}
+	p.exec.Wait()
 
 	p.lastProcessState = p.exec.ProcessState
 	p.running = false
