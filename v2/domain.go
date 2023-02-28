@@ -14,11 +14,12 @@ import (
 //  - an error template, that will be used in case your logic
 //		will throw any error, so you will have a constant look
 type Domain struct {
-	Name        string
-	subdomains  map[string]*Subdomain
-	srv         *Server
-	headers     http.Header
-	errTemplate *template.Template
+	Name         string
+	subdomains   map[string]*Subdomain
+	srv          *Server
+	headers      http.Header
+	errTemplate  *template.Template
+	beforeServeF BeforeServeFunction
 }
 
 // Subdomain rapresents a particular subdomain in a domain with all the
@@ -155,6 +156,14 @@ func (d *Domain) DefaultSubdomain() *Subdomain {
 // SetHeader adds a header to the collection of headers used in every connection
 func (d *Domain) SetHeader(name, value string) *Domain {
 	d.headers.Set(name, value)
+	return d
+}
+
+// SetBeforeServeF sets a function that will be executed before every connection.
+// If this function returns true, the serve function of the subdomain will not be
+// executed
+func (d *Domain) SetBeforeServeF(f BeforeServeFunction) *Domain {
+	d.beforeServeF = f
 	return d
 }
 

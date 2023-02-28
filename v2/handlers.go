@@ -23,6 +23,7 @@ type Website struct {
 }
 
 type ServeFunction func(route *Route)
+type BeforeServeFunction func(route *Route) bool
 type InitCloseFunction func(srv *Server, domain *Domain, subdomain *Subdomain, website *Website)
 
 type ResponseWriter struct {
@@ -122,12 +123,19 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	
 	route.prep()
 
-	if route.Website.AvoidMetricsAndLogging {
-		route.ServeHTTP(w, r)
-		return
+	var doNotContinue bool
+	if route.Domain.beforeServeF != nil {
+		doNotContinue = route.Domain.beforeServeF(route)
 	}
 
-	metrics := route.captureMetrics(w, r)
+	if !doNotContinue {
+		route.ServeHTTP(w, r)
+	}
+
+	if route.Website.AvoidMetricsAndLogging {
+		return
+	}
+	metrics := route.getMetrics()
 	
 	switch {
 	case metrics.Code < 400:
@@ -249,8 +257,7 @@ func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (route *Route) captureMetrics(w http.ResponseWriter, r *http.Request) metrics {
-	route.ServeHTTP(w, r)
+func (route *Route) getMetrics() metrics {
 	return metrics {
 		Code: route.W.code,
 		Duration: time.Since(route.ConnectionTime),
