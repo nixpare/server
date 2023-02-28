@@ -124,15 +124,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	
 	route.prep()
 
-	var doNotContinue bool
-	if route.Domain.beforeServeF != nil {
-		doNotContinue = route.Domain.beforeServeF(route)
-	}
-
-	if !doNotContinue {
-		route.ServeHTTP(w, r)
-		
-	}
+	route.ServeHTTP(w, r)
 
 	if route.Website.AvoidMetricsAndLogging {
 		return
@@ -156,6 +148,11 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	route.W.Header().Set("server", "NixServer")
+	defer func() {
+		if route.W.code >= 400 {
+			route.serveError()
+		}
+	}()
 
 	domain := route.Domain
 	if domain != nil {
@@ -175,23 +172,25 @@ func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	func() {
-		if subdomain != nil {
-			if subdomain.errTemplate != nil {
-				route.errTemplate = subdomain.errTemplate
-				return
-			}
+	route.errTemplate = route.Srv.errTemplate
+	if domain != nil {
+		if domain.errTemplate != nil {
+			route.errTemplate = domain.errTemplate
 		}
-
-		if domain != nil {
-			if domain.errTemplate != nil {
-				route.errTemplate = domain.errTemplate
-				return
-			}
+	}
+	if subdomain != nil {
+		if subdomain.errTemplate != nil {
+			route.errTemplate = subdomain.errTemplate
 		}
+	}
 
-		route.errTemplate = route.Srv.errTemplate
-	}()
+	var doNotContinue bool
+	if route.Domain.beforeServeF != nil {
+		doNotContinue = route.Domain.beforeServeF(route)
+	}
+	if doNotContinue {
+		return
+	}
 
 	if route.Subdomain != nil && route.Subdomain.offline {
 		route.err = ERR_WEBSITE_OFFLINE
@@ -227,22 +226,7 @@ func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			route.Error(http.StatusBadRequest, fmt.Sprintf("Subdomain \"%s\" not found", route.SubdomainName))
 		}
 
-		route.serveError()
 		return
-	}
-
-	if route.SubdomainName == "www." {
-		if !route.IsInternalConn() {
-			route.AvoidLogging = true
-
-			scheme := "http"
-			if route.Secure {
-				scheme += "s"
-			}
-			http.Redirect(route.W, r, scheme + "://" + strings.ReplaceAll(r.Host, "www.", "") + r.RequestURI, http.StatusMovedPermanently)
-
-			return
-		}
 	}
 
 	if value, ok := route.Website.PageHeaders[route.RequestURI]; ok {
@@ -252,10 +236,6 @@ func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	route.Subdomain.serveF(route)
-
-	if route.W.code >= 400 {
-		route.serveError()
-	}
 }
 
 func (route *Route) getMetrics() metrics {
