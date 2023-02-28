@@ -103,6 +103,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Host: r.Host,
 		Method: r.Method,
 		ConnectionTime: time.Now(),
+		W: &ResponseWriter { w: w },
 		R: r,
 	}
 
@@ -130,6 +131,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if !doNotContinue {
 		route.ServeHTTP(w, r)
+		
 	}
 
 	if route.Website.AvoidMetricsAndLogging {
@@ -153,7 +155,6 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	route.W = &ResponseWriter { w: w }
 	route.W.Header().Set("server", "NixServer")
 
 	domain := route.Domain
