@@ -169,6 +169,10 @@ func (router *Router) newServer(port int, secure bool, serverPath string, certs 
 	return srv, err
 }
 
+func (srv *Server) Port() int {
+	return srv.port
+}
+
 func (srv *Server) SetHeader(name, value string) *Server {
 	srv.headers.Set(name, value)
 	return srv
