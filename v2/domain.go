@@ -10,6 +10,8 @@ import (
 
 // Domain rapresents a website domain with all its
 // subdomains. It's possible to set:
+//	- a function that will be executed (in case there are no
+//		errors) before every other logic
 //  - global headers, that will be applied in every connection
 //  - an error template, that will be used in case your logic
 //		will throw any error, so you will have a constant look
@@ -29,7 +31,7 @@ type Domain struct {
 //  - default headers, that will be applied in every connection
 //  - an error template, that will be used in case your logic
 //		will throw any error, so you will have a constant look
-//	- the subdomain to be offline, can be reverted
+//	- the subdomain offline state
 //	- an initializer function, called when the server is starting up
 //	- a cleanup function, called when the server is shutting down
 type Subdomain struct {
@@ -43,8 +45,11 @@ type Subdomain struct {
 	offline     bool
 }
 
-// SubdomainConfig is used to create a Subdomain. The Website and ServeF
-// fields must not be nil, instead InitF and CloseF are optional
+// SubdomainConfig is used to create a Subdomain. The Website should not be
+// an empty struct and if ServeF is not set the server will serve every content
+// inside the Website.Dir folder (see Route.StaticServe(true) for the logic and
+// Domain.RegisterSubdomain for the folder behaviour), however InitF and CloseF
+// are optional
 type SubdomainConfig struct {
 	Website Website
 	ServeF  ServeFunction
@@ -154,17 +159,15 @@ func (d *Domain) DefaultSubdomain() *Subdomain {
 }
 
 // SetHeader adds a header to the collection of headers used in every connection
-func (d *Domain) SetHeader(name, value string) *Domain {
+func (d *Domain) SetHeader(name, value string) {
 	d.headers.Set(name, value)
-	return d
 }
 
 // SetBeforeServeF sets a function that will be executed before every connection.
 // If this function returns true, the serve function of the subdomain will not be
 // executed
-func (d *Domain) SetBeforeServeF(f BeforeServeFunction) *Domain {
+func (d *Domain) SetBeforeServeF(f BeforeServeFunction) {
 	d.beforeServeF = f
-	return d
 }
 
 // SetHeaders adds headers to the collection of headers used in every connection.
@@ -175,58 +178,57 @@ func (d *Domain) SetBeforeServeF(f BeforeServeFunction) *Domain {
 //			{ "name2", "value2" },
 //		}
 //		d.SetHeaders(headers)
-func (d *Domain) SetHeaders(headers [][2]string) *Domain {
+func (d *Domain) SetHeaders(headers [][2]string) {
 	for _, header := range headers {
 		d.SetHeader(header[0], header[1])
 	}
-	return d
 }
 
 // RemoveHeader removes a header with the given name
-func (d *Domain) RemoveHeader(name string) *Domain {
+func (d *Domain) RemoveHeader(name string) {
 	d.headers.Del(name)
-	return d
 }
 
-// Header returns the default headers
-func (d *Domain) Header() http.Header {
+// Headers returns the default headers of the domain
+func (d *Domain) Headers() http.Header {
 	return d.headers
 }
 
-// EnableSubdomain enables a subdomain
-func (d *Domain) EnableSubdomain(name string) *Domain {
+// EnableSubdomain sets a subdomain to online state
+func (d *Domain) EnableSubdomain(name string) {
 	name = prepSubdomainName(name)
 
 	sd := d.subdomains[name]
 	if sd != nil {
 		sd.Enable()
 	}
-
-	return d
 }
 
-// DisableSubdomain disables a subdomain
-func (d *Domain) DisableSubdomain(name string) *Domain {
+// DisableSubdomain sets a subdomain to offline state
+func (d *Domain) DisableSubdomain(name string) {
 	name = prepSubdomainName(name)
 
 	sd := d.subdomains[name]
 	if sd != nil {
 		sd.Disable()
 	}
-
-	return d
 }
 
-// RemoveSubdomain unregisters a subdomain
-func (d *Domain) RemoveSubdomain(name string) *Domain {
-	delete(d.subdomains, prepSubdomainName(name))
-	return d
+// RemoveSubdomain unregisters a subdomain, calling the CloseF function first
+func (d *Domain) RemoveSubdomain(name string) {
+	name = prepSubdomainName(name)
+	sd := d.subdomains[name]
+	if sd == nil {
+		return
+	}
+
+	sd.closeF(d.srv, d, sd, sd.website)
+	delete(d.subdomains, name)
 }
 
 // SetHeader adds a header to the collection of headers used in every connection
-func (sd *Subdomain) SetHeader(name, value string) *Subdomain {
+func (sd *Subdomain) SetHeader(name, value string) {
 	sd.headers.Set(name, value)
-	return sd
 }
 
 // SetHeaders adds headers to the collection of headers used in every connection.
@@ -237,17 +239,15 @@ func (sd *Subdomain) SetHeader(name, value string) *Subdomain {
 //			{ "name2", "value2" },
 //		}
 //		d.SetHeaders(headers)
-func (sd *Subdomain) SetHeaders(headers [][2]string) *Subdomain {
+func (sd *Subdomain) SetHeaders(headers [][2]string) {
 	for _, header := range headers {
 		sd.SetHeader(header[0], header[1])
 	}
-	return sd
 }
 
 // RemoveHeader removes a header with the given name
-func (sd *Subdomain) RemoveHeader(name string) *Subdomain {
+func (sd *Subdomain) RemoveHeader(name string) {
 	sd.headers.Del(name)
-	return sd
 }
 
 // Header returns the default headers
@@ -255,16 +255,14 @@ func (sd *Subdomain) Header() http.Header {
 	return sd.headers
 }
 
-// Enable sets the subdomain to be online and working
-func (sd *Subdomain) Enable() *Subdomain {
+// Enable sets the subdomain to online state
+func (sd *Subdomain) Enable() {
 	sd.offline = false
-	return sd
 }
 
-// Disable sets the subdomain to be offline
-func (sd *Subdomain) Disable() *Subdomain {
+// Disable sets the subdomain to offline state
+func (sd *Subdomain) Disable() {
 	sd.offline = true
-	return sd
 }
 
 // SetErrorTemplate sets the error template used server-wise. It's
