@@ -10,15 +10,65 @@ import (
 	"time"
 )
 
+// Website, in combination with a ServeFunction and (optionally)
+// a pair of InitCloseFunction, is used in a subdomain to serve
+// content with its logic.
 type Website struct {
+	// Name is used in the log informations
 	Name string
+	// Dir is the root folder of the Website. If it's not set
+	// while creating the Website, this is set to the server path
+	// of the domain in which is registered, otherwise if it's a
+	// relative path, it's considered relative to the server path.
+	// This is also used by the function Route.ServeStatic to
+	// automatically serve any content (see AllFolders attribute)
 	Dir string
+	// MainPages sets which are the pages that we want to keep track
+	// of the statistics. For now the logic is not there yet, so this
+	// field is not used
 	MainPages []string
+	// NoLogPages sets which are the requestURIs that we do not want to
+	// register logs about
 	NoLogPages []string
+	// AllFolders specify which folders can be used by the route.ServeStatic
+	// to automatically serve content. The selection is recursive. If you want
+	// to serve any content in the Website.Dir is possible to fill this field
+	// with just an empty string
 	AllFolders []string
+	// HiddenFolders its the opposite of AllFolders, but has a higher priority:
+	// it specify which folders must not be used by the route.ServeStatic
+	// to automatically serve content, even if a AllFolder entry could match
 	HiddenFolders []string
+	// PageHeaders is used to set automatic http headers to the corresponding
+	// requestURI. This can be set like so:
+	/*
+		var w Website
+		w.PageHeader = map[string][][2]string {
+			"/": {
+				{"Header name", "Header value"},
+				{"Header name 1", "Header value 1"},
+			},
+			"/address": {{"Header name 2", "Header value 2"}},
+		}
+	*/
 	PageHeaders map[string][][2]string
+	// EnableCSSX, if true, tells the function Route.StaticServe if it should
+	// first find a matching cssx file when a css is queried.
+	// A .cssx file is a simple text file containing a list of existing .css
+	// files in the same directory, so the Route will serve all this .css files
+	// listed in the exact order like they were a single file.
+	// For example: we could have 3 real .css files in the /assets folder that are:
+	//  - style.css: containing the styles applied across the website (colour, fonts, ecc)
+	//  - index.css: used to style components used only in the index.html file
+	//  - login.css: used to style components used only in the login.html file
+	// So we can make two .cssx file, one for the index page and one for the login one:
+	//  - index.cssx: "style.css \n index.css \n EOF" (this is the rapresentation of the file)
+	//  - login.cssx: "style.css \n login.css \n EOF" (this is the rapresentation of the file)
+	// When the html calls for a /assets/index.css or /assets/login.css, it will not receive
+	// just the single file, but the combination of style.css and the other one (respectively)
 	EnableCSSX bool
+	// AvoidMetricsAndLogging disables any type of log for every connection and error regarding
+	// this website (if not explicitly done by the logic calling Route.Log)
 	AvoidMetricsAndLogging bool
 }
 

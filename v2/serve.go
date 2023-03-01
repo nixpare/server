@@ -64,13 +64,6 @@ func (route *Route) ServeFile(path string) {
 		route.Error(http.StatusBadRequest, "Bad request URL", "URL contains ..")
 		return
 	}
-
-	for _, hidden := range route.Website.HiddenFolders {
-		if strings.HasPrefix(route.RequestURI, hidden) {
-			route.Error(http.StatusNotFound, "Not found", "Not serving potential file inside hidden directory", hidden)
-			return
-		}
-	}
 	
 	fileInfo, err := os.Stat(path)
 	if err == nil {
@@ -121,7 +114,14 @@ func (route *Route) StaticServe(serveHTML bool) {
 		return
 	}
 
-	if route.RequestURI == "/" {
+	for _, s := range route.Website.HiddenFolders {
+		if s == "" || strings.HasPrefix(route.RequestURI, s) {
+			route.Error(http.StatusNotFound, "Not Found")
+			return
+		}
+	}
+
+	if route.RequestURI == "/" && serveHTML {
 		route.ServeFile(route.Website.Dir + "/index.html")
 		return
 	}
@@ -131,13 +131,8 @@ func (route *Route) StaticServe(serveHTML bool) {
 		return
 	}
 
-	if strings.Count(route.RequestURI, "/") == 1 {
-		route.ServeFile(route.Website.Dir + route.RequestURI)
-		return
-	}
-
 	for _, s := range route.Website.AllFolders {
-		if strings.HasPrefix(route.RequestURI, s) {
+		if s == "" || strings.HasPrefix(route.RequestURI, s) {
 			if strings.HasSuffix(route.RequestURI, ".css") && route.Website.EnableCSSX {
 				route.serveCSSX()
 				return
@@ -154,7 +149,7 @@ func (route *Route) StaticServe(serveHTML bool) {
 func (route *Route) serveCSSX() {
 	info, err := os.Stat(route.Website.Dir + route.RequestURI + "x")
 	if err != nil {
-		route.Error(http.StatusNotFound, "Not Found")
+		route.ServeFile(route.Website.Dir + route.RequestURI)
 		return
 	}
 
