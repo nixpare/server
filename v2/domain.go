@@ -149,8 +149,8 @@ func (d *Domain) RegisterDefaultSubdomain(c SubdomainConfig) *Subdomain {
 }
 
 // Subdomain returns the subdomain with the given name, if found
-func (d *Domain) Subdomain(subdomain string) *Subdomain {
-	return d.subdomains[subdomain]
+func (d *Domain) Subdomain(name string) *Subdomain {
+	return d.subdomains[prepSubdomainName(name)]
 }
 
 // Subdomain returns the default subdomain, if set
@@ -196,9 +196,7 @@ func (d *Domain) Headers() http.Header {
 
 // EnableSubdomain sets a subdomain to online state
 func (d *Domain) EnableSubdomain(name string) {
-	name = prepSubdomainName(name)
-
-	sd := d.subdomains[name]
+	sd := d.Subdomain(name)
 	if sd != nil {
 		sd.Enable()
 	}
@@ -206,9 +204,7 @@ func (d *Domain) EnableSubdomain(name string) {
 
 // DisableSubdomain sets a subdomain to offline state
 func (d *Domain) DisableSubdomain(name string) {
-	name = prepSubdomainName(name)
-
-	sd := d.subdomains[name]
+	sd := d.Subdomain(name)
 	if sd != nil {
 		sd.Disable()
 	}
@@ -216,8 +212,7 @@ func (d *Domain) DisableSubdomain(name string) {
 
 // RemoveSubdomain unregisters a subdomain, calling the CloseF function first
 func (d *Domain) RemoveSubdomain(name string) {
-	name = prepSubdomainName(name)
-	sd := d.subdomains[name]
+	sd := d.Subdomain(name)
 	if sd == nil {
 		return
 	}
