@@ -10,7 +10,6 @@ import (
 type TaskManager struct {
 	Router    		*Router
 	running   		bool
-	backgroundMutex *Mutex
 	programs  		map[string]*program
 	tasks     		map[string]*Task
 	ticker10s  		*time.Ticker
@@ -22,7 +21,7 @@ type TaskManager struct {
 
 func (router *Router) newTaskManager() {
 	router.TaskMgr = &TaskManager {
-		Router: router, backgroundMutex: NewMutex(),
+		Router: router,
 		programs: make(map[string]*program), tasks: make(map[string]*Task),
 		ticker10s: time.NewTicker(time.Second * 10), ticker1m: time.NewTicker(time.Minute),
 		ticker10m: time.NewTicker(time.Minute * 10), ticker30m: time.NewTicker(time.Minute * 30),

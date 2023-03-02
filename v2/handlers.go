@@ -5,7 +5,6 @@ import (
 	"html/template"
 	"net"
 	"net/http"
-	"runtime/debug"
 	"strings"
 	"time"
 )
@@ -72,19 +71,58 @@ type Website struct {
 	AvoidMetricsAndLogging bool
 }
 
+// ServeFunction defines the type of the function that is executed every time a connection is
+// directed to the relative website / subdomain. It just takes the Route as a parameter, but it
+// can be used for everything, like the method, a parsed request uri, a map with all the queries
+// (removed from the request uri so the latter is a clean relative path) and even the
+// http.ResponseWriter and *http.Request in order to use the standard http package functions.
+// However Route provide a lot of prebuild functions for comodity, all base on the http standard
+// package
 type ServeFunction func(route *Route)
+// BeforeServeFunction defines the type of the function executed whenever a connection is received
+// in the domain, even before any error handling (like domain and subdomain check), so every field
+// inside Route is ready. The function returns a boolean, which will tell if the connection was
+// handled by it and so the serve function must not be called.
+// One use case for this function is in this setup: imagine having two server, one http on port 80
+// and one https on port 443, and you want to redirect every connection that is not internal from
+// http to https (see Router.SetInternalConnFilter function)
+/*	
+	insecureServer := route.Server(80)
+	insecureDomain := insecureServer.Domain("mydomain.com")
+
+	insecureDomain.SetBeforeServeF(func(route *server.Route) bool {
+		if route.IsInternalConn() {
+			return false 		// this is an internal connection, so it must continue inside the http server
+		}
+
+		dest := "https://" + route.R.Host + route.R.RequestURI
+		
+		route.AvoidLogging = true
+		http.Redirect(route.W, route.R, dest, http.StatusPermanentRedirect)
+
+		return true 			// the external connection already received a redirect, so nothing else should happen
+	})
+*/
 type BeforeServeFunction func(route *Route) bool
+// InitCloseFunction defines the type of the function executed when a new subdomain is created or removed, most
+// of the times when the relative server is started or stopped. Bare in mind that if you use the same function on
+// multiple subdomain, maybe belonging to different servers, you could have to manually check that this function is done
+// only once
 type InitCloseFunction func(srv *Server, domain *Domain, subdomain *Subdomain, website *Website)
 
+// ResponseWriter is just a wrapper for the standard http.ResponseWriter interface, the only difference is that
+// it keeps track of the bytes written and the status code, so that can be logged
 type ResponseWriter struct {
 	w http.ResponseWriter
 	hasWrote bool
 	code int
 	written int64
 }
+// See http.ResponseWriter
 func (w *ResponseWriter) Header() http.Header {
 	return w.w.Header()
 }
+// See http.ResponseWriter
 func (w *ResponseWriter) Write(data []byte) (int, error) {
 	n, err := w.w.Write(data)
 	w.written += int64(n)
@@ -94,6 +132,7 @@ func (w *ResponseWriter) Write(data []byte) (int, error) {
 
 	return n, err
 }
+// See http.ResponseWriter
 func (w *ResponseWriter) WriteHeader(statusCode int) {
 	if w.code != 0 {
 		return
@@ -103,6 +142,8 @@ func (w *ResponseWriter) WriteHeader(statusCode int) {
 	w.w.WriteHeader(statusCode)
 }
 
+// metrics is a collection of parameters to log taken from an http
+// connection
 type metrics struct {
 	Code int
 	Duration time.Duration
@@ -134,15 +175,23 @@ type Route struct {
 	errTemplate *template.Template
 }
 
+// handler is the http handler for the server. At creation it's set wheather
+// it is serving a secure connection or not, and then at connection time is
+// the responsible for creating the Route that will handle the connection
 type handler struct {
 	secure bool
 	srv *Server
 }
 
-func (srv *Server) handler(isSecure bool) http.Handler {
-	return handler { isSecure, srv }
+// setHandler sets the http.Handler to the http.Server
+func (srv *Server) setHandler() {
+	srv.Server.Handler = handler { srv.Secure, srv }
 }
 
+// ServeHTTP is the first function called by the http.Server at any connection
+// received. It is responsible for the preparation of Route and for the logging
+// after the connection was handled. It even captures any possible panic that
+// will be thrown by the user code and logged with the stack trace to debug
 func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	route := &Route {
 		Srv: h.srv,
@@ -161,7 +210,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if p := recover(); p != nil {
 			route.Log(LOG_LEVEL_FATAL, fmt.Sprintf("Captured panic: %v", p), fmt.Sprintf(
 				"Route: %v\nRequest: %v\nWebsite: %v\nStack trace:\n%v",
-				route, r, route.Website, string(debug.Stack()),
+				route, r, route.Website, Stack(),
 			))
 		}
 	}()
@@ -173,8 +222,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	route.prep()
-
-	route.ServeHTTP(w, r)
+	route.serve()
 
 	if route.Website.AvoidMetricsAndLogging {
 		return
@@ -196,7 +244,12 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+// serve is the function called by the handler after Route
+// is prepared. It will first set every possible default header
+// of the domain and/or subdomain, then it will execute the before
+// each function, then will handle the errors and finally the serve
+// function of the subdomain
+func (route *Route) serve() {
 	route.W.Header().Set("server", "NixServer")
 	defer func() {
 		if route.W.code >= 400 {
@@ -288,6 +341,7 @@ func (route *Route) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	route.Subdomain.serveF(route)
 }
 
+// getMetrics returns a view of the Route captured connection metrics
 func (route *Route) getMetrics() metrics {
 	return metrics {
 		Code: route.W.code,
@@ -296,6 +350,9 @@ func (route *Route) getMetrics() metrics {
 	}
 }
 
+// avoidNoLogPages check if the requestURI matches any of the
+// NoLogPages set by the website and tells Route to not log
+// if a match is found
 func (route *Route) avoidNoLogPages() {
 	for _, nlp := range route.Website.NoLogPages {
 		if strings.HasPrefix(route.RequestURI, nlp) {

@@ -48,7 +48,7 @@ func NewRouter(logFile *os.File, serverPath string) (router *Router, err error) 
 	router.newTaskManager()
 
 	router.startTime = time.Now()
-	router.plainPrintf(WriteLogStart(router.startTime))
+	router.plainPrintf(writeLogStart(router.startTime))
 
 	return
 }
@@ -97,7 +97,7 @@ func (router *Router) Stop() () {
 	}
 
 	os.Remove(router.ServerPath + "/PID.txt")
-	router.plainPrintf(WriteLogClosure(time.Now()))
+	router.plainPrintf(writeLogClosure(time.Now()))
 	return
 }
 

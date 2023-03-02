@@ -250,15 +250,15 @@ func (tm *TaskManager) startTask(t *Task) {
 		return
 	}
 
-	if err.err != nil {
-		tm.Router.Log(LOG_LEVEL_ERROR, fmt.Sprintf("Task \"%s\" startup error: %v", t.name, err.err))
+	if err.Err != nil {
+		tm.Router.Log(LOG_LEVEL_ERROR, fmt.Sprintf("Task \"%s\" startup error: %v", t.name, err.Err))
 		return
 	}
-	if err.panicErr != nil {
+	if err.PanicErr != nil {
 		tm.Router.Log(
 			LOG_LEVEL_FATAL,
-			fmt.Sprintf("Task \"%s\" startup panic: %v", t.name, err.panicErr),
-			err.stack,
+			fmt.Sprintf("Task \"%s\" startup panic: %v", t.name, err.PanicErr),
+			err.Stack,
 		)
 		return
 	}
@@ -304,15 +304,15 @@ func (tm *TaskManager) execTask(t *Task) error {
 
 		t.timer = TASK_TIMER_INACTIVE
 		
-		if err.err != nil {
-			tm.Router.Log(LOG_LEVEL_WARNING, fmt.Sprintf("Task \"%s\" exec error: %v", t.name, err.err))
+		if err.Err != nil {
+			tm.Router.Log(LOG_LEVEL_WARNING, fmt.Sprintf("Task \"%s\" exec error: %v", t.name, err.Err))
 			return
 		}
-		if err.panicErr != nil {
+		if err.PanicErr != nil {
 			tm.Router.Log(
 				LOG_LEVEL_FATAL,
-				fmt.Sprintf("Task \"%s\" exec panic: %v", t.name, err.panicErr),
-				err.stack,
+				fmt.Sprintf("Task \"%s\" exec panic: %v", t.name, err.PanicErr),
+				err.Stack,
 			)
 			return
 		}
@@ -352,15 +352,15 @@ func (tm *TaskManager) stopTask(t *Task) {
 		return
 	}
 
-	if err.err != nil {
-		tm.Router.Log(LOG_LEVEL_ERROR, fmt.Sprintf("Task \"%s\" cleanup error: %v", t.name, err.err))
+	if err.Err != nil {
+		tm.Router.Log(LOG_LEVEL_ERROR, fmt.Sprintf("Task \"%s\" cleanup error: %v", t.name, err.Err))
 		return
 	}
-	if err.panicErr != nil {
+	if err.PanicErr != nil {
 		tm.Router.Log(
 			LOG_LEVEL_FATAL,
-			fmt.Sprintf("Task \"%s\" cleanup panic: %v", t.name, err.panicErr),
-			err.stack,
+			fmt.Sprintf("Task \"%s\" cleanup panic: %v", t.name, err.PanicErr),
+			err.Stack,
 		)
 		return
 	}

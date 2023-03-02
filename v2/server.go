@@ -85,7 +85,7 @@ func (router *Router) newServer(port int, secure bool, serverPath string, certs 
 	srv.stopChannel = make(chan struct{}, 1)
 
 	srv.Server.Addr = fmt.Sprintf(":%d", port)
-	srv.Server.Handler = srv.handler(secure)
+	srv.setHandler()
 
 	//Setting up Redirect Server parameters
 	if secure {

@@ -10,45 +10,55 @@ import (
 	"time"
 )
 
-const (
-	timeFormat = "2006-01-02 15:04:05.00"
+var (
+	// TimeFormat defines which timestamp to use with the logs. It can be modified.
+	TimeFormat = "2006-01-02 15:04:05.00"
 )
 
-func WriteLogStart(t time.Time) string {
+func writeLogStart(t time.Time) string {
 	return "\n     /\\ /\\ /\\                                              /\\ /\\ /\\" +
-		   "\n     <> <> <> - [" + t.Format(timeFormat) + "] - SERVER ONLINE - <> <> <>" +
+		   "\n     <> <> <> - [" + t.Format(TimeFormat) + "] - ROUTER ONLINE - <> <> <>" +
 		   "\n     \\/ \\/ \\/                                              \\/ \\/ \\/\n\n"
 }
 
-func WriteLogClosure(t time.Time) string {
+func writeLogClosure(t time.Time) string {
 	return "\n     /\\ /\\ /\\                                               /\\ /\\ /\\" +
-		   "\n     <> <> <> - [" + t.Format(timeFormat) + "] - SERVER OFFLINE - <> <> <>" +
+		   "\n     <> <> <> - [" + t.Format(TimeFormat) + "] - ROUTER OFFLINE - <> <> <>" +
 		   "\n     \\/ \\/ \\/                                               \\/ \\/ \\/\n\n"
 }
 
-func (router *Router) ClearLogs() {
+// ClearLogs clears the log output file by closing, truncating and reopening it. After reopening
+// it, the router will write back the welcome message with the original router start timestamp and
+// an info about when the logs are cleared
+func (router *Router) ClearLogs() error {
 	oldFile := router.logFile
-	oldFile.Close()
+	if err := oldFile.Close(); err != nil {
+		router.Logf(LOG_LEVEL_ERROR, "Can't clear logs: %v", err)
+		return err
+	}
 
 	router.logFile, _ = os.OpenFile(oldFile.Name(), os.O_TRUNC | os.O_CREATE | os.O_WRONLY | os.O_SYNC, 0777)
 
-	router.plainPrintf(WriteLogStart(router.startTime))
+	router.plainPrintf(writeLogStart(router.startTime))
 	router.plainPrintf("     -- -- --   Logs cleared at [%s]   -- -- --\n\n", time.Now().Format("02/Jan/2006:15:04:05"))
+	return nil
 }
 
+// remoteAddress + Method + requestURI + Secure/Unsecure + Code + Written + Duration + Website Name + Domain Name + HostAddr (+ LogError)
 const (
-	httpInfoFormat    = "%-16s - %-4s %-50s %s %d %10.3f MB - (%6d ms) \u279C %s (%s) via %s"
-	httpWarningFormat = "%-16s - %-4s %-50s %s %d %10.3f MB - (%6d ms) \u279C %s (%s) via %s \u279C %s"
-	httpErrorFormat   = "%-16s - %-4s %-50s %s %d %10.3f MB - (%6d ms) \u279C %s (%s) via %s \u279C %s"
+	httpInfoFormat    = "%-15s - %-4s %-50s %s %d %10.3f MB - (%6d ms) \u279C %s (%s) via %s"
+	httpWarningFormat = "%-15s - %-4s %-50s %s %d %10.3f MB - (%6d ms) \u279C %s (%s) via %s \u279C %s"
+	httpErrorFormat   = "%-15s - %-4s %-50s %s %d %10.3f MB - (%6d ms) \u279C %s (%s) via %s \u279C %s"
 )
 
+// logHTTPInfo logs http request with an exit code < 400
 func (route *Route) logHTTPInfo(m metrics) {
 	lock := "\U0000274C"
 	if route.Secure {
 		lock = "\U0001F512"
 	}
 
-	route.Log(LOG_LEVEL_INFO, fmt.Sprintf(httpInfoFormat,
+	route.Logf(LOG_LEVEL_INFO, httpInfoFormat,
 		route.RemoteAddress,
 		route.R.Method,
 		route.logRequestURI,
@@ -59,16 +69,17 @@ func (route *Route) logHTTPInfo(m metrics) {
 		route.Website.Name,
 		route.Domain.Name,
 		route.Host,
-	))
+	)
 }
 
+// logHTTPWarning logs http request with an exit code >= 400 and < 500
 func (route *Route) logHTTPWarning(m metrics) {
 	lock := "\U0000274C"
 	if route.Secure {
 		lock = "\U0001F512"
 	}
 
-	route.Log(LOG_LEVEL_WARNING, fmt.Sprintf(httpWarningFormat,
+	route.Log(LOG_LEVEL_WARNING, httpWarningFormat,
 		route.RemoteAddress,
 		route.R.Method,
 		route.logRequestURI,
@@ -80,16 +91,17 @@ func (route *Route) logHTTPWarning(m metrics) {
 		route.Domain.Name,
 		route.Host,
 		route.logErrMessage,
-	))
+	)
 }
 
+// logHTTPError logs http request with an exit code >= 500
 func (route *Route) logHTTPError(m metrics) {
 	lock := "\U0000274C"
 	if route.Secure {
 		lock = "\U0001F512"
 	}
 
-	route.Log(LOG_LEVEL_ERROR, fmt.Sprintf(httpErrorFormat,
+	route.Log(LOG_LEVEL_ERROR, httpErrorFormat,
 		route.RemoteAddress,
 		route.R.Method,
 		route.logRequestURI,
@@ -101,11 +113,20 @@ func (route *Route) logHTTPError(m metrics) {
 		route.Domain.Name,
 		route.Host,
 		route.logErrMessage,
-	))
+	)
 }
 
+// serveError serves the error in a predefines error template (if set) and only
+// if no other information was alredy sent to the ResponseWriter. If there is no
+// error template or if the connection method is different from GET or HEAD, the
+// error message is sent as a plain text
 func (route *Route) serveError() {
-	if route.W.hasWrote || route.errTemplate == nil {
+	if route.W.hasWrote {
+		return
+	}
+
+	if route.errTemplate == nil {
+		route.ServeText(route.errMessage)
 		return
 	}
 
@@ -129,12 +150,6 @@ func (route *Route) serveError() {
 	}
 
 	route.ServeText(route.errMessage)
-}
-
-type panicError struct {
-	err 	 error
-	panicErr error
-	stack 	 string
 }
 
 // LogLevel defines the severity of a Log. See the constants
@@ -200,11 +215,13 @@ func (l Log) JSON() []byte {
 func (l Log) String() string {
 	return fmt.Sprintf(
 		"[%v] - %v: %s",
-		l.Date.Format(timeFormat),
+		l.Date.Format(TimeFormat),
 		l.Level, l.Message,
 	)
 }
 
+// Full is like String(), but appends all the extra informations
+// associated with the log instance
 func (l Log) Full() string {
 	if l.Extra == "" {
 		return l.String()
@@ -212,7 +229,7 @@ func (l Log) Full() string {
 
 	return fmt.Sprintf(
 		"[%v] - %v: %s -> %s",
-		l.Date.Format(timeFormat),
+		l.Date.Format(TimeFormat),
 		l.Level, l.Message,
 		l.Extra,
 	)
@@ -257,7 +274,6 @@ func (router *Router) JSON() []byte {
 	return res
 }
 
-// Router
 func (router *Router) Log(level LogLevel, message string, extra ...any) {
 	t := time.Now()
 	
@@ -282,6 +298,10 @@ func (router *Router) Log(level LogLevel, message string, extra ...any) {
 	}
 }
 
+func (router *Router) Logf(level LogLevel, format string, a ...any) {
+	router.Log(level, fmt.Sprintf(format, a...))
+}
+
 func (router *Router) Print(a ...any) {
 	var v []string
 	for _, el := range a {
@@ -299,10 +319,12 @@ func (router *Router) plainPrintf(format string, a ...any) {
 	fmt.Fprintf(router.logFile, format, a...)
 }
 
-// Server
-
 func (srv *Server) Log(level LogLevel, message string, a ...any) {
 	srv.Router.Log(level, message, a...)
+}
+
+func (srv *Server) Logf(level LogLevel, format string, a ...any) {
+	srv.Router.Logf(level, format, a...)
 }
 
 func (srv *Server) Print(a ...any) {
@@ -313,10 +335,12 @@ func (srv *Server) Printf(format string, a ...any) {
 	srv.Router.Printf(format, a...)
 }
 
-// Route
-
 func (route *Route) Log(level LogLevel, message string, a ...any) {
 	route.Srv.Log(level, message, a...)
+}
+
+func (route *Route) Logf(level LogLevel, format string, a ...any) {
+	route.Srv.Logf(level, format, a...)
 }
 
 func (route *Route) Print(a ...any) {
