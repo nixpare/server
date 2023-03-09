@@ -11,6 +11,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"path"
 	"strings"
 	"time"
 )
@@ -40,51 +41,51 @@ func (route *Route) Error(statusCode int, message string, a ...any) {
 	}
 }
 
-func (route *Route) ServeRootedFile(path string) {
-	route.ServeFile(route.Website.Dir + path)
+func (route *Route) ServeRootedFile(filePath string) {
+	route.ServeFile(route.Website.Dir + filePath)
 }
 
-func (route *Route) ServeFile(path string) {
-	if !isAbs(path) {
+func (route *Route) ServeFile(filePath string) {
+	if !path.IsAbs(filePath) {
 		if route.Website.Dir != "" {
-			path = route.Website.Dir + "/" + path
+			filePath = route.Website.Dir + "/" + filePath
 		} else {
-			path = route.Srv.ServerPath + "/" + path
+			filePath = route.Srv.ServerPath + "/" + filePath
 		}
 	}
 
-	if strings.HasPrefix(path, "~") {
+	if strings.HasPrefix(filePath, "~") {
 		home, err := os.UserHomeDir()
 		if err == nil {
-			path = strings.Replace(path, "~", home, 1)
+			filePath = strings.Replace(filePath, "~", home, 1)
 		}
 	}
 
-	if strings.Contains(path, "..") {
+	if strings.Contains(filePath, "..") {
 		route.Error(http.StatusBadRequest, "Bad request URL", "URL contains ..")
 		return
 	}
 	
-	fileInfo, err := os.Stat(path)
+	fileInfo, err := os.Stat(filePath)
 	if err == nil {
 		if fileInfo.IsDir() {
-			route.Error(http.StatusNotFound, "Not found", "Cannot serve directory", path)
+			route.Error(http.StatusNotFound, "Not found", "Cannot serve directory", filePath)
 			return
 		}
 	
-		http.ServeFile(route.W, route.R, path)
+		http.ServeFile(route.W, route.R, filePath)
 		return
 	}
 
-	fileInfo, err = os.Stat(path + ".html")
+	fileInfo, err = os.Stat(filePath + ".html")
 	if err != nil {
 		route.Error(http.StatusNotFound, "Not found")
 		return
 	}
 
-	f, err := os.Open(path + ".html")
+	f, err := os.Open(filePath + ".html")
 	if err != nil {
-		route.Error(http.StatusInternalServerError, "Error retreiving page", fmt.Sprintf("Error opening file %s: %v", path + ".html", err))
+		route.Error(http.StatusInternalServerError, "Error retreiving page", fmt.Sprintf("Error opening file %s: %v", filePath + ".html", err))
 		return
 	}
 	defer f.Close()

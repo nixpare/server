@@ -3,63 +3,16 @@ package server
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"errors"
 	"fmt"
-	"io"
-	"os/exec"
-	"regexp"
+	"math/big"
 	"runtime/debug"
 	"strings"
 )
 
-type Process struct {
-	cmd exec.Cmd
-	exicC chan struct{}
-	stdin io.WriteCloser
-	exitErr error
-}
-
-func NewProcess(name string, args ...string) *Process {
-	return &Process {
-		cmd: *exec.Command(name, args...),
-		exicC: make(chan struct{}),
-	}
-}
-
-func (p *Process) Start() (err error) {
-	p.stdin, err = p.cmd.StdinPipe()
-	if err != nil {
-		return
-	}
-
-	err = p.cmd.Start()
-	if err != nil {
-		return
-	}
-
-	go func() {
-		p.exitErr = p.cmd.Wait()
-		p.exicC <- struct{}{}
-	}()
-
-	return
-}
-
-func (p *Process) Stop() (int, error) {
-	_, err := p.stdin.Write([]byte("\x03"))
-	if err != nil {
-		return -1, err
-	}
-
-	<- p.exicC
-	return p.cmd.ProcessState.ExitCode(), p.exitErr
-}
-
-func (p *Process) Kill() (int, error) {
-	p.cmd.Process.Kill()
-	<- p.exicC
-	return p.cmd.ProcessState.ExitCode(), p.exitErr
-}
-
+// ParseCommandArgs gets a list of strings and parses their content
+// splitting them into separated strings. The characters used to parse
+// the commands are, in the relevant order, <'>, <"> and < >
 func ParseCommandArgs(args ...string) []string {
 	a := make([]string, 0)
 	for _, s := range args {
@@ -87,43 +40,60 @@ func ParseCommandArgs(args ...string) []string {
 	return a
 }
 
-func RandStr(strSize int, randType string) string {
+type CharSet int
 
+const (
+	NUM CharSet = iota 	// Digits from 0 to 9
+	ALPHA 				// Latin letters from A to z (Uppercase and Lowercase)
+	ALPHA_LOW 			// Latin letters from a to z (Lowercase)
+	ALPHA_NUM 			// Combination of NUM and ALPHA
+	ALPHA_LOW_NUM 		// Combination of NUM and ALPHA_LOW
+	ALPHA_NUM_SPECIAL 	// Combines ALPHA_LOW with this special character: !?+*-_=.&%$€#@
+)
+
+const (
+	num = "0123456789"
+	alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	alpha_low = "abcdefghijklmnopqrstuvwxyz"
+	special = "!?+*-_=.&%$€#@"
+)
+
+// RandStr generates a random string with the given length. The string can be
+// made of differente sets of characters: see CharSet type
+func RandStr(length int, randType CharSet) string {
 	var dictionary string
-
+	
 	switch randType {
-	case "alphanum":
-		dictionary = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-	case "alpha":
-		dictionary = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-	case "alphalow":
-		dictionary = "abcdefghijklmnopqrstuvwxyz"
-	case "num":
-		dictionary = "0123456789"
+	case NUM:
+		dictionary = num
+	case ALPHA:
+		dictionary = alpha + alpha_low
+	case ALPHA_LOW:
+		dictionary = alpha_low
+	case ALPHA_NUM:
+		dictionary = num + alpha + alpha_low
+	case ALPHA_LOW_NUM:
+		dictionary = num + alpha_low
+	case ALPHA_NUM_SPECIAL:
+		dictionary = num + alpha + alpha_low + special
 	default:
 		return ""
 	}
 
-	var strBytes = make([]byte, strSize)
-	_, _ = rand.Read(strBytes)
-	for k, v := range strBytes {
-		strBytes[k] = dictionary[v%byte(len(dictionary))]
+	res := make([]byte, length)
+	for i := 0; i < length; i++ {
+		r, err := rand.Int(rand.Reader, big.NewInt(int64(len(dictionary))))
+		if err != nil {
+			panic(err)
+		}
+
+		if !r.IsInt64() {
+			panic(errors.New("random number generated cannot be used as an int64"))
+		}
+
+		res[i] = dictionary[r.Int64()]
 	}
-	return string(strBytes)
-
-}
-
-func isAbs(path string) bool {
-	if len(path) == 0 {
-		return false
-	}
-
-	matched, err := regexp.MatchString(`([A-Z]+):`, path)
-	if err != nil {
-		return false
-	}
-
-	return matched || path[0] == '/' || path[0] == '~'
+	return string(res)
 }
 
 // ChanIsOpened tells wether the channel is opened or closed
@@ -200,7 +170,11 @@ func GenerateHashString(data []byte) string {
 	return fmt.Sprintf("%x", sha256.Sum256(data))
 }
 
-// Stack prints the execution stack
+// Stack returns the execution stack. This must be called after
+// a panic (during a recovery) because it strips the first lines
+// where are reported also the recovery functions, returning only
+// the panic-reletate stuff. If this is not desired just use the
+// standard [runtime/debug.Stack]
 func Stack() string {
 	var out string
 

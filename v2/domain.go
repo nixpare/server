@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"net/http"
 	"os"
+	"path"
 	"strings"
 )
 
@@ -114,7 +115,7 @@ func (d *Domain) RegisterSubdomain(subdomain string, c SubdomainConfig) *Subdoma
 		c.ServeF = func(route *Route) { route.StaticServe(true) }
 	}
 
-	if !isAbs(c.Website.Dir) {
+	if !path.IsAbs(c.Website.Dir) {
 		if c.Website.Dir == "" {
 			c.Website.Dir = d.srv.ServerPath + "/public"
 		} else {
