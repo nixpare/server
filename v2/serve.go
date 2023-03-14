@@ -28,7 +28,7 @@ func (route *Route) Error(statusCode int, message string, a ...any) {
 
 	route.errMessage = message
 	if message == "" {
-		route.errMessage = "Error"
+		route.errMessage = "Undefined error"
 	}
 
 	route.logErrMessage = route.errMessage
