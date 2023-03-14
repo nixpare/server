@@ -16,6 +16,7 @@ import (
 	"time"
 )
 
+// xFile
 type xFile struct {
 	size int
 	offset int
