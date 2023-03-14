@@ -8,21 +8,27 @@ import (
 	"strings"
 )
 
+type routePrepError int
+
 const (
-	ERR_NO_ERR = iota
-	ERR_BAD_URL
-	ERR_SERVER_OFFLINE
-	ERR_WEBSITE_OFFLINE
-	ERR_DOMAIN_NOT_FOUND
-	ERR_SUBDOMAIN_NOT_FOUND
+	ERR_NO_ERR routePrepError = iota 	// No error was found when preparing the Route
+	ERR_BAD_URL 						// The request URL was not parsable or contained unsafe characters
+	ERR_SERVER_OFFLINE					// The destination server for the request was set to be offline
+	ERR_WEBSITE_OFFLINE 				// The destination website for the request was set to be offline
+	ERR_DOMAIN_NOT_FOUND 				// The domain pointed by the request was not registered on the server
+	ERR_SUBDOMAIN_NOT_FOUND 			// The domain pointed by the request existed but not the subdomain
 )
 
+// prep contains all the logic that prepares all the fields of
+// Route before being handed over to the connection handler
+// function
 func (route *Route) prep() {
 	route.prepRemoteAddress()
 
 	err := route.prepRequestURI()
 	if err != nil {
 		route.err = ERR_BAD_URL
+		route.logRequestURI = route.R.RequestURI
 		return
 	}
 
@@ -30,12 +36,14 @@ func (route *Route) prep() {
 
 	route.DomainName, route.SubdomainName = prepDomainAndSubdomainNames(route.R)
 	if route.IsInternalConn() {
-		route.prepDomainAndSubdomainLocal()
+		prepDomainAndSubdomainLocal(route)
 	}
 	
 	route.err = route.prepDomainAndSubdomain()
 }
 
+// prepRemoteAddress provides the IP address of the connection client
+// without the port
 func (route *Route) prepRemoteAddress() {
 	var err error
 	route.RemoteAddress, _, err = net.SplitHostPort(route.R.RemoteAddr)
@@ -81,6 +89,8 @@ func (route *Route) prepRequestURI() (err error) {
 	return
 }
 
+// prepLogRequestURI preformats a string used for logging containing
+// informations about the request uri and the queries inside
 func (route *Route) prepLogRequestURI() {
 	route.logRequestURI = "\"" + route.RequestURI + "\""
 
@@ -145,6 +155,7 @@ func prepDomainAndSubdomainNames(r *http.Request) (string, string) {
 	}
 }
 
+// prepSubdomainName sanitizes the subdomain name
 func prepSubdomainName(name string) string {
 	if name != "" && name != "*" && !strings.HasSuffix(name, ".") {
 		name += "."
@@ -156,7 +167,7 @@ func prepSubdomainName(name string) string {
 // prepDomainAndSubdomain uses the previously parsed domain and subdomain
 // to find the effective Domain and Subdomain structures and link them to
 // the Route
-func (route *Route) prepDomainAndSubdomain() int {
+func (route *Route) prepDomainAndSubdomain() routePrepError {
 	route.Domain = route.Srv.domains[route.DomainName]
 	if route.Domain == nil {
 		route.Domain = route.Srv.domains[""]
@@ -196,7 +207,7 @@ func (route *Route) prepDomainAndSubdomain() int {
 // via "http://localhost/?domain=mydomain.com&subdomain=mysubdomain").
 // This feature is available for testing: an offline domain/subdomain can still be
 // accessed from the local network
-func (route *Route) prepDomainAndSubdomainLocal() {
+func prepDomainAndSubdomainLocal(route *Route) {
 	host := route.DomainName
 	hostSD := route.SubdomainName
 

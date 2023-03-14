@@ -150,28 +150,67 @@ type metrics struct {
 	Written int64
 }
 
+// Route wraps the incoming HTTP connection and provides simple
+// and commonly use HTTP functions, some coming also from the
+// standard library. It contains the standard [http.ResponseWriter]
+// and *[http.Request] elements used to handle a connection with the
+// standard library, but adds more to integrate with the
+// router -> server -> website structure of this package
 type Route struct {
+	// W wraps the [http.ResponseWriter] returned by the standard
+	// [http.Server], handles multiple W.WriteHeader calls and captures
+	// metrics for the connection (time, bytes written and status code).
+	// Can be used in conjunction with R to use the standard functions
+	// provided by Go, such as [http.ServeContent]
 	W *ResponseWriter
+	// R is the standard [http.Request] without any modification
 	R *http.Request
+	// Srv is a reference to the server this connection went through
 	Srv *Server
+	// Router is a reference to the router this server connection belongs to
 	Router *Router
+	// Secure is set to tell wheather the current connection is using http (false)
+	// or https(true), so you can use one Routing function for secure and unsecure
+	// websites
 	Secure bool
+	// Host contains the address used by the client, so it could be an IP address
+	// or a domain name. This is generated from the R field
 	Host string
+	// Remote address contains the IP address of the client connecting (without ports).
+	// This is generated from the R field
 	RemoteAddress string
+	// Website is a reference to the Website structure provided at startup when registering
+	// the server domains and subdomains
 	Website *Website
+	// DomainName contains the request domain name parsed from the Host
 	DomainName string
+	// SubdomainName contains the request subdomain name parsed from the Host
 	SubdomainName string
+	// Domain is the domain the connection went through
 	Domain *Domain
+	// Subdomain is the subdomain the connection went through inside the domain
 	Subdomain *Subdomain
+	// RequestURI is the http.Request uri sanitized, parsed and separated from the queries
+	// in order to have a clean path
 	RequestURI string
+	// Method tells which http method the connection is using
 	Method string
+	// logRequestURI is a preformatted string that contains the request uri and the queries ready to be logged
 	logRequestURI string
+	// QueryMap contains all the queries retreived from the request uri
 	QueryMap map[string]string
+	// ConnectionTime is the timestamp that refers to the request arrival
 	ConnectionTime time.Time
+	// AvoidLogging is a flag that can be set by the user to tell that this connection should not be logged;
+	// however this only happens when the connection returns a successful status code
 	AvoidLogging bool
-	err int
+	// err contains the route prep errors
+	err routePrepError
+	// errMessage contains the error message to insert into the connection reply
 	errMessage string
+	// logErrMessage contains the error message to be used in the logs
 	logErrMessage string
+	// errTemplate contains the error template: it could be inherited by the server, domain or subdomain
 	errTemplate *template.Template
 }
 
