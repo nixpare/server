@@ -233,7 +233,6 @@ func (route *Route) serveCSSX() {
 	http.ServeContent(route.W, route.R, pathSplit[len(pathSplit)-1], modTime, css)
 }
 
-
 func (route *Route) SetCookie(name string, value interface{}, maxAge int) error {
 	encValue, err := route.Srv.secureCookie.Encode(name, value)
 	if err != nil {
