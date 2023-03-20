@@ -16,14 +16,15 @@ import (
 	"time"
 )
 
-// xFile
-type xFile struct {
-	size int
-	offset int
-	b *bytes.Buffer
-	c chan struct{}
-}
-
+// Error is used to manually report an http error to send to the
+// client. It sets the http status code (so it should not be set
+// before) and if the connection is done via a GET request, it will
+// try to serve the html error template with the status code and
+// error message in it, otherwise if the error template does not exist
+// or the request is done via another method (like POST), the error
+// message will be sent as a plain text.
+// The last optional list of elements can be used just for logging or
+// debugging: the elements will be saved in the logs
 func (route *Route) Error(statusCode int, message string, a ...any) {
 	route.W.WriteHeader(statusCode)
 
@@ -34,7 +35,7 @@ func (route *Route) Error(statusCode int, message string, a ...any) {
 
 	route.logErrMessage = route.errMessage
 	if len(a) > 0 {
-		var v []string
+		v := make([]string, 0, len(a))
 		for _, el := range a {
 			v = append(v, fmt.Sprint(el))
 		}
@@ -42,10 +43,9 @@ func (route *Route) Error(statusCode int, message string, a ...any) {
 	}
 }
 
-func (route *Route) ServeRootedFile(filePath string) {
-	route.ServeFile(route.Website.Dir + filePath)
-}
-
+// ServeFile will serve a file in the file system. If the path is not
+// absolute, it will first try to complete it with the website directory
+// (if set) or with the server path
 func (route *Route) ServeFile(filePath string) {
 	if !path.IsAbs(filePath) {
 		if route.Website.Dir != "" {
@@ -94,22 +94,34 @@ func (route *Route) ServeFile(filePath string) {
 	http.ServeContent(route.W, route.R, fileInfo.Name(), fileInfo.ModTime(), f)
 }
 
+// ServeCustomFileWithTime will serve a pseudo-file saved in memory specifing the
+// last modification time
 func (route *Route) ServeCustomFileWithTime(name string, data []byte, t time.Time) {
 	http.ServeContent(route.W, route.R, "", t, bytes.NewReader(data))
 }
 
+// ServeCustomFileWithTime will serve a pseudo-file saved in memory
 func (route *Route) ServeCustomFile(name string, data []byte) {
 	http.ServeContent(route.W, route.R, "", time.Now(), bytes.NewReader(data))
 }
 
+// ServeData serves raw bytes to the client
 func (route *Route) ServeData(data []byte) {
 	route.W.Write(data)
 }
 
+// ServeData serves a string (as raw bytes) to the client
 func (route *Route) ServeText(text string) {
 	route.ServeData([]byte(text))
 }
 
+// StaticServe tries to serve a file for every connection done via
+// a GET request, following all the options provided in the Website
+// configuration. This means it will not serve any file inside (also
+// nested) an hidden folder, it will serve an html file only with the
+// flag argument set to true, it will serve index.html automatically
+// for connection with request uri empty or equal to "/", it will serve
+// every file inside the AllFolders field of the Website
 func (route *Route) StaticServe(serveHTML bool) {
 	if route.Method != "GET" && route.Method != "HEAD" {
 		route.Error(http.StatusMethodNotAllowed, "Method not allowed")
@@ -148,24 +160,42 @@ func (route *Route) StaticServe(serveHTML bool) {
 	route.Error(http.StatusNotFound, "Not Found")
 }
 
+// TODO
+type xFile struct {
+	size int
+	offset int
+	b *bytes.Buffer
+	c chan struct{}
+}
+
+// TODO 
 func (route *Route) serveCSSX() {
-	info, err := os.Stat(route.Website.Dir + route.RequestURI + "x")
+	basePath := route.Website.Dir
+	if basePath == "" {
+		basePath = route.Srv.ServerPath
+	}
+
+	filePath := basePath + "/" + route.RequestURI
+
+	info, err := os.Stat(filePath + "x")
 	if err != nil {
 		route.ServeFile(route.Website.Dir + route.RequestURI)
 		return
 	}
 
-	cssx, err := os.Open(route.Website.Dir + route.RequestURI + "x")
+	filePath = filePath + "x"
+
+	cssx, err := os.Open(filePath)
 	if err != nil {
-		route.Error(http.StatusInternalServerError, "Internal server error", fmt.Sprintf("Error opening file %s: %v", route.Website.Dir + route.RequestURI + "x", err))
+		route.Error(http.StatusInternalServerError, "Internal server error", fmt.Sprintf("Error opening file %s: %v", filePath, err))
 		return
 	}
 	defer cssx.Close()
 
-	basePathSplit := strings.Split(route.Website.Dir + route.RequestURI, "/")
-	var basePath string
-	for _, s := range basePathSplit[:len(basePathSplit)-1] {
-		basePath += s + "/"
+	pathSplit := strings.Split(basePath, "/")
+	var fileDirPath string
+	for _, s := range pathSplit[:len(pathSplit)-1] {
+		fileDirPath += s + "/"
 	}
 
 	var size int
@@ -174,7 +204,7 @@ func (route *Route) serveCSSX() {
 
 	sc := bufio.NewScanner(cssx)
 	for sc.Scan() {
-		info, err = os.Stat(basePath + sc.Text())
+		info, err = os.Stat(fileDirPath + sc.Text())
 		if err != nil {
 			continue
 		}
@@ -184,7 +214,7 @@ func (route *Route) serveCSSX() {
 		}
 
 		size += int(info.Size()) + 2
-		fileNames = append(fileNames, basePath + sc.Text())
+		fileNames = append(fileNames, fileDirPath + sc.Text())
 	}
 
 	css := newXFile(size)
@@ -200,8 +230,9 @@ func (route *Route) serveCSSX() {
 		}
 	}()
 
-	http.ServeContent(route.W, route.R, basePathSplit[len(basePathSplit)-1], modTime, css)
+	http.ServeContent(route.W, route.R, pathSplit[len(pathSplit)-1], modTime, css)
 }
+
 
 func (route *Route) SetCookie(name string, value interface{}, maxAge int) error {
 	encValue, err := route.Srv.secureCookie.Encode(name, value)
@@ -209,7 +240,7 @@ func (route *Route) SetCookie(name string, value interface{}, maxAge int) error 
 		return err
 	}
 
-	http.SetCookie(route.W, &http.Cookie{
+	http.SetCookie(route.W, &http.Cookie {
 		Name: GenerateHashString([]byte(name)),
 		Value: encValue,
 		Domain: route.DomainName,
