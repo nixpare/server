@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/nixpare/goutils"
+	"github.com/nixpare/comms"
 )
 
 // TaskTimer tells the TaskManager how often a Task should be executed.
@@ -44,7 +44,7 @@ type Task struct {
 	killChan 	chan struct{} 	// killChan will kill the exec function after the 10 seconds are gone
 	startupDone bool
 	running 	bool
-	bc 			*goutils.Broadcaster[struct{}]
+	bc 			*comms.Broadcaster[struct{}]
 }
 
 // Name returns the name of the function
@@ -90,10 +90,7 @@ func (t *Task) Wait() {
 		return
 	}
 
-	l := t.bc.Subscribe()
-	defer l.Unsubscribe()
-
-	l.Get()
+	t.bc.Get()
 }
 
 // TaskFunc is the executable part of the program. The manager will provide, upon
@@ -151,7 +148,7 @@ func (tm *TaskManager) NewTask(name string, f TaskInitFunc, timer TaskTimer) err
 		name: name, StartupF: startupF,
 		ExecF: execF, CleanupF: cleanupF,
 		timer: timer,
-		bc: goutils.NewBroadcaster[struct{}](),
+		bc: comms.NewBroadcaster[struct{}](),
 	}
 
 	tm.tasks[name] = t

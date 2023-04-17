@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+// Router is the main element of this package and is used to manage
+// all the servers and the background tasks.
 type Router struct {
 	servers 			map[int]*Server
 	CleanupF 			func() error
@@ -19,9 +21,12 @@ type Router struct {
 	TaskMgr   			*TaskManager
 	logFile 			*os.File
 	logs      			[]Log
-	mLog         		*sync.Mutex
+	logMutex         	*sync.Mutex
 }
 
+// NewRouter returns a new Router ready to be set up. Both logFile and serverPath are optional:
+// + if logFile is not provided, os.Stdout will be used by default
+// + if serverPath is not provided, the router will try to get the working directory
 func NewRouter(logFile *os.File, serverPath string) (router *Router, err error) {
 	router = new(Router)
 	router.servers = make(map[int]*Server)
@@ -31,7 +36,7 @@ func NewRouter(logFile *os.File, serverPath string) (router *Router, err error) 
 	} else {
 		router.logFile = logFile
 	}
-	router.mLog = new(sync.Mutex)
+	router.logMutex = new(sync.Mutex)
 
 	if serverPath == "" {
 		serverPath, err = os.Getwd()
@@ -53,6 +58,10 @@ func NewRouter(logFile *os.File, serverPath string) (router *Router, err error) 
 	return
 }
 
+// SetInternalConnFilter can be used to additionally add rules used to determine whether
+// an incoming connection comes from a client in the local netword or not.
+// This is used both for the method route.IsInternalConn and for accessing other domains
+// via the http queries from desired IPs
 func (router *Router) SetInternalConnFilter(f func(remoteAddress string) bool) *Router {
 	if f != nil {
 		router.isInternalConn = f
@@ -60,10 +69,12 @@ func (router *Router) SetInternalConnFilter(f func(remoteAddress string) bool) *
 	return router
 }
 
+// Server returns the server running on the given port
 func (router *Router) Server(port int) *Server {
 	return router.servers[port]
 }
 
+// Start starts all the registered servers and the background task manager
 func (router *Router) Start() () {
 	if router.running {
 		return
@@ -78,6 +89,9 @@ func (router *Router) Start() () {
 	return
 }
 
+// Stop starts the shutdown procedure of the entire router with all
+// the servers registered, the background programs and tasks and
+// lastly executes the router.CleanupF function, if set
 func (router *Router) Stop() () {
 	if !router.running {
 		return
@@ -101,6 +115,7 @@ func (router *Router) Stop() () {
 	return
 }
 
+// StopServer stops the server opened on the given port
 func (router *Router) StopServer(port int) error {
 	srv := router.servers[port]
 	if srv == nil {

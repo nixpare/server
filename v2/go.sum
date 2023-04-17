@@ -1,4 +1,4 @@
 github.com/gorilla/securecookie v1.1.1 h1:miw7JPhV+b/lAHSXz4qd/nN9jRiAFV5FwjeKyCS8BvQ=
 github.com/gorilla/securecookie v1.1.1/go.mod h1:ra0sb63/xPlUeL+yeDciTfxMRAA+MP+HVt/4epWDjd4=
-github.com/nixpare/goutils v1.0.0 h1:3WD7ntn82SGasHG8eq2wlqu4LpkmHM15n4bw3zciSsw=
-github.com/nixpare/goutils v1.0.0/go.mod h1:hogFG4DbdinGBk5K3A9v2noThUey09OcZFtha8MvOI4=
+github.com/nixpare/comms v1.1.0 h1:FM125OBc4UG/p5Hx36G25ZBVG22gBioLc4imWByxxtM=
+github.com/nixpare/comms v1.1.0/go.mod h1:ZtGVUJ7o60At8pXHFxvpNZyDfD0DbShEV+AWnycwJek=

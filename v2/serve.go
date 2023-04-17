@@ -160,7 +160,7 @@ func (route *Route) StaticServe(serveHTML bool) {
 	route.Error(http.StatusNotFound, "Not Found")
 }
 
-// TODO
+// xFile wraps a bytes buffer and 
 type xFile struct {
 	size int
 	offset int

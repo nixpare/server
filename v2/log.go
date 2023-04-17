@@ -277,8 +277,8 @@ func (router *Router) JSON() []byte {
 func (router *Router) Log(level LogLevel, message string, extra ...any) {
 	t := time.Now()
 	
-	router.mLog.Lock()
-	defer router.mLog.Unlock()
+	router.logMutex.Lock()
+	defer router.logMutex.Unlock()
 
 	log := Log {
 		fmt.Sprintf(
