@@ -63,7 +63,7 @@ type SubdomainConfig struct {
 // not specify any protocol or port). If the domain name is an empy string
 // it will be treated as the default domain (see srv.RegisterDefaultDomain)
 func (srv *Server) RegisterDomain(displayName, domain string) *Domain {
-	d := &Domain{
+	d := &Domain {
 		Name: displayName,
 		subdomains: make(map[string]*Subdomain),
 		srv: srv,

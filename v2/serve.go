@@ -315,6 +315,17 @@ func (route *Route) ReverseProxy(URL string) error {
 	return nil
 }
 
+// IsInternalConn tells wheather the incoming connection should be treated
+// as a local connection. The user can add a filter that can extend this
+// selection to match their needs
+func  (route *Route) IsInternalConn() bool {
+	if strings.Contains(route.RemoteAddress, "localhost") || strings.Contains(route.RemoteAddress, "127.0.0.1") || strings.Contains(route.RemoteAddress, "::1") {
+		return true
+	}
+
+	return route.Router.IsInternalConn(route.RemoteAddress)
+}
+
 func newXFile(len int) *xFile {
 	return &xFile {
 		size: len,

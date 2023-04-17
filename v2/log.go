@@ -11,20 +11,23 @@ import (
 )
 
 var (
-	// TimeFormat defines which timestamp to use with the logs. It can be modified.
-	TimeFormat = "2006-01-02 15:04:05.00"
+	TimeFormat = "2006-01-02 15:04:05.00" // TimeFormat defines which timestamp to use with the logs. It can be modified.
 )
 
-func writeLogStart(t time.Time) string {
-	return "\n     /\\ /\\ /\\                                              /\\ /\\ /\\" +
-		   "\n     <> <> <> - [" + t.Format(TimeFormat) + "] - ROUTER ONLINE - <> <> <>" +
-		   "\n     \\/ \\/ \\/                                              \\/ \\/ \\/\n\n"
+func (router *Router) writeLogStart(t time.Time) {
+	router.plainPrintf(LOG_LEVEL_INFO, "Router Online", "",
+		"\n     /\\ /\\ /\\                                              /\\ /\\ /\\" +
+		"\n     <> <> <> - [" + t.Format(TimeFormat) + "] - ROUTER ONLINE - <> <> <>" +
+		"\n     \\/ \\/ \\/                                              \\/ \\/ \\/\n\n",
+	)
 }
 
-func writeLogClosure(t time.Time) string {
-	return "\n     /\\ /\\ /\\                                               /\\ /\\ /\\" +
-		   "\n     <> <> <> - [" + t.Format(TimeFormat) + "] - ROUTER OFFLINE - <> <> <>" +
-		   "\n     \\/ \\/ \\/                                               \\/ \\/ \\/\n\n"
+func (router *Router) writeLogClosure(t time.Time) {
+	router.plainPrintf(LOG_LEVEL_INFO, "Router Online", "",
+		"\n     /\\ /\\ /\\                                               /\\ /\\ /\\" +
+		"\n     <> <> <> - [" + t.Format(TimeFormat) + "] - ROUTER OFFLINE - <> <> <>" +
+		"\n     \\/ \\/ \\/                                               \\/ \\/ \\/\n\n",
+	) 
 }
 
 // ClearLogs clears the log output file by closing, truncating and reopening it. After reopening
@@ -39,8 +42,10 @@ func (router *Router) ClearLogs() error {
 
 	router.logFile, _ = os.OpenFile(oldFile.Name(), os.O_TRUNC | os.O_CREATE | os.O_WRONLY | os.O_SYNC, 0777)
 
-	router.plainPrintf(writeLogStart(router.startTime))
-	router.plainPrintf("     -- -- --   Logs cleared at [%s]   -- -- --\n\n", time.Now().Format("02/Jan/2006:15:04:05"))
+	router.writeLogStart(router.startTime)
+	router.plainPrintf(LOG_LEVEL_INFO, "Logs cleared", "",
+		"     -- -- --   Logs cleared at [%s]   -- -- --\n\n", time.Now().Format("02/Jan/2006:15:04:05"),
+	)
 	return nil
 }
 
@@ -187,10 +192,10 @@ func (l LogLevel) String() string {
 // store additional information
 type Log struct {
 	id 		string
-	Level   LogLevel
-	Date    time.Time
-	Message string
-	Extra   string
+	Level   LogLevel 		// Level is the Log severity (INFO - DEBUG - WARNING - ERROR - FATAL)
+	Date    time.Time 		// Date is the timestamp of the log creation
+	Message string 			// Message is the main message that should summarize the event
+	Extra   string 			// Extra should hold any extra information provided for deeper understanding of the event
 }
 
 // JSON returns the Log l in a json-encoded string in form of a
@@ -241,6 +246,7 @@ func (l Log) Full() string {
 // programmatically and used (for example to make a view in a website)
 type Logger interface {
 	Log(level LogLevel, message string, extra ...any)
+	Logf(level LogLevel, format string, a ...any)
 	Logs() []Log
 	JSON() []byte
 }
@@ -274,7 +280,7 @@ func (router *Router) JSON() []byte {
 	return res
 }
 
-func (router *Router) Log(level LogLevel, message string, extra ...any) {
+func (router *Router) newLog(level LogLevel, message string, extra string) Log {
 	t := time.Now()
 	
 	router.logMutex.Lock()
@@ -286,8 +292,18 @@ func (router *Router) Log(level LogLevel, message string, extra ...any) {
 			t.Year() % 100, t.Month(), t.Day(),
 			t.Hour(), t.Minute(), t.Second(), rand.Intn(1000),
 		), level, t,
-		message, fmt.Sprint(extra...),
+		message, extra,
 	}
+
+	router.logs = append(router.logs, log)
+	return log
+}
+
+// Log creates a Log with the given severity and message; any data after message will be used
+// to populate the extra field of the Log automatically using the built-in function
+// fmt.Sprint(extra...)
+func (router *Router) Log(level LogLevel, message string, extra ...any) {
+	log := router.newLog(level, message, fmt.Sprint(extra...))
 
 	if router.logFile != nil {
 		if log.Extra != "" {
@@ -298,10 +314,16 @@ func (router *Router) Log(level LogLevel, message string, extra ...any) {
 	}
 }
 
+// Logf creates a Log with the given severity; the rest of the arguments is used as
+// the built-in function fmt.Sprintf(format, a...), however if the resulting string
+// contains a line feed, everything after that will be used to populate the extra field
 func (router *Router) Logf(level LogLevel, format string, a ...any) {
-	router.Log(level, fmt.Sprintf(format, a...))
+	str := fmt.Sprintf(format, a...)
+	message, extra, _ := strings.Cut(str, "\n")
+	router.Log(level, message, extra)
 }
 
+// Print is a shorthand for Log(LOG_LEVE_DEBUG, a...) used for debugging
 func (router *Router) Print(a ...any) {
 	var v []string
 	for _, el := range a {
@@ -311,42 +333,62 @@ func (router *Router) Print(a ...any) {
 	router.Log(LOG_LEVEL_DEBUG, strings.Join(v, " "))
 }
 
+// Printf is a shorthand for Logf(LOG_LEVE_DEBUG, format, a...) used for debugging
 func (router *Router) Printf(format string, a ...any) {
 	router.Log(LOG_LEVEL_DEBUG, fmt.Sprintf(format, a...))
 }
 
-func (router *Router) plainPrintf(format string, a ...any) {
-	fmt.Fprintf(router.logFile, format, a...)
+func (router *Router) plainPrintf(level LogLevel, message string, extra string, format string, a ...any) {
+	router.newLog(level, message, extra)
+	if router.logFile != nil {
+		fmt.Fprintf(router.logFile, format, a...)
+	}
 }
 
+// Log creates a Log with the given severity and message; any data after message will be used
+// to populate the extra field of the Log automatically using the built-in function
+// fmt.Sprint(extra...)
 func (srv *Server) Log(level LogLevel, message string, a ...any) {
 	srv.Router.Log(level, message, a...)
 }
 
+// Logf creates a Log with the given severity; the rest of the arguments is used as
+// the built-in function fmt.Sprintf(format, a...), however if the resulting string
+// contains a line feed, everything after that will be used to populate the extra field
 func (srv *Server) Logf(level LogLevel, format string, a ...any) {
 	srv.Router.Logf(level, format, a...)
 }
 
+// Print is a shorthand for Log(LOG_LEVE_DEBUG, a...) used for debugging
 func (srv *Server) Print(a ...any) {
 	srv.Router.Print(a...)
 }
 
+// Printf is a shorthand for Logf(LOG_LEVE_DEBUG, format, a...) used for debugging
 func (srv *Server) Printf(format string, a ...any) {
 	srv.Router.Printf(format, a...)
 }
 
+// Log creates a Log with the given severity and message; any data after message will be used
+// to populate the extra field of the Log automatically using the built-in function
+// fmt.Sprint(extra...)
 func (route *Route) Log(level LogLevel, message string, a ...any) {
 	route.Srv.Log(level, message, a...)
 }
 
+// Logf creates a Log with the given severity; the rest of the arguments is used as
+// the built-in function fmt.Sprintf(format, a...), however if the resulting string
+// contains a line feed, everything after that will be used to populate the extra field
 func (route *Route) Logf(level LogLevel, format string, a ...any) {
 	route.Srv.Logf(level, format, a...)
 }
 
+// Print is a shorthand for Log(LOG_LEVE_DEBUG, a...) used for debugging
 func (route *Route) Print(a ...any) {
 	route.Srv.Print(a...)
 }
 
+// Printf is a shorthand for Logf(LOG_LEVE_DEBUG, format, a...) used for debugging
 func (route *Route) Printf(format string, a ...any) {
 	route.Srv.Printf(format, a...)
 }

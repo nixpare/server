@@ -36,10 +36,10 @@ const (
 // startup one or but you can do it manually, see router.SetBackgroundTaskState)
 type Task struct {
 	name        string
-	StartupF    TaskFunc
-	ExecF       TaskFunc
-	CleanupF    TaskFunc
-	timer       TaskTimer
+	StartupF    TaskFunc        // StartupF is the function called when the Task is started
+	ExecF       TaskFunc 		// ExecF is the function called every time the Task must be executed (from the timer or manually)
+	CleanupF    TaskFunc 		// CleanupF is the function called when the Task is removed from the TaskManager or when the TaskManager is stopped (e.g. on Router shutdown)
+	timer       TaskTimer 		// TaskTimer is the Task execution interval, that is how often the function ExecF is called
 	exitChan 	chan struct{} 	// exitChan will receive the signal of the server shutting down
 	killChan 	chan struct{} 	// killChan will kill the exec function after the 10 seconds are gone
 	startupDone bool

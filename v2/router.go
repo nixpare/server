@@ -12,12 +12,23 @@ import (
 // all the servers and the background tasks.
 type Router struct {
 	servers 			map[int]*Server
+	// CleanupF is the function called when the router will be closed. It's recommended
+	// use this function to do the cleanup because it's safer to use any router component:
+	// at this stage every task will be stopped and every server will be closed, but any
+	// reference is still present
 	CleanupF 			func() error
+	// ServerPath is the path provided when creating the Router or the working directory if
+	// if not provided. This defines the path for every server registered
 	ServerPath 			string
 	startTime 			time.Time
 	running 			bool
 	offlineClients      map[string]offlineClient
-	isInternalConn 		func(remoteAddress string) bool
+	// IsInternalConn can be used to additionally add rules used to determine whether
+	// an incoming connection must be treated as from a client in the local network or not.
+	// This is used both for the method route.IsInternalConn and for accessing other domains
+	// via the http queries from desired IPs. By default only the connection coming from
+	// "localhost", "127.0.0.1" and "::1" are treated as local connections.
+	IsInternalConn 		func(remoteAddress string) bool
 	TaskMgr   			*TaskManager
 	logFile 			*os.File
 	logs      			[]Log
@@ -48,25 +59,14 @@ func NewRouter(logFile *os.File, serverPath string) (router *Router, err error) 
 	router.ServerPath = serverPath
 
 	router.offlineClients = make(map[string]offlineClient)
-	router.isInternalConn = func(remoteAddress string) bool { return false }
+	router.IsInternalConn = func(remoteAddress string) bool { return false }
 
 	router.newTaskManager()
 
 	router.startTime = time.Now()
-	router.plainPrintf(writeLogStart(router.startTime))
+	router.writeLogStart(router.startTime)
 
 	return
-}
-
-// SetInternalConnFilter can be used to additionally add rules used to determine whether
-// an incoming connection comes from a client in the local netword or not.
-// This is used both for the method route.IsInternalConn and for accessing other domains
-// via the http queries from desired IPs
-func (router *Router) SetInternalConnFilter(f func(remoteAddress string) bool) *Router {
-	if f != nil {
-		router.isInternalConn = f
-	}
-	return router
 }
 
 // Server returns the server running on the given port
@@ -111,7 +111,7 @@ func (router *Router) Stop() () {
 	}
 
 	os.Remove(router.ServerPath + "/PID.txt")
-	router.plainPrintf(writeLogClosure(time.Now()))
+	router.writeLogClosure(time.Now())
 	return
 }
 
