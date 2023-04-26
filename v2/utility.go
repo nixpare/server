@@ -99,7 +99,7 @@ func RandStr(length int, randType CharSet) string {
 }
 
 // ChanIsOpened tells wether the channel is opened or closed
-func ChanIsOpened[T any](c chan T) bool {
+func ChanIsOpened(c chan any) bool {
 	if c == nil {
 		return false
 	}
@@ -107,7 +107,7 @@ func ChanIsOpened[T any](c chan T) bool {
 	open := true
 
 	select {
-	case _, open = <-c:
+	case _, open = <- c:
 	default:
 	}
 
@@ -176,7 +176,7 @@ func GenerateHashString(data []byte) string {
 // a panic (during a recovery) because it strips the first lines
 // where are reported also the recovery functions, returning only
 // the panic-reletate stuff. If this is not desired just use the
-// standard [runtime/debug.Stack]
+// standard debug.Stack
 func Stack() string {
 	var out string
 
@@ -198,13 +198,15 @@ func Stack() string {
 	return strings.TrimRight(out, "\n")
 }
 
+// IndentString takes a string and indents every line with
+// the provided number of single spaces
 func IndentString(s string, n int) string {
 	split := strings.Split(s, "\n")
 	var res string
 
 	for _, line := range split {
 		for i := 0; i < n; i++ {
-			res += "\t"
+			res += " "
 		}
 		res += line + "\n"
 	}

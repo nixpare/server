@@ -307,7 +307,7 @@ func (router *Router) Log(level LogLevel, message string, extra ...any) {
 
 	if router.logFile != nil {
 		if log.Extra != "" {
-			fmt.Fprintf(router.logFile, "%v\n%s\n", log, IndentString(log.Extra, 1))
+			fmt.Fprintf(router.logFile, "%v\n%s\n", log, IndentString(log.Extra, 4))
 		} else {
 			fmt.Fprintln(router.logFile, log)
 		}		
