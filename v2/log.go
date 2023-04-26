@@ -161,7 +161,8 @@ func (route *Route) serveError() {
 type LogLevel int
 
 const (
-	LOG_LEVEL_INFO = iota
+	LOG_LEVEL_BLANK = iota
+	LOG_LEVEL_INFO
 	LOG_LEVEL_DEBUG
 	LOG_LEVEL_WARNING
 	LOG_LEVEL_ERROR
@@ -170,6 +171,8 @@ const (
 
 func (l LogLevel) String() string {
 	switch l {
+	case LOG_LEVEL_BLANK:
+		return ""
 	case LOG_LEVEL_INFO:
 		return "   Info"
 	case LOG_LEVEL_DEBUG:
@@ -249,6 +252,7 @@ type Logger interface {
 	Logf(level LogLevel, format string, a ...any)
 	Logs() []Log
 	JSON() []byte
+	Write(p []byte) (n int, err error)
 }
 
 // Logs returns the list of logs stored
@@ -345,6 +349,12 @@ func (router *Router) plainPrintf(level LogLevel, message string, extra string, 
 	}
 }
 
+func (router *Router) Write(p []byte) (n int, err error) {
+	message := string(p)
+	router.Logf(LOG_LEVEL_BLANK, message)
+	return len(message), nil
+}
+
 // Log creates a Log with the given severity and message; any data after message will be used
 // to populate the extra field of the Log automatically using the built-in function
 // fmt.Sprint(extra...)
@@ -369,6 +379,10 @@ func (srv *Server) Printf(format string, a ...any) {
 	srv.Router.Printf(format, a...)
 }
 
+func (srv *Server) Write(p []byte) (n int, err error) {
+	return srv.Router.Write(p)
+}
+
 // Log creates a Log with the given severity and message; any data after message will be used
 // to populate the extra field of the Log automatically using the built-in function
 // fmt.Sprint(extra...)
@@ -391,4 +405,8 @@ func (route *Route) Print(a ...any) {
 // Printf is a shorthand for Logf(LOG_LEVE_DEBUG, format, a...) used for debugging
 func (route *Route) Printf(format string, a ...any) {
 	route.Srv.Printf(format, a...)
+}
+
+func (route *Route) Write(p []byte) (n int, err error) {
+	return route.Srv.Write(p)
 }
