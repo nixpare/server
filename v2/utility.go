@@ -40,6 +40,8 @@ func ParseCommandArgs(args ...string) []string {
 	return a
 }
 
+// CharSet groups the possible output of the function RandStr. For the possible values
+// see the constants
 type CharSet int
 
 const (
