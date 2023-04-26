@@ -8,20 +8,20 @@ import (
 // TaskManager is a component of the Router that controls the execution of external programs
 // and tasks registered by the user
 type TaskManager struct {
-	Router    		*Router
-	running   		bool
-	programs  		map[string]*program
-	tasks     		map[string]*Task
-	ticker10s  		*time.Ticker
-	ticker1m  		*time.Ticker
-	ticker10m 		*time.Ticker
-	ticker30m 		*time.Ticker
-	ticker1h  		*time.Ticker
+	Router    *Router
+	running   bool
+	programs  map[string]*program
+	tasks     map[string]*Task
+	ticker10s *time.Ticker
+	ticker1m  *time.Ticker
+	ticker10m *time.Ticker
+	ticker30m *time.Ticker
+	ticker1h  *time.Ticker
 }
 
 func (router *Router) newTaskManager() {
-	router.TaskMgr = &TaskManager {
-		Router: router,
+	router.TaskMgr = &TaskManager{
+		Router:   router,
 		programs: make(map[string]*program), tasks: make(map[string]*Task),
 		ticker10s: time.NewTicker(time.Second * 10), ticker1m: time.NewTicker(time.Minute),
 		ticker10m: time.NewTicker(time.Minute * 10), ticker30m: time.NewTicker(time.Minute * 30),
@@ -79,13 +79,13 @@ func (tm *TaskManager) stopAllTasks() {
 	wg := new(sync.WaitGroup)
 
 	for _, t := range tm.tasks {
-		stillRunning ++
+		stillRunning++
 		wg.Add(1)
 
 		go func(task *Task) {
 			tm.stopTask(task)
 
-			stillRunning --
+			stillRunning--
 			wg.Done()
 		}(t)
 	}
@@ -93,7 +93,7 @@ func (tm *TaskManager) stopAllTasks() {
 	counter := 100
 	for stillRunning > 0 && counter > 0 {
 		time.Sleep(time.Millisecond * 100)
-		counter --
+		counter--
 	}
 
 	if counter == 0 {

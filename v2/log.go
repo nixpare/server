@@ -16,18 +16,18 @@ var (
 
 func (router *Router) writeLogStart(t time.Time) {
 	router.plainPrintf(LOG_LEVEL_INFO, "Router Online", "",
-		"\n     /\\ /\\ /\\                                              /\\ /\\ /\\" +
-		"\n     <> <> <> - [" + t.Format(TimeFormat) + "] - ROUTER ONLINE - <> <> <>" +
-		"\n     \\/ \\/ \\/                                              \\/ \\/ \\/\n\n",
+		"\n     /\\ /\\ /\\                                              /\\ /\\ /\\"+
+			"\n     <> <> <> - ["+t.Format(TimeFormat)+"] - ROUTER ONLINE - <> <> <>"+
+			"\n     \\/ \\/ \\/                                              \\/ \\/ \\/\n\n",
 	)
 }
 
 func (router *Router) writeLogClosure(t time.Time) {
 	router.plainPrintf(LOG_LEVEL_INFO, "Router Online", "",
-		"\n     /\\ /\\ /\\                                               /\\ /\\ /\\" +
-		"\n     <> <> <> - [" + t.Format(TimeFormat) + "] - ROUTER OFFLINE - <> <> <>" +
-		"\n     \\/ \\/ \\/                                               \\/ \\/ \\/\n\n",
-	) 
+		"\n     /\\ /\\ /\\                                               /\\ /\\ /\\"+
+			"\n     <> <> <> - ["+t.Format(TimeFormat)+"] - ROUTER OFFLINE - <> <> <>"+
+			"\n     \\/ \\/ \\/                                               \\/ \\/ \\/\n\n",
+	)
 }
 
 // ClearLogs clears the log output file by closing, truncating and reopening it. After reopening
@@ -40,7 +40,7 @@ func (router *Router) ClearLogs() error {
 		return err
 	}
 
-	router.logFile, _ = os.OpenFile(oldFile.Name(), os.O_TRUNC | os.O_CREATE | os.O_WRONLY | os.O_SYNC, 0777)
+	router.logFile, _ = os.OpenFile(oldFile.Name(), os.O_TRUNC|os.O_CREATE|os.O_WRONLY|os.O_SYNC, 0777)
 
 	router.writeLogStart(router.startTime)
 	router.plainPrintf(LOG_LEVEL_INFO, "Logs cleared", "",
@@ -69,7 +69,7 @@ func (route *Route) logHTTPInfo(m metrics) {
 		route.logRequestURI,
 		lock,
 		m.Code,
-		(float64(m.Written)/1000000.),
+		float64(m.Written)/1000000.,
 		m.Duration.Milliseconds(),
 		route.Website.Name,
 		route.Domain.Name,
@@ -90,7 +90,7 @@ func (route *Route) logHTTPWarning(m metrics) {
 		route.logRequestURI,
 		lock,
 		m.Code,
-		(float64(m.Written)/1000000.),
+		float64(m.Written)/1000000.,
 		m.Duration.Milliseconds(),
 		route.Website.Name,
 		route.Domain.Name,
@@ -112,7 +112,7 @@ func (route *Route) logHTTPError(m metrics) {
 		route.logRequestURI,
 		lock,
 		m.Code,
-		(float64(m.Written)/1000000.),
+		float64(m.Written)/1000000.,
 		m.Duration.Milliseconds(),
 		route.Website.Name,
 		route.Domain.Name,
@@ -136,11 +136,11 @@ func (route *Route) serveError() {
 	}
 
 	if route.Method == "GET" || route.Method == "HEAD" {
-		data := struct{
-			Code int
+		data := struct {
+			Code    int
 			Message string
 		}{
-			Code: route.W.code,
+			Code:    route.W.code,
 			Message: route.errMessage,
 		}
 
@@ -194,18 +194,18 @@ func (l LogLevel) String() string {
 // an error). It also has the optional field "extra" that can be used to
 // store additional information
 type Log struct {
-	id 		string
-	Level   LogLevel 		// Level is the Log severity (INFO - DEBUG - WARNING - ERROR - FATAL)
-	Date    time.Time 		// Date is the timestamp of the log creation
-	Message string 			// Message is the main message that should summarize the event
-	Extra   string 			// Extra should hold any extra information provided for deeper understanding of the event
+	id      string
+	Level   LogLevel  // Level is the Log severity (INFO - DEBUG - WARNING - ERROR - FATAL)
+	Date    time.Time // Date is the timestamp of the log creation
+	Message string    // Message is the main message that should summarize the event
+	Extra   string    // Extra should hold any extra information provided for deeper understanding of the event
 }
 
 // JSON returns the Log l in a json-encoded string in form of a
 // slice of bytes
 func (l Log) JSON() []byte {
 	jsonL := struct {
-		ID 		string 	  `json:"id"`
+		ID      string    `json:"id"`
 		Level   string    `json:"level"`
 		Date    time.Time `json:"date"`
 		Message string    `json:"message"`
@@ -228,7 +228,7 @@ func (l Log) String() string {
 	)
 }
 
-// Full is like String(), but appends all the extra informations
+// Full is like String(), but appends all the extra information
 // associated with the log instance
 func (l Log) Full() string {
 	if l.Extra == "" {
@@ -286,14 +286,14 @@ func (router *Router) JSON() []byte {
 
 func (router *Router) newLog(level LogLevel, message string, extra string) Log {
 	t := time.Now()
-	
+
 	router.logMutex.Lock()
 	defer router.logMutex.Unlock()
 
-	log := Log {
+	log := Log{
 		fmt.Sprintf(
 			"%02d%02d%02d%02d%02d%02d%03d",
-			t.Year() % 100, t.Month(), t.Day(),
+			t.Year()%100, t.Month(), t.Day(),
 			t.Hour(), t.Minute(), t.Second(), rand.Intn(1000),
 		), level, t,
 		message, extra,
@@ -314,7 +314,7 @@ func (router *Router) Log(level LogLevel, message string, extra ...any) {
 			fmt.Fprintf(router.logFile, "%v\n%s\n", log, IndentString(log.Extra, 4))
 		} else {
 			fmt.Fprintln(router.logFile, log)
-		}		
+		}
 	}
 }
 

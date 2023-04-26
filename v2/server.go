@@ -16,20 +16,20 @@ import (
 )
 
 type Server struct {
-	Secure 				bool
-	Running 			bool
-	Online 				bool
-	OnlineTime 			time.Time
-	stopChannel			chan struct{}
-	Server      		*http.Server
-	port 				int
-	Router 				*Router
-	domains 			map[string]*Domain
-	ServerPath  		string
-	secureCookie 		*securecookie.SecureCookie
-	secureCookiePerm 	*securecookie.SecureCookie
-	headers 			http.Header
-	errTemplate 		*template.Template
+	Secure           bool
+	Running          bool
+	Online           bool
+	OnlineTime       time.Time
+	stopChannel      chan struct{}
+	Server           *http.Server
+	port             int
+	Router           *Router
+	domains          map[string]*Domain
+	ServerPath       string
+	secureCookie     *securecookie.SecureCookie
+	secureCookiePerm *securecookie.SecureCookie
+	headers          http.Header
+	errTemplate      *template.Template
 }
 
 type Certificate struct {
@@ -38,18 +38,18 @@ type Certificate struct {
 }
 
 type Config struct {
-	Port			int
-	Secure 			bool
-	Certs 			[]Certificate
+	Port   int
+	Secure bool
+	Certs  []Certificate
 }
 
 type offlineClient struct {
-	domain string
+	domain    string
 	subdomain string
 }
 
 var (
-	HashKeyString = "NixPare Server"
+	HashKeyString  = "NixPare Server"
 	BlockKeyString = "github.com/nixpare/server"
 )
 
@@ -119,7 +119,7 @@ func (router *Router) newServer(port int, secure bool, serverPath string, certs 
 
 			cfg.Certificates = append(cfg.Certificates, cert)
 		}
-		
+
 		srv.Server.TLSConfig = cfg
 	}
 
@@ -130,7 +130,7 @@ func (router *Router) newServer(port int, secure bool, serverPath string, certs 
 	srv.Server.SetKeepAlivesEnabled(true)
 
 	//Creates the pid file, writes it and closes the file
-	pid, _ := os.OpenFile(srv.ServerPath + "/PID.txt", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
+	pid, _ := os.OpenFile(srv.ServerPath+"/PID.txt", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
 	fmt.Fprint(pid, os.Getpid())
 	pid.Close()
 
@@ -157,7 +157,7 @@ func (router *Router) newServer(port int, secure bool, serverPath string, certs 
 		blockKey = append(blockKey, b)
 	}
 	srv.secureCookiePerm = securecookie.New(hashKey, blockKey).MaxAge(0)
-	
+
 	srv.domains = make(map[string]*Domain)
 	srv.headers = make(http.Header)
 
@@ -195,7 +195,7 @@ func (srv *Server) Header() http.Header {
 }
 
 func (srv *Server) Start() {
-	go func(){
+	go func() {
 		if srv.Secure {
 			if err := srv.Server.ListenAndServeTLS("", ""); err != nil && err.Error() != "http: Server closed" {
 				srv.Log(LOG_LEVEL_FATAL, fmt.Sprintf("Server Error: %v", err))
@@ -211,7 +211,7 @@ func (srv *Server) Start() {
 
 	srv.Running = true
 	srv.Online = true
-	
+
 	srv.OnlineTime = time.Now()
 
 	for _, d := range srv.domains {

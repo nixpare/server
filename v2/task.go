@@ -12,18 +12,18 @@ import (
 type TaskTimer int
 
 const (
-	// A Task with this value will be executed every minute
-	TASK_TIMER_10_SECONDS TaskTimer = TaskTimer(time.Second * 10)
-	// A Task with this value will be executed every minute
-	TASK_TIMER_1_MINUTE   TaskTimer = TaskTimer(time.Minute * 1)
-	// A Task with this value will be executed every 10 minutes
-	TASK_TIMER_10_MINUTES TaskTimer = TaskTimer(time.Minute * 10)
-	// A Task with this value will be executed every 30 minutes
-	TASK_TIMER_30_MINUTES TaskTimer = TaskTimer(time.Minute * 30)
-	// A Task with this value will be executed every hour
-	TASK_TIMER_1_HOUR     TaskTimer = TaskTimer(time.Hour)
-	// A Task with this value will be never be executed automatically
-	TASK_TIMER_INACTIVE   TaskTimer = -1
+	// TASK_TIMER_10_SECONDS determines a Task execution interval of 10 seconds
+	TASK_TIMER_10_SECONDS = TaskTimer(time.Second * 10)
+	// TASK_TIMER_1_MINUTE determines a Task execution interval of 1 minute
+	TASK_TIMER_1_MINUTE = TaskTimer(time.Minute * 1)
+	// TASK_TIMER_10_MINUTES determines a Task execution interval of 10 minutes
+	TASK_TIMER_10_MINUTES = TaskTimer(time.Minute * 10)
+	// TASK_TIMER_30_MINUTES determines a Task execution interval of 30 minutes
+	TASK_TIMER_30_MINUTES = TaskTimer(time.Minute * 30)
+	// TASK_TIMER_1_HOUR determines a Task execution interval of 1 hour
+	TASK_TIMER_1_HOUR = TaskTimer(time.Hour)
+	// TASK_TIMER_INACTIVE deactivates the Task automatic execution
+	TASK_TIMER_INACTIVE = -1
 )
 
 // Task is composed of a name set upon creation and of 3 functions necessary of the
@@ -32,19 +32,19 @@ const (
 // does not mean that you can't handle panics by yourself, but if they are not handled
 // its like catching them and returning their message as an error.
 // If a function returns an error, this will be logged, providing the task name and which
-// function called it automatically (the task will be disabled if the one failing is the
-// startup one or but you can do it manually, see router.SetBackgroundTaskState)
+// function called it automatically (the task will be disabled if the startup fails,
+// but you can do it manually, see router.SetBackgroundTaskState)
 type Task struct {
 	name        string
-	StartupF    TaskFunc        // StartupF is the function called when the Task is started
-	ExecF       TaskFunc 		// ExecF is the function called every time the Task must be executed (from the timer or manually)
-	CleanupF    TaskFunc 		// CleanupF is the function called when the Task is removed from the TaskManager or when the TaskManager is stopped (e.g. on Router shutdown)
-	timer       TaskTimer 		// TaskTimer is the Task execution interval, that is how often the function ExecF is called
-	exitChan 	chan struct{} 	// exitChan will receive the signal of the server shutting down
-	killChan 	chan struct{} 	// killChan will kill the exec function after the 10 seconds are gone
+	StartupF    TaskFunc      // StartupF is the function called when the Task is started
+	ExecF       TaskFunc      // ExecF is the function called every time the Task must be executed (from the timer or manually)
+	CleanupF    TaskFunc      // CleanupF is the function called when the Task is removed from the TaskManager or when the TaskManager is stopped (e.g. on Router shutdown)
+	timer       TaskTimer     // TaskTimer is the Task execution interval, that is how often the function ExecF is called
+	exitChan    chan struct{} // exitChan will receive the signal of the server shutting down
+	killChan    chan struct{} // killChan will kill the exec function after the 10 seconds are gone
 	startupDone bool
-	running 	bool
-	bc 			*comms.Broadcaster[struct{}]
+	running     bool
+	bc          *comms.Broadcaster[struct{}]
 }
 
 // Name returns the name of the function
@@ -61,9 +61,10 @@ func (t *Task) Name() string {
 // considering that the goroutine could stay alive even after the task exec function
 // has exited, if this function returns true, this means that the signal is received
 // correctly for that execution and you should exit, otherwise this means that the
-// execution of the task has already exited and thus you should not do anything
+// execution of the task has already terminated and thus you should not do anything
 // Example:
-// 	execF = func(tm *server.TaskManager, t *server.Task) error {
+//
+//	execF = func(tm *server.TaskManager, t *server.Task) error {
 //		go func () {
 //			if !t.ListenForExit() {
 //				return 		// doing nothing because it returned false
@@ -73,7 +74,7 @@ func (t *Task) Name() string {
 //		// SOME LONG RUNNING EXECUTION
 //	}
 func (t *Task) ListenForExit() bool {
-	_, ok := <- t.exitChan
+	_, ok := <-t.exitChan
 	return ok
 }
 
@@ -96,11 +97,11 @@ func (t *Task) Wait() {
 // TaskFunc is the executable part of the program. The manager will provide, upon
 // call, the router (and thus the server) and the task itself; changed to the task
 // are allowed (exept for the name): you can modify through the router the timer of
-// the task and also the functions themself!
+// the task and also the functions themselves!
 // See TaskInitFunc, NewTask and router.RegisterBackgroundTask for the creation of a Task
 type TaskFunc func(tm *TaskManager, t *Task) error
 
-// TaskInitFunc is called when creating a task and its provided by the user.
+// TaskInitFunc is called when creating a task and is provided by the user.
 // This function need to return 3 TaskFunc (they can be nil) and they will be
 // set to the created task.
 // The kind of functions are:
@@ -144,11 +145,11 @@ func (tm *TaskManager) NewTask(name string, f TaskInitFunc, timer TaskTimer) err
 	}
 
 	startupF, execF, cleanupF := f()
-	t := &Task {
+	t := &Task{
 		name: name, StartupF: startupF,
 		ExecF: execF, CleanupF: cleanupF,
 		timer: timer,
-		bc: comms.NewBroadcaster[struct{}](),
+		bc:    comms.NewBroadcaster[struct{}](),
 	}
 
 	tm.tasks[name] = t
@@ -183,7 +184,7 @@ func (tm *TaskManager) StartTask(name string) error {
 	return nil
 }
 
-// ExecuteTask runs the Task immediatly
+// ExecTask runs the Task immediatly
 func (tm *TaskManager) ExecTask(name string) error {
 	t, err := tm.getTask(name)
 	if err != nil {
@@ -194,7 +195,7 @@ func (tm *TaskManager) ExecTask(name string) error {
 }
 
 // StopTask runs the cleanup function provided and stops the Task, but can
-// be restarted afterwards
+// be restarted afterward
 func (tm *TaskManager) StopTask(name string) error {
 	t, err := tm.getTask(name)
 	if err != nil {
@@ -282,7 +283,7 @@ func (tm *TaskManager) execTask(t *Task) error {
 		t.running = false
 		close(t.exitChan)
 		close(t.killChan)
-		
+
 		t.bc.Send(struct{}{})
 	}()
 
@@ -300,7 +301,7 @@ func (tm *TaskManager) execTask(t *Task) error {
 		}
 
 		t.timer = TASK_TIMER_INACTIVE
-		
+
 		if err.Err != nil {
 			tm.Router.Log(LOG_LEVEL_WARNING, fmt.Sprintf("Task \"%s\" exec error: %v", t.name, err.Err))
 			return
@@ -316,9 +317,9 @@ func (tm *TaskManager) execTask(t *Task) error {
 	}()
 
 	select {
-	case <- execDone:
+	case <-execDone:
 		return nil
-	case <- t.killChan:
+	case <-t.killChan:
 		tm.Router.Log(LOG_LEVEL_ERROR, fmt.Sprintf(
 			"Task \"%s\" execution was forcibly killed\n",
 			t.name,

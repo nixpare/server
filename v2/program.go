@@ -36,7 +36,7 @@ func newProgram(name, dir string, in io.Reader, out io.Writer, execName string, 
 		return nil, fmt.Errorf("\"%s\" is not a directory", dir)
 	}
 
-	return &program {
+	return &program{
 		name:     name,
 		dir:      dir,
 		execName: execName,
@@ -247,7 +247,7 @@ func (tm *TaskManager) ProgramIsRunning(name string) (bool, error) {
 	return p.isRunning(), nil
 }
 
-// GetProgramPID returns the program PID (-1 if is not running)
+// GetProgramPID returns the program PID (-1 if it's not running)
 func (tm *TaskManager) GetProgramPID(name string) (int, error) {
 	p, err := tm.findProgram(name)
 	if err != nil {

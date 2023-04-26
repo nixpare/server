@@ -11,11 +11,11 @@ import (
 
 // Domain rapresents a website domain with all its
 // subdomains. It's possible to set:
-//	- a function that will be executed (in case there are no
-//		errors) before every other logic
-//  - global headers, that will be applied in every connection
-//  - an error template, that will be used in case your logic
-//		will throw any error, so you will have a constant look
+//   - a function that will be executed (in case there are no
+//     errors) before every other logic
+//   - global headers, that will be applied in every connection
+//   - an error template, that will be used in case your logic
+//     will throw any error, so you will have a constant look
 type Domain struct {
 	Name         string
 	subdomains   map[string]*Subdomain
@@ -29,18 +29,18 @@ type Domain struct {
 // logic. It's required a serve function, which will determine the logic
 // of the website, and a Website, with all its options.
 // It's possible to set:
-//  - default headers, that will be applied in every connection
-//  - an error template, that will be used in case your logic
-//		will throw any error, so you will have a constant look
-//	- the subdomain offline state
-//	- an initializer function, called when the server is starting up
-//	- a cleanup function, called when the server is shutting down
+//   - default headers, that will be applied in every connection
+//   - an error template, that will be used in case your logic
+//     will throw any error, so you will have a constant look
+//   - the subdomain offline state
+//   - an initializer function, called when the server is starting up
+//   - a cleanup function, called when the server is shutting down
 type Subdomain struct {
 	Name        string
 	website     *Website
-	serveF 		ServeFunction
-	initF  		InitCloseFunction
-	closeF  	InitCloseFunction
+	serveF      ServeFunction
+	initF       InitCloseFunction
+	closeF      InitCloseFunction
 	headers     http.Header
 	errTemplate *template.Template
 	offline     bool
@@ -63,11 +63,11 @@ type SubdomainConfig struct {
 // not specify any protocol or port). If the domain name is an empy string
 // it will be treated as the default domain (see srv.RegisterDefaultDomain)
 func (srv *Server) RegisterDomain(displayName, domain string) *Domain {
-	d := &Domain {
-		Name: displayName,
+	d := &Domain{
+		Name:       displayName,
 		subdomains: make(map[string]*Subdomain),
-		srv: srv,
-		headers: make(http.Header),
+		srv:        srv,
+		headers:    make(http.Header),
 	}
 
 	srv.domains[domain] = d
@@ -90,7 +90,7 @@ func (srv *Server) DefaultDomain() *Domain {
 	return srv.domains[""]
 }
 
-// This is a shortcut for registering the default logic applied for every
+// RegisterDefaultRoute is a shortcut for registering the default logic applied for every
 // connection not matching any other specific domain and subdomain. It's
 // the combination of srv.RegisterDefaultDomain(displayName).RegisterDefaultSubdomain(c)
 func (srv *Server) RegisterDefaultRoute(displayName string, c SubdomainConfig) (*Domain, *Subdomain) {
@@ -154,7 +154,7 @@ func (d *Domain) Subdomain(name string) *Subdomain {
 	return d.subdomains[prepSubdomainName(name)]
 }
 
-// Subdomain returns the default subdomain, if set
+// DefaultSubdomain returns the default subdomain, if set
 func (d *Domain) DefaultSubdomain() *Subdomain {
 	return d.subdomains["*"]
 }
@@ -174,11 +174,12 @@ func (d *Domain) SetBeforeServeF(f BeforeServeFunction) {
 // SetHeaders adds headers to the collection of headers used in every connection.
 // This is a faster way to set multiple headers at the same time, instead of using
 // domain.SetHeader. The headers must be provided in this way:
-//		headers := [][2]string {
-//			{ "name1", "value1" },
-//			{ "name2", "value2" },
-//		}
-//		d.SetHeaders(headers)
+//
+//	headers := [][2]string {
+//		{ "name1", "value1" },
+//		{ "name2", "value2" },
+//	}
+//	d.SetHeaders(headers)
 func (d *Domain) SetHeaders(headers [][2]string) {
 	for _, header := range headers {
 		d.SetHeader(header[0], header[1])
@@ -230,11 +231,12 @@ func (sd *Subdomain) SetHeader(name, value string) {
 // SetHeaders adds headers to the collection of headers used in every connection.
 // This is a faster way to set multiple headers at the same time, instead of using
 // subdomain.SetHeader. The headers must be provided in this way:
-//		headers := [][2]string {
-//			{ "name1", "value1" },
-//			{ "name2", "value2" },
-//		}
-//		d.SetHeaders(headers)
+//
+//	headers := [][2]string {
+//		{ "name1", "value1" },
+//		{ "name2", "value2" },
+//	}
+//	d.SetHeaders(headers)
 func (sd *Subdomain) SetHeaders(headers [][2]string) {
 	for _, header := range headers {
 		sd.SetHeader(header[0], header[1])
@@ -262,10 +264,11 @@ func (sd *Subdomain) Disable() {
 }
 
 // SetErrorTemplate sets the error template used server-wise. It's
-// required an html that contains two specific fields, a .Code one and
+// required an HTML that contains two specific fields, a .Code one and
 // a .Message one, for example like so:
-// 	<h2>Error {{ .Code }}</h2>
-// 	<p>{{ .Message }}</p>
+//
+//	<h2>Error {{ .Code }}</h2>
+//	<p>{{ .Message }}</p>
 func (srv *Server) SetErrorTemplate(content string) error {
 	t, err := template.New("error.html").Parse(content)
 	if err != nil {
@@ -277,10 +280,11 @@ func (srv *Server) SetErrorTemplate(content string) error {
 }
 
 // SetErrorTemplate sets the error template used server-wise. It's
-// required an html that contains two specific fields, a .Code one and
+// required an HTML that contains two specific fields, a .Code one and
 // a .Message one, for example like so:
-// 	<h2>Error {{ .Code }}</h2>
-// 	<p>{{ .Message }}</p>
+//
+//	<h2>Error {{ .Code }}</h2>
+//	<p>{{ .Message }}</p>
 func (d *Domain) SetErrorTemplate(content string) error {
 	t, err := template.New("error.html").Parse(content)
 	if err != nil {
@@ -292,10 +296,11 @@ func (d *Domain) SetErrorTemplate(content string) error {
 }
 
 // SetErrorTemplate sets the error template used server-wise. It's
-// required an html that contains two specific fields, a .Code one and
+// required an HTML that contains two specific fields, a .Code one and
 // a .Message one, for example like so:
-// 	<h2>Error {{ .Code }}</h2>
-// 	<p>{{ .Message }}</p>
+//
+//	<h2>Error {{ .Code }}</h2>
+//	<p>{{ .Message }}</p>
 func (sd *Subdomain) SetErrorTemplate(content string) error {
 	t, err := template.New("error.html").Parse(content)
 	if err != nil {

@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-// Error is used to manually report an http error to send to the
+// Error is used to manually report an HTTP error to send to the
 // client. It sets the http status code (so it should not be set
 // before) and if the connection is done via a GET request, it will
 // try to serve the html error template with the status code and
@@ -66,14 +66,14 @@ func (route *Route) ServeFile(filePath string) {
 		route.Error(http.StatusBadRequest, "Bad request URL", "URL contains ..")
 		return
 	}
-	
+
 	fileInfo, err := os.Stat(filePath)
 	if err == nil {
 		if fileInfo.IsDir() {
 			route.Error(http.StatusNotFound, "Not found", "Cannot serve directory", filePath)
 			return
 		}
-	
+
 		http.ServeFile(route.W, route.R, filePath)
 		return
 	}
@@ -86,7 +86,7 @@ func (route *Route) ServeFile(filePath string) {
 
 	f, err := os.Open(filePath + ".html")
 	if err != nil {
-		route.Error(http.StatusInternalServerError, "Error retreiving page", fmt.Sprintf("Error opening file %s: %v", filePath + ".html", err))
+		route.Error(http.StatusInternalServerError, "Error retreiving page", fmt.Sprintf("Error opening file %s: %v", filePath+".html", err))
 		return
 	}
 	defer f.Close()
@@ -96,12 +96,12 @@ func (route *Route) ServeFile(filePath string) {
 
 // ServeCustomFileWithTime will serve a pseudo-file saved in memory specifing the
 // last modification time
-func (route *Route) ServeCustomFileWithTime(name string, data []byte, t time.Time) {
+func (route *Route) ServeCustomFileWithTime(data []byte, t time.Time) {
 	http.ServeContent(route.W, route.R, "", t, bytes.NewReader(data))
 }
 
-// ServeCustomFileWithTime will serve a pseudo-file saved in memory
-func (route *Route) ServeCustomFile(name string, data []byte) {
+// ServeCustomFile serves a pseudo-file saved in memory
+func (route *Route) ServeCustomFile(data []byte) {
 	http.ServeContent(route.W, route.R, "", time.Now(), bytes.NewReader(data))
 }
 
@@ -110,7 +110,7 @@ func (route *Route) ServeData(data []byte) {
 	route.W.Write(data)
 }
 
-// ServeData serves a string (as raw bytes) to the client
+// ServeText serves a string (as raw bytes) to the client
 func (route *Route) ServeText(text string) {
 	route.ServeData([]byte(text))
 }
@@ -118,7 +118,7 @@ func (route *Route) ServeText(text string) {
 // StaticServe tries to serve a file for every connection done via
 // a GET request, following all the options provided in the Website
 // configuration. This means it will not serve any file inside (also
-// nested) an hidden folder, it will serve an html file only with the
+// nested) a hidden folder, it will serve an HTML file only with the
 // flag argument set to true, it will serve index.html automatically
 // for connection with request uri empty or equal to "/", it will serve
 // every file inside the AllFolders field of the Website
@@ -164,7 +164,8 @@ func (route *Route) StaticServe(serveHTML bool) {
 // to sex the expiration date:
 //   - maxAge = 0 means no expiration specified
 //   - maxAge > 0 sets the expiration date from the current date adding the given time in seconds
-//  (- maxAge < 0 will remove the cookie instantly, like route.DeleteCookie)
+//     (- maxAge < 0 will remove the cookie instantly, like route.DeleteCookie)
+//
 // The cookie value is encoded and encrypted using a pair of keys created randomly at server creation,
 // so if the same cookie is later decoded between server restart, it can't be decoded. To have such a
 // behaviour see SetCookiePerm.
@@ -179,12 +180,12 @@ func (route *Route) SetCookie(name string, value any, maxAge int) error {
 		return err
 	}
 
-	http.SetCookie(route.W, &http.Cookie {
-		Name: GenerateHashString([]byte(name)),
-		Value: encValue,
-		Domain: route.DomainName,
-		MaxAge: maxAge,
-		Secure: route.Secure,
+	http.SetCookie(route.W, &http.Cookie{
+		Name:     GenerateHashString([]byte(name)),
+		Value:    encValue,
+		Domain:   route.DomainName,
+		MaxAge:   maxAge,
+		Secure:   route.Secure,
 		HttpOnly: route.Secure,
 	})
 
@@ -195,11 +196,11 @@ func (route *Route) SetCookie(name string, value any, maxAge int) error {
 // or route.SetCookiePerm
 func (route *Route) DeleteCookie(name string) {
 	http.SetCookie(route.W, &http.Cookie{
-		Name: GenerateHashString([]byte(name)),
-		Value: "",
-		Domain: route.DomainName,
-		MaxAge: -1,
-		Secure: route.Secure,
+		Name:     GenerateHashString([]byte(name)),
+		Value:    "",
+		Domain:   route.DomainName,
+		MaxAge:   -1,
+		Secure:   route.Secure,
 		HttpOnly: route.Secure,
 	})
 }
@@ -214,7 +215,7 @@ func (route *Route) DecodeCookie(name string, value any) error {
 	if err != nil {
 		return err
 	}
-	
+
 	return route.Srv.secureCookie.Decode(name, cookie.Value, value)
 }
 
@@ -228,11 +229,12 @@ func DecodeCookie[T any](route *Route, name string) (T, error) {
 	return value, err
 }
 
-// SetCookie creates a new cookie with the given name and value, maxAge can be used
+// SetCookiePerm creates a new cookie with the given name and value, maxAge can be used
 // to sex the expiration date:
 //   - maxAge = 0 means no expiration specified
 //   - maxAge > 0 sets the expiration date from the current date adding the given time in seconds
-//  (- maxAge < 0 will remove the cookie instantly, like route.DeleteCookie)
+//     (- maxAge < 0 will remove the cookie instantly, like route.DeleteCookie)
+//
 // The cookie value is encoded and encrypted using a pair of keys at package level that MUST be set at
 // program startup. This differs for the method route.SetCookie to ensure that even after server restart
 // these cookies can still be decoded.
@@ -243,11 +245,11 @@ func (route *Route) SetCookiePerm(name string, value any, maxAge int) error {
 	}
 
 	http.SetCookie(route.W, &http.Cookie{
-		Name: GenerateHashString([]byte(name)),
-		Value: encValue,
-		Domain: route.DomainName,
-		MaxAge: maxAge,
-		Secure: route.Secure,
+		Name:     GenerateHashString([]byte(name)),
+		Value:    encValue,
+		Domain:   route.DomainName,
+		MaxAge:   maxAge,
+		Secure:   route.Secure,
 		HttpOnly: route.Secure,
 	})
 
@@ -264,7 +266,7 @@ func (route *Route) DecodeCookiePerm(name string, value any) error {
 	if err != nil {
 		return err
 	}
-	
+
 	return route.Srv.secureCookiePerm.Decode(name, cookie.Value, value)
 }
 
@@ -300,8 +302,8 @@ func (route *Route) ReverseProxy(URL string) error {
 		proxyServer.ServeHTTP(route.W, route.R)
 		errChan <- nil
 	}()
-	
-	return <- errChan
+
+	return <-errChan
 }
 
 // RespBody returns the response body bytes
@@ -332,7 +334,7 @@ func ReadJSON[T any](route *Route) (value T, err error) {
 // IsInternalConn tells wheather the incoming connection should be treated
 // as a local connection. The user can add a filter that can extend this
 // selection to match their needs
-func  (route *Route) IsInternalConn() bool {
+func (route *Route) IsInternalConn() bool {
 	if strings.Contains(route.RemoteAddress, "localhost") || strings.Contains(route.RemoteAddress, "127.0.0.1") || strings.Contains(route.RemoteAddress, "::1") {
 		return true
 	}
@@ -342,13 +344,13 @@ func  (route *Route) IsInternalConn() bool {
 
 // TODO
 type xFile struct {
-	size int
+	size   int
 	offset int
-	b *bytes.Buffer
-	c chan struct{}
+	b      *bytes.Buffer
+	c      chan struct{}
 }
 
-// TODO 
+// TODO
 func (route *Route) serveCSSX() {
 	basePath := route.Website.Dir
 	if basePath == "" {
@@ -394,7 +396,7 @@ func (route *Route) serveCSSX() {
 		}
 
 		size += int(info.Size()) + 2
-		fileNames = append(fileNames, fileDirPath + sc.Text())
+		fileNames = append(fileNames, fileDirPath+sc.Text())
 	}
 
 	css := newXFile(size)
@@ -414,10 +416,10 @@ func (route *Route) serveCSSX() {
 }
 
 func newXFile(len int) *xFile {
-	return &xFile {
+	return &xFile{
 		size: len,
-		b: &bytes.Buffer{},
-		c: make(chan struct{}, 10),
+		b:    &bytes.Buffer{},
+		c:    make(chan struct{}, 10),
 	}
 }
 
@@ -432,10 +434,10 @@ func (x *xFile) Read(p []byte) (n int, err error) {
 		return 0, nil
 	case x.offset >= x.size:
 		return 0, io.EOF
-	case x.b.Len() == x.size || len(p) <= x.b.Len() - x.offset:
+	case x.b.Len() == x.size || len(p) <= x.b.Len()-x.offset:
 		data := x.b.Bytes()
 		var i int
-		for i = 0; i < len(p) && i < x.b.Len() - x.offset; i++ {
+		for i = 0; i < len(p) && i < x.b.Len()-x.offset; i++ {
 			p[i] = data[x.offset+i]
 		}
 
@@ -443,8 +445,8 @@ func (x *xFile) Read(p []byte) (n int, err error) {
 		return i, nil
 	default:
 		for {
-			<- x.c
-			if len(p) <= x.b.Len() - x.offset {
+			<-x.c
+			if len(p) <= x.b.Len()-x.offset {
 				return x.Read(p)
 			}
 		}
@@ -461,14 +463,14 @@ func (x *xFile) Seek(offset int64, whence int) (int64, error) {
 		x.offset = int(offset)
 		return offset, nil
 	case io.SeekCurrent:
-		if x.offset + int(offset) < 0 {
+		if x.offset+int(offset) < 0 {
 			return 0, fmt.Errorf("seek out of bound")
 		}
 
 		x.offset += int(offset)
 		return offset, nil
 	case io.SeekEnd:
-		if (x.size -1 ) + int(offset) < 0 {
+		if (x.size-1)+int(offset) < 0 {
 			return 0, fmt.Errorf("seek out of bound")
 		}
 

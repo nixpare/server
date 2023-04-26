@@ -45,26 +45,26 @@ func ParseCommandArgs(args ...string) []string {
 type CharSet int
 
 const (
-	NUM CharSet = iota 	// Digits from 0 to 9
-	ALPHA 				// Latin letters from A to z (Uppercase and Lowercase)
-	ALPHA_LOW 			// Latin letters from a to z (Lowercase)
-	ALPHA_NUM 			// Combination of NUM and ALPHA
-	ALPHA_LOW_NUM 		// Combination of NUM and ALPHA_LOW
-	ALPHA_NUM_SPECIAL 	// Combines ALPHA_LOW with this special character: !?+*-_=.&%$€#@
+	NUM               CharSet = iota // Digits from 0 to 9
+	ALPHA                            // Latin letters from A to z (Uppercase and Lowercase)
+	ALPHA_LOW                        // Latin letters from a to z (Lowercase)
+	ALPHA_NUM                        // Combination of NUM and ALPHA
+	ALPHA_LOW_NUM                    // Combination of NUM and ALPHA_LOW
+	ALPHA_NUM_SPECIAL                // Combines ALPHA_LOW with this special character: !?+*-_=.&%$€#@
 )
 
 const (
-	num = "0123456789"
-	alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	num       = "0123456789"
+	alpha     = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 	alpha_low = "abcdefghijklmnopqrstuvwxyz"
-	special = "!?+*-_=.&%$€#@"
+	special   = "!?+*-_=.&%$€#@"
 )
 
 // RandStr generates a random string with the given length. The string can be
 // made of differente sets of characters: see CharSet type
 func RandStr(length int, randType CharSet) string {
 	var dictionary string
-	
+
 	switch randType {
 	case NUM:
 		dictionary = num
@@ -107,7 +107,7 @@ func ChanIsOpened(c chan any) bool {
 	open := true
 
 	select {
-	case _, open = <- c:
+	case _, open = <-c:
 	default:
 	}
 
@@ -120,9 +120,9 @@ func ChanIsOpened(c chan any) bool {
 // the function returned prematurely due to a panic: the panic error is set
 // and the stack trace is provided in the relative field
 type PanicError struct {
-	Err 	 error
+	Err      error
 	PanicErr error
-	Stack 	 string
+	Stack    string
 }
 
 // PanicToErr runs any function that returns an error in a panic-controlled
@@ -135,39 +135,39 @@ func PanicToErr(f func() error) *PanicError {
 	go func() {
 		defer func() {
 			err := recover()
-			
+
 			if err == nil {
 				errChan <- nil
 			} else {
 				switch err := err.(type) {
 				case error:
-					errChan <- &PanicError {
+					errChan <- &PanicError{
 						PanicErr: fmt.Errorf("%w", err),
-						Stack: Stack(),
+						Stack:    Stack(),
 					}
 				default:
-					errChan <- &PanicError {
+					errChan <- &PanicError{
 						PanicErr: fmt.Errorf("%v", err),
-						Stack: Stack(),
+						Stack:    Stack(),
 					}
 				}
 			}
 
 			close(errChan)
 		}()
-		
+
 		if err := f(); err == nil {
 			errChan <- nil
 		} else {
-			errChan <- &PanicError { Err: err }
+			errChan <- &PanicError{Err: err}
 		}
 	}()
 
-	res := <- errChan
+	res := <-errChan
 	return res
 }
 
-// GenerateHashString generate an hash with sha256 from data
+// GenerateHashString generate a hash with sha256 from data
 func GenerateHashString(data []byte) string {
 	return fmt.Sprintf("%x", sha256.Sum256(data))
 }

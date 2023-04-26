@@ -11,12 +11,12 @@ import (
 type routePrepError int
 
 const (
-	ERR_NO_ERR routePrepError = iota 	// No error was found when preparing the Route
-	ERR_BAD_URL 						// The request URL was not parsable or contained unsafe characters
-	ERR_SERVER_OFFLINE					// The destination server for the request was set to be offline
-	ERR_WEBSITE_OFFLINE 				// The destination website for the request was set to be offline
-	ERR_DOMAIN_NOT_FOUND 				// The domain pointed by the request was not registered on the server
-	ERR_SUBDOMAIN_NOT_FOUND 			// The domain pointed by the request existed but not the subdomain
+	ERR_NO_ERR              routePrepError = iota // No error was found when preparing the Route
+	ERR_BAD_URL                                   // The request URL was not parsable or contained unsafe characters
+	ERR_SERVER_OFFLINE                            // The destination server for the request was set to be offline
+	ERR_WEBSITE_OFFLINE                           // The destination website for the request was set to be offline
+	ERR_DOMAIN_NOT_FOUND                          // The domain pointed by the request was not registered on the server
+	ERR_SUBDOMAIN_NOT_FOUND                       // The domain pointed by the request existed but not the subdomain
 )
 
 // prep contains all the logic that prepares all the fields of
@@ -38,7 +38,7 @@ func (route *Route) prep() {
 	if route.IsInternalConn() {
 		prepDomainAndSubdomainLocal(route)
 	}
-	
+
 	route.err = route.prepDomainAndSubdomain()
 }
 
@@ -53,9 +53,9 @@ func (route *Route) prepRemoteAddress() {
 }
 
 // prepRequestURI parses the requestURI incoming; in particular:
-//  - it sanitizes the path of the url
-//	- it sanitizes the query part of the url
-//	- creates the query map looking both for keys with or without a value
+//   - it sanitizes the path of the url
+//   - it sanitizes the query part of the url
+//   - creates the query map looking both for keys with or without a value
 func (route *Route) prepRequestURI() (err error) {
 	splitPath := strings.Split(route.RequestURI, "?")
 	route.RequestURI, err = url.PathUnescape(splitPath[0])
@@ -77,7 +77,7 @@ func (route *Route) prepRequestURI() (err error) {
 				if strings.HasPrefix(x, "=") {
 					continue
 				}
-				
+
 				queryParsed := strings.Split(x, "=")
 				route.QueryMap[queryParsed[0]] = queryParsed[1]
 			} else {
@@ -90,7 +90,7 @@ func (route *Route) prepRequestURI() (err error) {
 }
 
 // prepLogRequestURI preformats a string used for logging containing
-// informations about the request uri and the queries inside
+// information about the request uri and the queries inside
 func (route *Route) prepLogRequestURI() {
 	route.logRequestURI = "\"" + route.RequestURI + "\""
 
@@ -133,25 +133,25 @@ func prepDomainAndSubdomainNames(r *http.Request) (string, string) {
 	}
 
 	split := strings.Split(host, ".")
-	len := len(split)
-	
-	switch len {
+	length := len(split)
+
+	switch length {
 	case 1:
 		return host, ""
 	default:
-		if _, err = strconv.Atoi(split[len-1]); err == nil {
+		if _, err = strconv.Atoi(split[length-1]); err == nil {
 			return host, ""
 		}
 
 		if strings.HasSuffix(host, "localhost") {
-			return split[len-1], strings.Join(split[:len-1], ".") + "."
+			return split[length-1], strings.Join(split[:length-1], ".") + "."
 		}
 
-		if len == 2 {
-			return split[len-2] + "." + split[len-1], strings.Join(split[:len-2], ".")
+		if length == 2 {
+			return split[length-2] + "." + split[length-1], strings.Join(split[:length-2], ".")
 		}
 
-		return split[len-2] + "." + split[len-1], strings.Join(split[:len-2], ".") + "."
+		return split[length-2] + "." + split[length-1], strings.Join(split[:length-2], ".") + "."
 	}
 }
 
@@ -173,8 +173,8 @@ func (route *Route) prepDomainAndSubdomain() routePrepError {
 		route.Domain = route.Srv.domains[""]
 		if route.Domain == nil {
 			route.Domain = new(Domain)
-			route.Subdomain = &Subdomain { Name: "" }
-			route.Website = &Website { Name: "Not Found" }
+			route.Subdomain = &Subdomain{Name: ""}
+			route.Website = &Website{Name: "Not Found"}
 
 			if net.ParseIP(route.DomainName) == nil {
 				route.Domain.Name = "Domain NF"
@@ -190,8 +190,8 @@ func (route *Route) prepDomainAndSubdomain() routePrepError {
 	if route.Subdomain == nil {
 		route.Subdomain = route.Domain.subdomains["*"]
 		if route.Subdomain == nil {
-			route.Subdomain = &Subdomain { Name: "Subdomain NF" }
-			route.Website = &Website { Name: "Not Found" }
+			route.Subdomain = &Subdomain{Name: "Subdomain NF"}
+			route.Website = &Website{Name: "Not Found"}
 
 			return ERR_SUBDOMAIN_NOT_FOUND
 		}
@@ -237,7 +237,7 @@ func prepDomainAndSubdomainLocal(route *Route) {
 
 	route.SubdomainName = prepSubdomainName(route.SubdomainName)
 
-	route.Router.offlineClients[route.RemoteAddress] = offlineClient {
+	route.Router.offlineClients[route.RemoteAddress] = offlineClient{
 		route.DomainName, route.SubdomainName,
 	}
 }
