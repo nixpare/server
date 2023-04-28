@@ -1,5 +1,3 @@
-  - serve.go
-    - XFile
   - server.go
     - Tutto
   - Create a logger instance for router, server and route
