@@ -15,16 +15,32 @@ import (
 	"github.com/gorilla/securecookie"
 )
 
+// Server is a single HTTP server listening on a TCP port.
+// It can handle multiple domains and subdomains. To manage
+// multiple servers listening on different ports use a Router.
+//
+// Before creating any server you should change the HashKeyString and
+// BlockKeyString global variables: see Route.SetCookiePerm method
 type Server struct {
-	Secure           bool
-	Running          bool
-	Online           bool
-	OnlineTime       time.Time
-	stopChannel      chan struct{}
-	Server           *http.Server
-	port             int
-	Router           *Router
-	domains          map[string]*Domain
+	// Secure is set to indicate whether the server is using
+	// the HTTP or HTTPS protocol
+	Secure bool
+	// Running tells whether the server is running or not
+	Running bool
+	// Online tells wheter the server is responding to external requests
+	Online bool
+	// OnlineTime reports the last time the server was activated or resumed
+	OnlineTime  time.Time
+	stopChannel chan struct{}
+	// Server is the underlying HTTP server from the standard library
+	Server *http.Server
+	port   int
+	// Router is a reference to the Router (is the server was created through it).
+	// This should not be set by hand.
+	Router  *Router
+	domains map[string]*Domain
+	// ServerPath is the path provided on server creation. It is used as the log location
+	// for this specific server
 	ServerPath       string
 	secureCookie     *securecookie.SecureCookie
 	secureCookiePerm *securecookie.SecureCookie
@@ -32,15 +48,12 @@ type Server struct {
 	errTemplate      *template.Template
 }
 
+// Certificate rapresents a standard PEM certicate composed of a
+// full chain public key and a private key. This is used when creating
+// an HTTPS server
 type Certificate struct {
-	CertPemPath string
-	KeyPemPath  string
-}
-
-type Config struct {
-	Port   int
-	Secure bool
-	Certs  []Certificate
+	CertPemPath string // CertPemPath is the path to the full chain public key
+	KeyPemPath  string // KeyPemPath is the path to the private key
 }
 
 type offlineClient struct {
@@ -56,31 +69,23 @@ var (
 //go:embed static
 var staticFS embed.FS
 
-func (router *Router) NewServer(cfg Config) (srv *Server, err error) {
-	_, ok := router.servers[cfg.Port]
-	if ok {
-		return nil, fmt.Errorf("server listening to port %d already registered", srv.port)
+// NewServer creates a new server
+func NewServer(port int, secure bool, path string, certs []Certificate) (*Server, error) {
+	if path == "" {
+		path, _ = os.Getwd()
 	}
 
-	srv, err = router.newServer(
-		cfg.Port, cfg.Secure,
-		router.ServerPath, cfg.Certs,
-	)
-
-	router.servers[srv.port] = srv
-	srv.Router = router
-
-	return
+	return newServer(port, secure, path, certs)
 }
 
-func (router *Router) newServer(port int, secure bool, serverPath string, certs []Certificate) (srv *Server, err error) {
-	srv = new(Server)
+func newServer(port int, secure bool, path string, certs []Certificate) (*Server, error) {
+	srv := new(Server)
 
 	srv.Server = new(http.Server)
 	srv.Secure = secure
 	srv.port = port
 
-	srv.ServerPath = serverPath
+	srv.ServerPath = path
 
 	srv.stopChannel = make(chan struct{}, 1)
 
@@ -113,8 +118,7 @@ func (router *Router) newServer(port int, secure bool, serverPath string, certs 
 		for _, x := range certs {
 			cert, err := tls.LoadX509KeyPair(x.CertPemPath, x.KeyPemPath)
 			if err != nil {
-				srv.Log(LOG_LEVEL_ERROR, fmt.Sprintf("Load Certificate Error: %v", err))
-				continue
+				return nil, err
 			}
 
 			cfg.Certificates = append(cfg.Certificates, cert)
@@ -123,61 +127,82 @@ func (router *Router) newServer(port int, secure bool, serverPath string, certs 
 		srv.Server.TLSConfig = cfg
 	}
 
-	srv.Server.ErrorLog = log.New(router.logFile, "  ERROR: http-error: ", log.Flags())
+	logFile, err := os.OpenFile(
+		fmt.Sprintf("%s/server-%d.log", srv.ServerPath, srv.port),
+		os.O_APPEND|os.O_CREATE|os.O_SYNC|os.O_WRONLY,
+		0777,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	srv.Server.ErrorLog = log.New(logFile, "  ERROR: http-error: ", log.Flags())
 
 	srv.Server.ReadHeaderTimeout = time.Second * 10
 	srv.Server.IdleTimeout = time.Second * 30
 	srv.Server.SetKeepAlivesEnabled(true)
 
-	//Creates the pid file, writes it and closes the file
 	pid, _ := os.OpenFile(srv.ServerPath+"/PID.txt", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
-	fmt.Fprint(pid, os.Getpid())
+	fmt.Fprintln(pid, os.Getpid())
 	pid.Close()
 
-	//Generating hashKey and blockKey for the SecureCookie
 	hashKey := securecookie.GenerateRandomKey(64)
 	if hashKey == nil {
-		err = fmt.Errorf("error creating hashKey")
-		return
+		return nil, fmt.Errorf("error creating hashKey")
 	}
 	blockKey := securecookie.GenerateRandomKey(32)
 	if blockKey == nil {
-		err = fmt.Errorf("error creating blockKey")
-		return
+		return nil, fmt.Errorf("error creating blockKey")
 	}
 	srv.secureCookie = securecookie.New(hashKey, blockKey).MaxAge(0)
 
-	//Generating hashKey and blockKey for the SecureCookiePerm
-	hashKey = make([]byte, 0, 32)
+	hashKeyPerm := make([]byte, 0, 32)
 	for _, b := range sha256.Sum256([]byte(HashKeyString)) {
-		hashKey = append(hashKey, b)
+		hashKeyPerm = append(hashKeyPerm, b)
 	}
-	blockKey = make([]byte, 0, 32)
+	blockKeyPerm := make([]byte, 0, 32)
 	for _, b := range sha256.Sum256([]byte(BlockKeyString)) {
-		blockKey = append(blockKey, b)
+		blockKeyPerm = append(blockKeyPerm, b)
 	}
-	srv.secureCookiePerm = securecookie.New(hashKey, blockKey).MaxAge(0)
+	srv.secureCookiePerm = securecookie.New(hashKeyPerm, blockKeyPerm).MaxAge(0)
 
 	srv.domains = make(map[string]*Domain)
 	srv.headers = make(http.Header)
 
 	errorHTMLContent, err := staticFS.ReadFile("static/error.html")
-	if err == nil {
-		srv.SetErrorTemplate(string(errorHTMLContent))
+	if err != nil {
+		return nil, err
 	}
 
-	return srv, err
+	err = srv.SetErrorTemplate(string(errorHTMLContent))
+	if err != nil {
+		return nil, err
+	}
+
+	return srv, nil
 }
 
+// Port returns the TCP port listened by the server
 func (srv *Server) Port() int {
 	return srv.port
 }
 
+// SetHeader adds an HTTP header that will be set at every connection
+// accepted by the Server
 func (srv *Server) SetHeader(name, value string) *Server {
 	srv.headers.Set(name, value)
 	return srv
 }
 
+// SetHeaders accepts a matrix made of couples of string, each of one rapresents an
+// HTTP header with its key and value. This is a shorthand for not calling multiple
+// times Server.SetHeader. It can be used like this:
+/*
+	srv.SetHeaders([][2]string{
+		{"header_name_1", "header_value_1"},
+		{"header_name_2", "header_value_2"},
+	})
+*/
 func (srv *Server) SetHeaders(headers [][2]string) *Server {
 	for _, header := range headers {
 		srv.SetHeader(header[0], header[1])
@@ -185,29 +210,24 @@ func (srv *Server) SetHeaders(headers [][2]string) *Server {
 	return srv
 }
 
+// RemoveHeader removes an HTTP header with the given name from
+// the Server specific headers
 func (srv *Server) RemoveHeader(name string) *Server {
 	srv.headers.Del(name)
 	return srv
 }
 
+// Header returns the underlying http.Header intance
 func (srv *Server) Header() http.Header {
 	return srv.headers
 }
 
+// Start prepares every domain and subdomain and starts listening
+// on the TCP port
 func (srv *Server) Start() {
-	go func() {
-		if srv.Secure {
-			if err := srv.Server.ListenAndServeTLS("", ""); err != nil && err.Error() != "http: Server closed" {
-				srv.Log(LOG_LEVEL_FATAL, fmt.Sprintf("Server Error: %v", err))
-				srv.Shutdown()
-			}
-		} else {
-			if err := srv.Server.ListenAndServe(); err != nil && err.Error() != "http: Server closed" {
-				srv.Log(LOG_LEVEL_FATAL, fmt.Sprintf("Server Error: %v", err))
-				srv.Shutdown()
-			}
-		}
-	}()
+	if srv.Running {
+		return
+	}
 
 	srv.Running = true
 	srv.Online = true
@@ -221,9 +241,25 @@ func (srv *Server) Start() {
 			}
 		}
 	}
+
+	go func() {
+		if srv.Secure {
+			if err := srv.Server.ListenAndServeTLS("", ""); err != nil && err.Error() != "http: Server closed" {
+				srv.Log(LOG_LEVEL_FATAL, fmt.Sprintf("Server Error: %v", err))
+				srv.Stop()
+			}
+		} else {
+			if err := srv.Server.ListenAndServe(); err != nil && err.Error() != "http: Server closed" {
+				srv.Log(LOG_LEVEL_FATAL, fmt.Sprintf("Server Error: %v", err))
+				srv.Stop()
+			}
+		}
+	}()
 }
 
-func (srv *Server) Shutdown() {
+// Stop cleans up every domain and subdomain and stops listening
+// on the TCP port
+func (srv *Server) Stop() {
 	if !srv.Running {
 		return
 	}

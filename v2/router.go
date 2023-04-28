@@ -17,9 +17,9 @@ type Router struct {
 	// at this stage every task will be stopped and every server will be closed, but any
 	// reference is still present
 	CleanupF func() error
-	// ServerPath is the path provided when creating the Router or the working directory
+	// The Path provided when creating the Router or the working directory
 	// if not provided. This defines the path for every server registered
-	ServerPath     string
+	Path           string
 	startTime      time.Time
 	running        bool
 	offlineClients map[string]offlineClient
@@ -56,7 +56,7 @@ func NewRouter(logFile *os.File, serverPath string) (router *Router, err error) 
 		}
 	}
 	serverPath = strings.ReplaceAll(serverPath, "\\", "/")
-	router.ServerPath = serverPath
+	router.Path = serverPath
 
 	router.offlineClients = make(map[string]offlineClient)
 	router.IsInternalConn = func(remoteAddress string) bool { return false }
@@ -67,6 +67,29 @@ func NewRouter(logFile *os.File, serverPath string) (router *Router, err error) 
 	router.writeLogStart(router.startTime)
 
 	return
+}
+
+// NewServer creates a new HTTP/HTTPS Server linked to the Router. See NewServer function
+// for more information
+func (router *Router) NewServer(port int, secure bool, path string, certs []Certificate) (*Server, error) {
+	_, ok := router.servers[port]
+	if ok {
+		return nil, fmt.Errorf("server listening to port %d already registered", port)
+	}
+
+	if path == "" {
+		path = router.Path
+	}
+
+	srv, err := newServer(port, secure, path, certs)
+	if err != nil {
+		return nil, err
+	}
+
+	router.servers[srv.port] = srv
+	srv.Router = router
+
+	return srv, nil
 }
 
 // Server returns the server running on the given port
@@ -103,14 +126,14 @@ func (router *Router) Stop() {
 	router.TaskMgr.stop()
 
 	for _, srv := range router.servers {
-		srv.Shutdown()
+		srv.Stop()
 	}
 
 	if router.CleanupF != nil {
 		router.CleanupF()
 	}
 
-	os.Remove(router.ServerPath + "/PID.txt")
+	os.Remove(router.Path + "/PID.txt")
 	router.writeLogClosure(time.Now())
 	return
 }
@@ -122,6 +145,6 @@ func (router *Router) StopServer(port int) error {
 		return fmt.Errorf("server with port %d not found", port)
 	}
 
-	srv.Shutdown()
+	srv.Stop()
 	return nil
 }

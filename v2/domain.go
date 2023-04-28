@@ -102,8 +102,8 @@ func (srv *Server) RegisterDefaultRoute(displayName string, c SubdomainConfig) (
 
 // RegisterSubdomain registers a subdomain in the domain. It's asked to specify the
 // subdomain name (with or without trailing dot) and its configuration. It the Website
-// Dir field is empty it will be used the default value of "<srv.ServerPath>/public",
-// instead if it's not absolute it will be relative to the srv.ServerPath
+// Dir field is empty it will be used the default value of "<srv.Path>/public",
+// instead if it's not absolute it will be relative to the srv.Path
 func (d *Domain) RegisterSubdomain(subdomain string, c SubdomainConfig) *Subdomain {
 	subdomain = prepSubdomainName(subdomain)
 
