@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -48,11 +47,7 @@ func (route *Route) Error(statusCode int, message string, a ...any) {
 // (if set) or with the server path
 func (route *Route) ServeFile(filePath string) {
 	if !path.IsAbs(filePath) {
-		if route.Website.Dir != "" {
-			filePath = route.Website.Dir + "/" + filePath
-		} else {
-			filePath = route.Srv.ServerPath + "/" + filePath
-		}
+		filePath = route.Website.Dir + "/" + filePath
 	}
 
 	if strings.HasPrefix(filePath, "~") {
@@ -64,6 +59,11 @@ func (route *Route) ServeFile(filePath string) {
 
 	if strings.Contains(filePath, "..") {
 		route.Error(http.StatusBadRequest, "Bad request URL", "URL contains ..")
+		return
+	}
+
+	if value, ok := route.Website.XFiles[filePath]; ok {
+		route.serveXFile(value)
 		return
 	}
 
@@ -92,6 +92,20 @@ func (route *Route) ServeFile(filePath string) {
 	defer f.Close()
 
 	http.ServeContent(route.W, route.R, fileInfo.Name(), fileInfo.ModTime(), f)
+}
+
+func (route *Route) serveXFile(xFilePath string) {
+	x, err := NewXFile(xFilePath)
+	if err != nil {
+		route.Error(
+			http.StatusInternalServerError,
+			"Internal server error",
+			err,
+		)
+		return
+	}
+
+	http.ServeContent(route.W, route.R, "", x.ModTime(), x)
 }
 
 // ServeCustomFileWithTime will serve a pseudo-file saved in memory specifing the
@@ -147,11 +161,6 @@ func (route *Route) StaticServe(serveHTML bool) {
 
 	for _, s := range route.Website.AllFolders {
 		if s == "" || strings.HasPrefix(route.RequestURI, s) {
-			if strings.HasSuffix(route.RequestURI, ".css") && route.Website.EnableCSSX {
-				route.serveCSSX()
-				return
-			}
-
 			route.ServeFile(route.Website.Dir + route.RequestURI)
 			return
 		}
@@ -340,143 +349,4 @@ func (route *Route) IsInternalConn() bool {
 	}
 
 	return route.Router.IsInternalConn(route.RemoteAddress)
-}
-
-// TODO
-type xFile struct {
-	size   int
-	offset int
-	b      *bytes.Buffer
-	c      chan struct{}
-}
-
-// TODO
-func (route *Route) serveCSSX() {
-	basePath := route.Website.Dir
-	if basePath == "" {
-		basePath = route.Srv.ServerPath
-	}
-
-	filePath := basePath + "/" + route.RequestURI
-
-	info, err := os.Stat(filePath + "x")
-	if err != nil {
-		route.ServeFile(route.Website.Dir + route.RequestURI)
-		return
-	}
-
-	filePath = filePath + "x"
-
-	cssx, err := os.Open(filePath)
-	if err != nil {
-		route.Error(http.StatusInternalServerError, "Internal server error", fmt.Sprintf("Error opening file %s: %v", filePath, err))
-		return
-	}
-	defer cssx.Close()
-
-	pathSplit := strings.Split(basePath, "/")
-	var fileDirPath string
-	for _, s := range pathSplit[:len(pathSplit)-1] {
-		fileDirPath += s + "/"
-	}
-
-	var size int
-	modTime := info.ModTime()
-	fileNames := make([]string, 0)
-
-	sc := bufio.NewScanner(cssx)
-	for sc.Scan() {
-		info, err = os.Stat(fileDirPath + sc.Text())
-		if err != nil {
-			continue
-		}
-
-		if info.ModTime().After(modTime) {
-			modTime = info.ModTime()
-		}
-
-		size += int(info.Size()) + 2
-		fileNames = append(fileNames, fileDirPath+sc.Text())
-	}
-
-	css := newXFile(size)
-	go func() {
-		for _, s := range fileNames {
-			data, err := os.ReadFile(s)
-			if err != nil {
-				continue
-			}
-
-			css.Write(data)
-			css.Write([]byte("\n\n"))
-		}
-	}()
-
-	http.ServeContent(route.W, route.R, pathSplit[len(pathSplit)-1], modTime, css)
-}
-
-func newXFile(len int) *xFile {
-	return &xFile{
-		size: len,
-		b:    &bytes.Buffer{},
-		c:    make(chan struct{}, 10),
-	}
-}
-
-func (x *xFile) Write(p []byte) {
-	x.b.Write(p)
-	x.c <- struct{}{}
-}
-
-func (x *xFile) Read(p []byte) (n int, err error) {
-	switch {
-	case len(p) == 0:
-		return 0, nil
-	case x.offset >= x.size:
-		return 0, io.EOF
-	case x.b.Len() == x.size || len(p) <= x.b.Len()-x.offset:
-		data := x.b.Bytes()
-		var i int
-		for i = 0; i < len(p) && i < x.b.Len()-x.offset; i++ {
-			p[i] = data[x.offset+i]
-		}
-
-		x.offset += i
-		return i, nil
-	default:
-		for {
-			<-x.c
-			if len(p) <= x.b.Len()-x.offset {
-				return x.Read(p)
-			}
-		}
-	}
-}
-
-func (x *xFile) Seek(offset int64, whence int) (int64, error) {
-	switch whence {
-	case io.SeekStart:
-		if offset < 0 {
-			return 0, fmt.Errorf("seek out of bound")
-		}
-
-		x.offset = int(offset)
-		return offset, nil
-	case io.SeekCurrent:
-		if x.offset+int(offset) < 0 {
-			return 0, fmt.Errorf("seek out of bound")
-		}
-
-		x.offset += int(offset)
-		return offset, nil
-	case io.SeekEnd:
-		if (x.size-1)+int(offset) < 0 {
-			return 0, fmt.Errorf("seek out of bound")
-		}
-
-		x.offset = (x.size - 1) + int(offset)
-		return int64(x.offset), nil
-	default:
-		return 0, fmt.Errorf("invalid operation")
-	}
 }

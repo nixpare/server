@@ -51,21 +51,17 @@ type Website struct {
 		}
 	*/
 	PageHeaders map[string][][2]string
-	// EnableCSSX, if true, tells the function Route.StaticServe if it should
-	// first find a matching cssx file when a css is queried.
-	// A .cssx file is a simple text file containing a list of existing .css
-	// files in the same directory, so the Route will serve all this .css files
-	// listed in the exact order like they were a single file.
-	// For example: we could have 3 real .css files in the /assets folder that are:
-	//  - style.css: containing the styles applied across the website (colour, fonts, ecc)
-	//  - index.css: used to style components used only in the index.html file
-	//  - login.css: used to style components used only in the login.html file
-	// So we can make two .cssx file, one for the index page and one for the login one:
-	//  - index.cssx: "style.css \n index.css \n EOF" (this is the rapresentation of the file)
-	//  - login.cssx: "style.css \n login.css \n EOF" (this is the rapresentation of the file)
-	// When the html calls for a /assets/index.css or /assets/login.css, it will not receive
-	// just the single file, but the combination of style.css and the other one (respectively)
-	EnableCSSX bool
+	// XFiles maps requested file paths to existing files that can be used to create and serve XFile
+	// virtual files. If the value in the map is an empty string, this means that the file used to
+	// create the XFile corresponds, otherwise you can map it to a completely different file. The value
+	// can be a relative path (to the Website.Dir) or an absolute path, but the key part must be a
+	// relative path
+	//
+	// For example: if the XFiles attribute is set to
+	//   XFiles: map[string]string{ "assets/css/index.css": "assets/css/X_INDEX.css" }
+	// and a request comes with a URI of https://<my_domain>/assets/css/index.css, the server will
+	// use the file Website.Dir + / + assets/css/X_INDEX.css to create the XFile and then serve it
+	XFiles map[string]string
 	// AvoidMetricsAndLogging disables any type of log for every connection and error regarding
 	// this website (if not explicitly done by the logic calling Route.Log)
 	AvoidMetricsAndLogging bool

@@ -130,8 +130,31 @@ func (d *Domain) RegisterSubdomain(subdomain string, c SubdomainConfig) *Subdoma
 		}
 	}
 
-	ws := new(Website)
-	*ws = c.Website
+	ws := &Website{
+		Name:                   c.Website.Name,
+		Dir:                    c.Website.Dir,
+		MainPages:              c.Website.MainPages,
+		NoLogPages:             c.Website.NoLogPages,
+		AllFolders:             c.Website.AllFolders,
+		HiddenFolders:          c.Website.HiddenFolders,
+		PageHeaders:            c.Website.PageHeaders,
+		XFiles:                 make(map[string]string),
+		AvoidMetricsAndLogging: c.Website.AvoidMetricsAndLogging,
+	}
+
+	for key, value := range c.Website.XFiles {
+		if !path.IsAbs(key) {
+			key = ws.Dir + "/" + key
+		}
+
+		if value == "" {
+			ws.XFiles[key] = key
+		} else if !path.IsAbs(value) {
+			value = ws.Dir + "/" + value
+		}
+
+		ws.XFiles[key] = value
+	}
 
 	sd := &Subdomain{
 		Name: subdomain, website: ws,
