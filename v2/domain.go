@@ -109,9 +109,6 @@ func (d *Domain) RegisterSubdomain(subdomain string, c SubdomainConfig) *Subdoma
 
 	if c.ServeF == nil {
 		c.Website.AllFolders = []string{""}
-		if c.Website.Dir == "" {
-			c.Website.Dir = d.srv.ServerPath + "/public"
-		}
 		c.ServeF = func(route *Route) { route.StaticServe(true) }
 	}
 

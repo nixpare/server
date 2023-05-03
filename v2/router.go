@@ -109,7 +109,6 @@ func (router *Router) Start() {
 
 	router.TaskMgr.start()
 	router.running = true
-	return
 }
 
 // Stop starts the shutdown procedure of the entire router with all
@@ -135,7 +134,6 @@ func (router *Router) Stop() {
 
 	os.Remove(router.Path + "/PID.txt")
 	router.writeLogClosure(time.Now())
-	return
 }
 
 // StopServer stops the server opened on the given port
