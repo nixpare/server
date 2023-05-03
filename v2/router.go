@@ -37,8 +37,8 @@ type Router struct {
 
 // NewRouter returns a new Router ready to be set up. Both logFile and serverPath are optional:
 // + if logFile is not provided, os.Stdout will be used by default
-// + if serverPath is not provided, the router will try to get the working directory
-func NewRouter(logFile *os.File, serverPath string) (router *Router, err error) {
+// + if routerPath is not provided, the router will try to get the working directory
+func NewRouter(routerPath string, logFile *os.File) (router *Router, err error) {
 	router = new(Router)
 	router.servers = make(map[int]*Server)
 
@@ -49,14 +49,14 @@ func NewRouter(logFile *os.File, serverPath string) (router *Router, err error) 
 	}
 	router.logMutex = new(sync.Mutex)
 
-	if serverPath == "" {
-		serverPath, err = os.Getwd()
+	if routerPath == "" {
+		routerPath, err = os.Getwd()
 		if err != nil {
 			return nil, fmt.Errorf("serverPath error: %w", err)
 		}
 	}
-	serverPath = strings.ReplaceAll(serverPath, "\\", "/")
-	router.Path = serverPath
+	routerPath = strings.ReplaceAll(routerPath, "\\", "/")
+	router.Path = routerPath
 
 	router.offlineClients = make(map[string]offlineClient)
 	router.IsInternalConn = func(remoteAddress string) bool { return false }
@@ -71,7 +71,7 @@ func NewRouter(logFile *os.File, serverPath string) (router *Router, err error) 
 
 // NewServer creates a new HTTP/HTTPS Server linked to the Router. See NewServer function
 // for more information
-func (router *Router) NewServer(port int, secure bool, path string, certs []Certificate) (*Server, error) {
+func (router *Router) NewServer(port int, secure bool, path string, certs ...Certificate) (*Server, error) {
 	_, ok := router.servers[port]
 	if ok {
 		return nil, fmt.Errorf("server listening to port %d already registered", port)
@@ -109,7 +109,6 @@ func (router *Router) Start() {
 
 	router.TaskMgr.start()
 	router.running = true
-	return
 }
 
 // Stop starts the shutdown procedure of the entire router with all
@@ -135,7 +134,6 @@ func (router *Router) Stop() {
 
 	os.Remove(router.Path + "/PID.txt")
 	router.writeLogClosure(time.Now())
-	return
 }
 
 // StopServer stops the server opened on the given port

@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand"
 	"os"
@@ -34,9 +35,12 @@ func (router *Router) writeLogClosure(t time.Time) {
 // it, the router will write back the welcome message with the original router start timestamp and
 // an info about when the logs are cleared
 func (router *Router) ClearLogs() error {
+	if router.logFile == os.Stdout {
+		return errors.New("can't clear logs written to stdout")
+	}
+
 	oldFile := router.logFile
 	if err := oldFile.Close(); err != nil {
-		router.Logf(LOG_LEVEL_ERROR, "Can't clear logs: %v", err)
 		return err
 	}
 

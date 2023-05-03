@@ -70,9 +70,13 @@ var (
 var staticFS embed.FS
 
 // NewServer creates a new server
-func NewServer(port int, secure bool, path string, certs []Certificate) (*Server, error) {
+func NewServer(port int, secure bool, path string, certs ...Certificate) (*Server, error) {
 	if path == "" {
-		path, _ = os.Getwd()
+		var err error
+		path, err = os.Getwd()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return newServer(port, secure, path, certs)
