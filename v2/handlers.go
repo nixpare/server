@@ -16,8 +16,8 @@ type Website struct {
 	// Name is used in the log information
 	Name string
 	// Dir is the root folder of the Website. If it's not set
-	// while creating the Website, this is set to the server path
-	// of the domain in which is registered, otherwise if it's a
+	// while creating the Website, this is set to the server path + /public
+	// folder of the domain in which is registered, otherwise if it's a
 	// relative path, it's considered relative to the server path.
 	// This is also used by the function Route.ServeStatic to
 	// automatically serve any content (see AllFolders attribute)

@@ -52,9 +52,14 @@ type Subdomain struct {
 // Domain.RegisterSubdomain for the folder behaviour), however InitF and CloseF
 // are optional
 type SubdomainConfig struct {
+	// Website will be copied to the subdomain and later will be
+	// linked in every connection
 	Website Website
+	// ServeF is the function holding the logic behind the website
 	ServeF  ServeFunction
+	// InitF is the function called upon server startup
 	InitF   InitCloseFunction
+	// CloseF is the function called upon server shutdown
 	CloseF  InitCloseFunction
 }
 

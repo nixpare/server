@@ -167,6 +167,29 @@ func PanicToErr(f func() error) *PanicError {
 	return res
 }
 
+func (err PanicError) Error() error {
+	if err.PanicErr != nil {
+		return fmt.Errorf("%w\n%s", err.PanicErr, IndentString(err.Stack, 2))
+	}
+	
+	return err.Err
+}
+
+func (err PanicError) Unwrap() error {
+	var res error
+	if err.PanicErr != nil {
+		res = err.PanicErr
+	} else if err.Err != nil {
+		res = err.Err
+	}
+
+	unwrap := errors.Unwrap(res)
+	if unwrap != nil {
+		return unwrap
+	}
+	return res
+}
+
 // GenerateHashString generate a hash with sha256 from data
 func GenerateHashString(data []byte) string {
 	return fmt.Sprintf("%x", sha256.Sum256(data))
