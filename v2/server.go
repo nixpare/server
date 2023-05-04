@@ -193,7 +193,7 @@ func (srv *Server) Port() int {
 
 // IsRunning tells whether the server is running or not
 func (srv *Server) IsRunning() bool {
-	return srv.state == lcs_started
+	return getLifeCycleState(srv) == lcs_started
 }
 
 func (srv *Server) getState() lifeCycleState {
@@ -280,8 +280,8 @@ func (srv *Server) Stop() {
 		return
 	}
 	setLifeCycleState(srv, lcs_stopping)
+
 	srv.Log(LOG_LEVEL_INFO, fmt.Sprintf("Server %s shutdown started", srv.Server.Addr))
-	
 	srv.Server.SetKeepAlivesEnabled(false)
 
 	for _, d := range srv.domains {
@@ -300,5 +300,6 @@ func (srv *Server) Stop() {
 
 	srv.stopChannel <- struct{}{}
 	srv.Log(LOG_LEVEL_INFO, fmt.Sprintf("Server %s shutdown finished", srv.Server.Addr))
+
 	setLifeCycleState(srv, lcs_stopped)
 }
