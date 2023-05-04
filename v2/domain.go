@@ -145,14 +145,8 @@ func (d *Domain) RegisterSubdomain(subdomain string, c SubdomainConfig) *Subdoma
 	}
 
 	for key, value := range c.Website.XFiles {
-		if !isAbs(key) {
-			key = ws.Dir + "/" + key
-		}
-
 		if value == "" {
 			ws.XFiles[key] = key
-		} else if !isAbs(value) {
-			value = ws.Dir + "/" + value
 		}
 
 		ws.XFiles[key] = value

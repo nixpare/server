@@ -71,7 +71,10 @@ func (route *Route) ServeFile(filePath string) {
 		return
 	}
 
-	if value, ok := route.Website.XFiles[filePath]; ok {
+	if value, ok := route.Website.XFiles[strings.TrimLeft(route.RequestURI, "/")]; ok {
+		if !isAbs(value) {
+			value = route.Website.Dir + "/" + value
+		}
 		route.serveXFile(value)
 		return
 	}
@@ -114,18 +117,19 @@ func (route *Route) serveXFile(xFilePath string) {
 		return
 	}
 
-	http.ServeContent(route.W, route.R, "", x.ModTime(), x)
+	http.ServeContent(route.W, route.R, route.RequestURI, x.ModTime(), x)
 }
 
 // ServeCustomFileWithTime will serve a pseudo-file saved in memory specifing the
-// last modification time
-func (route *Route) ServeCustomFileWithTime(data []byte, t time.Time) {
-	http.ServeContent(route.W, route.R, "", t, bytes.NewReader(data))
+// last modification time. The name of the file is important for MIME type detection
+func (route *Route) ServeCustomFileWithTime(fileName string, data []byte, t time.Time) {
+	http.ServeContent(route.W, route.R, fileName, t, bytes.NewReader(data))
 }
 
-// ServeCustomFile serves a pseudo-file saved in memory
-func (route *Route) ServeCustomFile(data []byte) {
-	http.ServeContent(route.W, route.R, "", time.Now(), bytes.NewReader(data))
+// ServeCustomFile serves a pseudo-file saved in memory. The name of the file is
+// important for MIME type detection
+func (route *Route) ServeCustomFile(fileName string, data []byte) {
+	http.ServeContent(route.W, route.R, fileName, time.Now(), bytes.NewReader(data))
 }
 
 // ServeData serves raw bytes to the client
