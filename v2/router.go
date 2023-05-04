@@ -92,11 +92,6 @@ func (router *Router) NewServer(port int, secure bool, path string, certs []Cert
 	return srv, nil
 }
 
-// Server returns the server running on the given port
-func (router *Router) Server(port int) *Server {
-	return router.servers[port]
-}
-
 // Start starts all the registered servers and the background task manager
 func (router *Router) Start() {
 	if router.running {
@@ -140,24 +135,7 @@ func (router *Router) IsRunning() bool {
 	return router.running
 }
 
-// StartServer starts the server registered for the given port
-func (router *Router) StartServer(port int) error {
-	srv := router.servers[port]
-	if srv == nil {
-		return fmt.Errorf("server with port %d not found", port)
-	}
-
-	srv.Start()
-	return nil
-}
-
-// StopServer stops the server opened on the given port
-func (router *Router) StopServer(port int) error {
-	srv := router.servers[port]
-	if srv == nil {
-		return fmt.Errorf("server with port %d not found", port)
-	}
-
-	srv.Stop()
-	return nil
+// Server returns the server running on the given port
+func (router *Router) Server(port int) *Server {
+	return router.servers[port]
 }
