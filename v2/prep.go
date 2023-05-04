@@ -11,12 +11,12 @@ import (
 type routePrepError int
 
 const (
-	ERR_NO_ERR              routePrepError = iota // No error was found when preparing the Route
-	ERR_BAD_URL                                   // The request URL was not parsable or contained unsafe characters
-	ERR_SERVER_OFFLINE                            // The destination server for the request was set to be offline
-	ERR_WEBSITE_OFFLINE                           // The destination website for the request was set to be offline
-	ERR_DOMAIN_NOT_FOUND                          // The domain pointed by the request was not registered on the server
-	ERR_SUBDOMAIN_NOT_FOUND                       // The domain pointed by the request existed but not the subdomain
+	err_no_err              routePrepError = iota // No error was found when preparing the Route
+	err_bad_url                                   // The request URL was not parsable or contained unsafe characters
+	err_server_offline                            // The destination server for the request was set to be offline
+	err_website_offline                           // The destination website for the request was set to be offline
+	err_domain_not_found                          // The domain pointed by the request was not registered on the server
+	err_subdomain_not_found                       // The domain pointed by the request existed but not the subdomain
 )
 
 // prep contains all the logic that prepares all the fields of
@@ -27,7 +27,7 @@ func (route *Route) prep() {
 
 	err := route.prepRequestURI()
 	if err != nil {
-		route.err = ERR_BAD_URL
+		route.err = err_bad_url
 		route.logRequestURI = route.R.RequestURI
 		return
 	}
@@ -182,7 +182,7 @@ func (route *Route) prepDomainAndSubdomain() routePrepError {
 				route.Domain.Name = "DIPA"
 			}
 
-			return ERR_DOMAIN_NOT_FOUND
+			return err_domain_not_found
 		}
 	}
 
@@ -193,12 +193,12 @@ func (route *Route) prepDomainAndSubdomain() routePrepError {
 			route.Subdomain = &Subdomain{Name: "Subdomain NF"}
 			route.Website = &Website{Name: "Not Found"}
 
-			return ERR_SUBDOMAIN_NOT_FOUND
+			return err_subdomain_not_found
 		}
 	}
 
 	route.Website = route.Subdomain.website
-	return ERR_NO_ERR
+	return err_no_err
 }
 
 // prepDomainAndSubdomainLocal should be called only when the connection is local:

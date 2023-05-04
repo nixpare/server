@@ -337,36 +337,36 @@ func (route *Route) serve() {
 	}
 
 	if route.Subdomain != nil && route.Subdomain.offline {
-		route.err = ERR_WEBSITE_OFFLINE
+		route.err = err_website_offline
 	}
 
 	if !route.Srv.Online {
-		route.err = ERR_SERVER_OFFLINE
+		route.err = err_server_offline
 	}
 
-	if route.err != ERR_NO_ERR {
+	if route.err != err_no_err {
 		switch route.err {
-		case ERR_BAD_URL:
+		case err_bad_url:
 			route.Error(http.StatusBadRequest, "Bad Request URL")
 
-		case ERR_SERVER_OFFLINE:
+		case err_server_offline:
 			t := route.Srv.OnlineTime.Add(time.Minute * 30)
 			route.W.Header().Set("Retry-After", t.Format(time.RFC1123))
 			route.Error(http.StatusServiceUnavailable, "Server temporarly offline, retry in "+time.Until(t).Truncate(time.Second).String())
 
-		case ERR_WEBSITE_OFFLINE:
+		case err_website_offline:
 			t := route.Srv.OnlineTime.Add(time.Minute * 30)
 			route.W.Header().Set("Retry-After", t.Format(time.RFC1123))
 			route.Error(http.StatusServiceUnavailable, "Website temporarly offline")
 
-		case ERR_DOMAIN_NOT_FOUND:
+		case err_domain_not_found:
 			if net.ParseIP(route.DomainName) == nil {
 				route.Error(http.StatusBadRequest, fmt.Sprintf("Domain \"%s\" not served by this server", route.DomainName))
 			} else {
 				route.Error(http.StatusBadRequest, "Invalid direct IP access")
 			}
 
-		case ERR_SUBDOMAIN_NOT_FOUND:
+		case err_subdomain_not_found:
 			route.Error(http.StatusBadRequest, fmt.Sprintf("Subdomain \"%s\" not found", route.SubdomainName))
 		}
 

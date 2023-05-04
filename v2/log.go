@@ -55,9 +55,9 @@ func (router *Router) ClearLogs() error {
 
 // remoteAddress + Method + requestURI + Secure/Unsecure + Code + Written + Duration + Website Name + Domain Name + HostAddr (+ LogError)
 const (
-	httpInfoFormat    = "%-15s - %-4s %-50s %s %d %10.3f MB - (%6d ms) \u279C %s (%s) via %s"
-	httpWarningFormat = "%-15s - %-4s %-50s %s %d %10.3f MB - (%6d ms) \u279C %s (%s) via %s \u279C %s"
-	httpErrorFormat   = "%-15s - %-4s %-50s %s %d %10.3f MB - (%6d ms) \u279C %s (%s) via %s \u279C %s"
+	http_info_format    = "%-15s - %s %d %-4s %-50s %10.3f MB - (%6d ms) \u279C %s (%s) via %s"
+	http_warning_format = "%-15s - %s %d %-4s %-50s %10.3f MB - (%6d ms) \u279C %s (%s) via %s \u279C %s"
+	http_error_format   = "%-15s - %s %d %-4s %-50s %10.3f MB - (%6d ms) \u279C %s (%s) via %s \u279C %s"
 )
 
 // logHTTPInfo logs http request with an exit code < 400
@@ -67,12 +67,12 @@ func (route *Route) logHTTPInfo(m metrics) {
 		lock = "\U0001F512"
 	}
 
-	route.Logf(LOG_LEVEL_INFO, httpInfoFormat,
+	route.Logf(LOG_LEVEL_INFO, http_info_format,
 		route.RemoteAddress,
-		route.R.Method,
-		route.logRequestURI,
 		lock,
 		m.Code,
+		route.R.Method,
+		route.logRequestURI,
 		float64(m.Written)/1000000.,
 		m.Duration.Milliseconds(),
 		route.Website.Name,
@@ -88,12 +88,12 @@ func (route *Route) logHTTPWarning(m metrics) {
 		lock = "\U0001F512"
 	}
 
-	route.Logf(LOG_LEVEL_WARNING, httpWarningFormat,
+	route.Logf(LOG_LEVEL_WARNING, http_warning_format,
 		route.RemoteAddress,
-		route.R.Method,
-		route.logRequestURI,
 		lock,
 		m.Code,
+		route.R.Method,
+		route.logRequestURI,
 		float64(m.Written)/1000000.,
 		m.Duration.Milliseconds(),
 		route.Website.Name,
@@ -110,12 +110,12 @@ func (route *Route) logHTTPError(m metrics) {
 		lock = "\U0001F512"
 	}
 
-	route.Logf(LOG_LEVEL_ERROR, httpErrorFormat,
+	route.Logf(LOG_LEVEL_ERROR, http_error_format,
 		route.RemoteAddress,
-		route.R.Method,
-		route.logRequestURI,
 		lock,
 		m.Code,
+		route.R.Method,
+		route.logRequestURI,
 		float64(m.Written)/1000000.,
 		m.Duration.Milliseconds(),
 		route.Website.Name,
