@@ -154,7 +154,7 @@ func (tm *TaskManager) NewTask(name string, f TaskInitFunc, timer TaskTimer) err
 
 	tm.tasks[name] = t
 
-	if tm.Router.running {
+	if tm.Router.IsRunning() {
 		tm.startTask(t)
 	}
 	return nil

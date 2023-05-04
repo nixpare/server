@@ -2,7 +2,7 @@ package server
 
 import "sync"
 
-var lifeCycleStateIMap map[lifeCycleI]*sync.Mutex
+var lifeCycleStateIMap = make(map[lifeCycleI]*sync.Mutex)
 
 type lifeCycleState int
 

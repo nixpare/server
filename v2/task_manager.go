@@ -9,7 +9,7 @@ import (
 // and tasks registered by the user
 type TaskManager struct {
 	Router    *Router
-	running   bool
+	state     lifeCycleState
 	programs  map[string]*program
 	tasks     map[string]*Task
 	ticker10s *time.Ticker
@@ -29,10 +29,21 @@ func (router *Router) newTaskManager() {
 	}
 }
 
-func (tm *TaskManager) start() {
-	tm.running = true
-	wg := new(sync.WaitGroup)
+func (tm *TaskManager) getState() lifeCycleState {
+	return tm.state
+}
 
+func (tm *TaskManager) setState(state lifeCycleState) {
+	tm.state = state
+} 
+
+func (tm *TaskManager) start() {
+	if getLifeCycleState(tm).AlreadyStarted() {
+		return
+	}
+	setLifeCycleState(tm, lcs_starting)
+
+	wg := new(sync.WaitGroup)
 	for _, t := range tm.tasks {
 		wg.Add(1)
 		go func(task *Task) {
@@ -45,7 +56,7 @@ func (tm *TaskManager) start() {
 	tm.Router.Log(LOG_LEVEL_INFO, "Tasks startup completed")
 
 	go func() {
-		for tm.running {
+		for getLifeCycleState(tm) == lcs_started {
 			select {
 			case <-tm.ticker10s.C:
 				tm.runTasksWithTimer(TASK_TIMER_10_SECONDS)
@@ -60,16 +71,22 @@ func (tm *TaskManager) start() {
 			}
 		}
 	}()
+	setLifeCycleState(tm, lcs_started)
 }
 
 func (tm *TaskManager) stop() {
+	if getLifeCycleState(tm).AlreadyStopped() {
+		return
+	}
+	setLifeCycleState(tm, lcs_stopping)
+
 	tm.stopAllTasks()
 	tm.stopAllPrograms()
+
+	setLifeCycleState(tm, lcs_stopped)
 }
 
 func (tm *TaskManager) stopAllTasks() {
-	tm.running = false
-
 	tm.ticker1m.Stop()
 	tm.ticker10m.Stop()
 	tm.ticker30m.Stop()
