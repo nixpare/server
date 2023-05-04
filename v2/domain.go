@@ -5,7 +5,6 @@ import (
 	"html/template"
 	"net/http"
 	"os"
-	"path"
 	"strings"
 )
 
@@ -118,7 +117,7 @@ func (d *Domain) RegisterSubdomain(subdomain string, c SubdomainConfig) *Subdoma
 		c.ServeF = func(route *Route) { route.StaticServe(true) }
 	}
 
-	if !path.IsAbs(c.Website.Dir) {
+	if !isAbs(c.Website.Dir) {
 		if c.Website.Dir == "" {
 			c.Website.Dir = d.srv.ServerPath + "/public"
 		} else {
@@ -146,13 +145,13 @@ func (d *Domain) RegisterSubdomain(subdomain string, c SubdomainConfig) *Subdoma
 	}
 
 	for key, value := range c.Website.XFiles {
-		if !path.IsAbs(key) {
+		if !isAbs(key) {
 			key = ws.Dir + "/" + key
 		}
 
 		if value == "" {
 			ws.XFiles[key] = key
-		} else if !path.IsAbs(value) {
+		} else if !isAbs(value) {
 			value = ws.Dir + "/" + value
 		}
 

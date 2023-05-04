@@ -10,7 +10,6 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
-	"path"
 	"strings"
 	"time"
 )
@@ -56,7 +55,7 @@ func (route *Route) Errorf(statusCode int, message string, format string, a ...a
 // absolute, it will first try to complete it with the website directory
 // (if set) or with the server path
 func (route *Route) ServeFile(filePath string) {
-	if !path.IsAbs(filePath) {
+	if !isAbs(filePath) {
 		filePath = route.Website.Dir + "/" + filePath
 	}
 

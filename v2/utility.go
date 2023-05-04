@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"regexp"
 	"runtime/debug"
 	"strings"
 )
@@ -235,4 +236,17 @@ func IndentString(s string, n int) string {
 	}
 
 	return strings.TrimRight(res, " \n")
+}
+
+func isAbs(path string) bool {
+	if len(path) == 0 {
+		return false
+	}
+
+	matched, err := regexp.MatchString(`([A-Z]+):`, path)
+	if err != nil {
+		return false
+	}
+
+	return matched || path[0] == '/' || path[0] == '~'
 }
