@@ -88,7 +88,7 @@ func (route *Route) logHTTPWarning(m metrics) {
 		lock = "\U0001F512"
 	}
 
-	route.Log(LOG_LEVEL_WARNING, httpWarningFormat,
+	route.Logf(LOG_LEVEL_WARNING, httpWarningFormat,
 		route.RemoteAddress,
 		route.R.Method,
 		route.logRequestURI,
@@ -110,7 +110,7 @@ func (route *Route) logHTTPError(m metrics) {
 		lock = "\U0001F512"
 	}
 
-	route.Log(LOG_LEVEL_ERROR, httpErrorFormat,
+	route.Logf(LOG_LEVEL_ERROR, httpErrorFormat,
 		route.RemoteAddress,
 		route.R.Method,
 		route.logRequestURI,
@@ -325,6 +325,7 @@ func (router *Router) Log(level LogLevel, message string, extra ...any) {
 // Logf creates a Log with the given severity; the rest of the arguments is used as
 // the built-in function fmt.Sprintf(format, a...), however if the resulting string
 // contains a line feed, everything after that will be used to populate the extra field
+// of the Log
 func (router *Router) Logf(level LogLevel, format string, a ...any) {
 	str := fmt.Sprintf(format, a...)
 	message, extra, _ := strings.Cut(str, "\n")
@@ -369,6 +370,7 @@ func (srv *Server) Log(level LogLevel, message string, a ...any) {
 // Logf creates a Log with the given severity; the rest of the arguments is used as
 // the built-in function fmt.Sprintf(format, a...), however if the resulting string
 // contains a line feed, everything after that will be used to populate the extra field
+// of the Log
 func (srv *Server) Logf(level LogLevel, format string, a ...any) {
 	srv.Router.Logf(level, format, a...)
 }
@@ -397,6 +399,7 @@ func (route *Route) Log(level LogLevel, message string, a ...any) {
 // Logf creates a Log with the given severity; the rest of the arguments is used as
 // the built-in function fmt.Sprintf(format, a...), however if the resulting string
 // contains a line feed, everything after that will be used to populate the extra field
+// of the Log
 func (route *Route) Logf(level LogLevel, format string, a ...any) {
 	route.Srv.Logf(level, format, a...)
 }
