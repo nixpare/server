@@ -293,6 +293,10 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (route *Route) serve() {
 	route.W.Header().Set("server", "NixServer")
 	defer func() {
+		if route.W.code == 0 {
+			route.W.WriteHeader(200)
+		}
+		
 		if route.W.code >= 400 {
 			route.serveError()
 		}
