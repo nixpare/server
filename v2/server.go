@@ -25,8 +25,8 @@ type Server struct {
 	// Secure is set to indicate whether the server is using
 	// the HTTP or HTTPS protocol
 	Secure bool
-	// Running tells whether the server is running or not
-	Running bool
+	// running tells whether the server is running or not
+	running bool
 	// Online tells wheter the server is responding to external requests
 	Online bool
 	// OnlineTime reports the last time the server was activated or resumed
@@ -191,6 +191,11 @@ func (srv *Server) Port() int {
 	return srv.port
 }
 
+// IsRunning tells whether the server is running or not
+func (srv *Server) IsRunning() bool {
+	return srv.running
+}
+
 // SetHeader adds an HTTP header that will be set at every connection
 // accepted by the Server
 func (srv *Server) SetHeader(name, value string) *Server {
@@ -229,11 +234,11 @@ func (srv *Server) Header() http.Header {
 // Start prepares every domain and subdomain and starts listening
 // on the TCP port
 func (srv *Server) Start() {
-	if srv.Running {
+	if srv.running {
 		return
 	}
 
-	srv.Running = true
+	srv.running = true
 	srv.Online = true
 
 	srv.OnlineTime = time.Now()
@@ -264,11 +269,11 @@ func (srv *Server) Start() {
 // Stop cleans up every domain and subdomain and stops listening
 // on the TCP port
 func (srv *Server) Stop() {
-	if !srv.Running {
+	if !srv.running {
 		return
 	}
 
-	srv.Running = false
+	srv.running = false
 	srv.Log(LOG_LEVEL_INFO, fmt.Sprintf("Server %s shutdown started", srv.Server.Addr))
 
 	srv.Server.SetKeepAlivesEnabled(false)
