@@ -54,8 +54,8 @@ type Website struct {
 	// XFiles maps requested file paths to existing files that can be used to create and serve XFile
 	// virtual files. If the value in the map is an empty string, this means that the file used to
 	// create the XFile corresponds, otherwise you can map it to a completely different file. The value
-	// can be a relative path (to the Website.Dir) or an absolute path, but the key part must be a
-	// relative path
+	// can be a relative path (to the Website.Dir) or an absolute path, but the key part must be the
+	// desired request uri to match for the resource without the initial "/"
 	//
 	// For example: if the XFiles attribute is set to
 	//   XFiles: map[string]string{ "assets/css/index.css": "assets/css/X_INDEX.css" }
@@ -293,6 +293,10 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (route *Route) serve() {
 	route.W.Header().Set("server", "NixServer")
 	defer func() {
+		if route.W.code == 0 {
+			route.W.WriteHeader(200)
+		}
+		
 		if route.W.code >= 400 {
 			route.serveError()
 		}
@@ -337,36 +341,36 @@ func (route *Route) serve() {
 	}
 
 	if route.Subdomain != nil && route.Subdomain.offline {
-		route.err = ERR_WEBSITE_OFFLINE
+		route.err = err_website_offline
 	}
 
 	if !route.Srv.Online {
-		route.err = ERR_SERVER_OFFLINE
+		route.err = err_server_offline
 	}
 
-	if route.err != ERR_NO_ERR {
+	if route.err != err_no_err {
 		switch route.err {
-		case ERR_BAD_URL:
+		case err_bad_url:
 			route.Error(http.StatusBadRequest, "Bad Request URL")
 
-		case ERR_SERVER_OFFLINE:
+		case err_server_offline:
 			t := route.Srv.OnlineTime.Add(time.Minute * 30)
 			route.W.Header().Set("Retry-After", t.Format(time.RFC1123))
 			route.Error(http.StatusServiceUnavailable, "Server temporarly offline, retry in "+time.Until(t).Truncate(time.Second).String())
 
-		case ERR_WEBSITE_OFFLINE:
+		case err_website_offline:
 			t := route.Srv.OnlineTime.Add(time.Minute * 30)
 			route.W.Header().Set("Retry-After", t.Format(time.RFC1123))
 			route.Error(http.StatusServiceUnavailable, "Website temporarly offline")
 
-		case ERR_DOMAIN_NOT_FOUND:
+		case err_domain_not_found:
 			if net.ParseIP(route.DomainName) == nil {
 				route.Error(http.StatusBadRequest, fmt.Sprintf("Domain \"%s\" not served by this server", route.DomainName))
 			} else {
 				route.Error(http.StatusBadRequest, "Invalid direct IP access")
 			}
 
-		case ERR_SUBDOMAIN_NOT_FOUND:
+		case err_subdomain_not_found:
 			route.Error(http.StatusBadRequest, fmt.Sprintf("Subdomain \"%s\" not found", route.SubdomainName))
 		}
 

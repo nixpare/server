@@ -5,7 +5,6 @@ import (
 	"html/template"
 	"net/http"
 	"os"
-	"path"
 	"strings"
 )
 
@@ -44,6 +43,7 @@ type Subdomain struct {
 	headers     http.Header
 	errTemplate *template.Template
 	offline     bool
+	state       lifeCycleState
 }
 
 // SubdomainConfig is used to create a Subdomain. The Website should not be
@@ -117,7 +117,7 @@ func (d *Domain) RegisterSubdomain(subdomain string, c SubdomainConfig) *Subdoma
 		c.ServeF = func(route *Route) { route.StaticServe(true) }
 	}
 
-	if !path.IsAbs(c.Website.Dir) {
+	if !isAbs(c.Website.Dir) {
 		if c.Website.Dir == "" {
 			c.Website.Dir = d.srv.ServerPath + "/public"
 		} else {
@@ -145,14 +145,8 @@ func (d *Domain) RegisterSubdomain(subdomain string, c SubdomainConfig) *Subdoma
 	}
 
 	for key, value := range c.Website.XFiles {
-		if !path.IsAbs(key) {
-			key = ws.Dir + "/" + key
-		}
-
 		if value == "" {
 			ws.XFiles[key] = key
-		} else if !path.IsAbs(value) {
-			value = ws.Dir + "/" + value
 		}
 
 		ws.XFiles[key] = value
@@ -164,6 +158,10 @@ func (d *Domain) RegisterSubdomain(subdomain string, c SubdomainConfig) *Subdoma
 		headers: make(http.Header),
 	}
 	d.subdomains[subdomain] = sd
+
+	if getLifeCycleState(d.srv) == lcs_started {
+		sd.start(d.srv, d)
+	}
 
 	return sd
 }
@@ -244,7 +242,7 @@ func (d *Domain) RemoveSubdomain(name string) {
 		return
 	}
 
-	sd.closeF(d.srv, d, sd, sd.website)
+	sd.stop(d.srv, d)
 	delete(d.subdomains, name)
 }
 
@@ -278,6 +276,30 @@ func (sd *Subdomain) Header() http.Header {
 	return sd.headers
 }
 
+func (sd *Subdomain) start(srv *Server, d *Domain) {
+	if getLifeCycleState(sd).AlreadyStarted() {
+		return
+	}
+	setLifeCycleState(sd, lcs_starting)
+
+	if sd.initF != nil {
+		sd.initF(srv, d, sd, sd.website)
+	}
+	setLifeCycleState(sd, lcs_started)
+}
+
+func (sd *Subdomain) stop(srv *Server, d *Domain) {
+	if getLifeCycleState(sd).AlreadyStopped() {
+		return
+	}
+	setLifeCycleState(sd, lcs_stopping)
+
+	if sd.closeF != nil {
+		sd.closeF(srv, d, sd, sd.website)
+	}
+	setLifeCycleState(sd, lcs_stopped)
+}
+
 // Enable sets the subdomain to online state
 func (sd *Subdomain) Enable() {
 	sd.offline = false
@@ -286,6 +308,14 @@ func (sd *Subdomain) Enable() {
 // Disable sets the subdomain to offline state
 func (sd *Subdomain) Disable() {
 	sd.offline = true
+}
+
+func (sd *Subdomain) getState() lifeCycleState {
+	return sd.state
+}
+
+func (sd *Subdomain) setState(state lifeCycleState) {
+	sd.state = state
 }
 
 // SetErrorTemplate sets the error template used server-wise. It's

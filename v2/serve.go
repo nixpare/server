@@ -10,18 +10,20 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
-	"path"
 	"strings"
 	"time"
 )
 
 // Error is used to manually report an HTTP error to send to the
-// client. It sets the http status code (so it should not be set
+// client.
+//
+// It sets the http status code (so it should not be set
 // before) and if the connection is done via a GET request, it will
 // try to serve the html error template with the status code and
 // error message in it, otherwise if the error template does not exist
 // or the request is done via another method (like POST), the error
 // message will be sent as a plain text.
+//
 // The last optional list of elements can be used just for logging or
 // debugging: the elements will be saved in the logs
 func (route *Route) Error(statusCode int, message string, a ...any) {
@@ -42,11 +44,18 @@ func (route *Route) Error(statusCode int, message string, a ...any) {
 	}
 }
 
+// Errorf is like the method Route.Error but you can format the output
+// to the Log. Like the Route.Logf, everything that is after the first
+// line feed will be used to populate the extra field of the Log
+func (route *Route) Errorf(statusCode int, message string, format string, a ...any) {
+	route.Error(statusCode, message, fmt.Sprintf(format, a...))
+}
+
 // ServeFile will serve a file in the file system. If the path is not
 // absolute, it will first try to complete it with the website directory
 // (if set) or with the server path
 func (route *Route) ServeFile(filePath string) {
-	if !path.IsAbs(filePath) {
+	if !isAbs(filePath) {
 		filePath = route.Website.Dir + "/" + filePath
 	}
 
@@ -62,7 +71,10 @@ func (route *Route) ServeFile(filePath string) {
 		return
 	}
 
-	if value, ok := route.Website.XFiles[filePath]; ok {
+	if value, ok := route.Website.XFiles[strings.TrimLeft(route.RequestURI, "/")]; ok {
+		if !isAbs(value) {
+			value = route.Website.Dir + "/" + value
+		}
 		route.serveXFile(value)
 		return
 	}
@@ -105,18 +117,19 @@ func (route *Route) serveXFile(xFilePath string) {
 		return
 	}
 
-	http.ServeContent(route.W, route.R, "", x.ModTime(), x)
+	http.ServeContent(route.W, route.R, route.RequestURI, x.ModTime(), x)
 }
 
 // ServeCustomFileWithTime will serve a pseudo-file saved in memory specifing the
-// last modification time
-func (route *Route) ServeCustomFileWithTime(data []byte, t time.Time) {
-	http.ServeContent(route.W, route.R, "", t, bytes.NewReader(data))
+// last modification time. The name of the file is important for MIME type detection
+func (route *Route) ServeCustomFileWithTime(fileName string, data []byte, t time.Time) {
+	http.ServeContent(route.W, route.R, fileName, t, bytes.NewReader(data))
 }
 
-// ServeCustomFile serves a pseudo-file saved in memory
-func (route *Route) ServeCustomFile(data []byte) {
-	http.ServeContent(route.W, route.R, "", time.Now(), bytes.NewReader(data))
+// ServeCustomFile serves a pseudo-file saved in memory. The name of the file is
+// important for MIME type detection
+func (route *Route) ServeCustomFile(fileName string, data []byte) {
+	http.ServeContent(route.W, route.R, fileName, time.Now(), bytes.NewReader(data))
 }
 
 // ServeData serves raw bytes to the client
@@ -216,26 +229,35 @@ func (route *Route) DeleteCookie(name string) {
 
 // DecodeCookie decodes a previously set cookie with the given name
 // using the method route.SetCookie.
+//
+// If the cookie was not found, it will return false and the relative error
+// (probably an http.ErrNoCookie), otherwise it will return true and, possibly,
+// the decode error. It happends when:
+//  + the server was restarted, so the keys used for decoding are different
+//  + you provided the wrong value type
+//  + the cookie was not set by the server
+//
 // The argument value must be a pointer, otherwise the value will not
 // be returned. A workaround might be using the type parametric
 // function server.DecodeCookie
-func (route *Route) DecodeCookie(name string, value any) error {
+func (route *Route) DecodeCookie(name string, value any) (found bool, err error) {
 	cookie, err := route.R.Cookie(GenerateHashString([]byte(name)))
 	if err != nil {
-		return err
+		return
 	}
 
-	return route.Srv.secureCookie.Decode(name, cookie.Value, value)
+	return true, route.Srv.secureCookie.Decode(name, cookie.Value, value)
 }
 
 // DecodeCookie decodes a previously set cookie with the given name
 // using the method route.SetCookie and returns the saved value.
 // This is a duplicate function of the method route.DecodeCookie as
-// a type parameter function
-func DecodeCookie[T any](route *Route, name string) (T, error) {
-	var value T
-	err := route.DecodeCookie(name, &value)
-	return value, err
+// a type parameter function.
+//
+// More informations provided in that method
+func DecodeCookie[T any](route *Route, name string) (value T, found bool, err error) {
+	found, err = route.DecodeCookie(name, &value)
+	return
 }
 
 // SetCookiePerm creates a new cookie with the given name and value, maxAge can be used
@@ -267,26 +289,34 @@ func (route *Route) SetCookiePerm(name string, value any, maxAge int) error {
 
 // DecodeCookiePerm decodes a previously set cookie with the given name
 // using the method route.SetCookiePerm.
+//
+// If the cookie was not found, it will return false and the relative error
+// (probably an http.ErrNoCookie), otherwise it will return true and, possibly,
+// the decode error. It happends when:
+//  + you provided the wrong value type
+//  + the cookie was not set by the server
+//
 // The argument value must be a pointer, otherwise the value will not
 // be returned. A workaround might be using the type parametric
 // function server.DecodeCookiePerm
-func (route *Route) DecodeCookiePerm(name string, value any) error {
+func (route *Route) DecodeCookiePerm(name string, value any) (found bool, err error) {
 	cookie, err := route.R.Cookie(GenerateHashString([]byte(name)))
 	if err != nil {
-		return err
+		return
 	}
 
-	return route.Srv.secureCookiePerm.Decode(name, cookie.Value, value)
+	return true, route.Srv.secureCookiePerm.Decode(name, cookie.Value, value)
 }
 
 // DecodeCookiePerm decodes a previously set cookie with the given name
 // using the method route.SetCookiePerm and returns the saved value.
 // This is a duplicate function of the method route.DecodeCookiePerm as
 // a type parameter function
-func DecodeCookiePerm[T any](route *Route, name string) (T, error) {
-	var value T
-	err := route.DecodeCookiePerm(name, &value)
-	return value, err
+//
+// More informations provided in that method
+func DecodeCookiePerm[T any](route *Route, name string) (value T, found bool, err error) {
+	found, err = route.DecodeCookiePerm(name, &value)
+	return
 }
 
 // ReverseProxy runs a reverse proxy to the provided url. Returns an error is the

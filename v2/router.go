@@ -12,16 +12,11 @@ import (
 // all the servers and the background tasks.
 type Router struct {
 	servers map[int]*Server
-	// CleanupF is the function called when the router will be closed. It's recommended
-	// use this function to do the cleanup because it's safer to use any router component:
-	// at this stage every task will be stopped and every server will be closed, but any
-	// reference is still present
-	CleanupF func() error
 	// The Path provided when creating the Router or the working directory
 	// if not provided. This defines the path for every server registered
 	Path           string
 	startTime      time.Time
-	running        bool
+	state          lifeCycleState
 	offlineClients map[string]offlineClient
 	// IsInternalConn can be used to additionally add rules used to determine whether
 	// an incoming connection must be treated as from a client in the local network or not.
@@ -92,57 +87,54 @@ func (router *Router) NewServer(port int, secure bool, path string, certs ...Cer
 	return srv, nil
 }
 
-// Server returns the server running on the given port
-func (router *Router) Server(port int) *Server {
-	return router.servers[port]
+func (router *Router) getState() lifeCycleState {
+	return router.state
+}
+
+func (router *Router) setState(state lifeCycleState) {
+	router.state = state
 }
 
 // Start starts all the registered servers and the background task manager
 func (router *Router) Start() {
-	if router.running {
+	if getLifeCycleState(router).AlreadyStarted() {
 		return
 	}
+	setLifeCycleState(router, lcs_starting)
 
 	for _, srv := range router.servers {
 		srv.Start()
 	}
-
 	router.TaskMgr.start()
-	router.running = true
+
+	setLifeCycleState(router, lcs_started)
 }
 
 // Stop starts the shutdown procedure of the entire router with all
 // the servers registered, the background programs and tasks and
 // lastly executes the router.CleanupF function, if set
 func (router *Router) Stop() {
-	if !router.running {
+	if getLifeCycleState(router).AlreadyStopped() {
 		return
 	}
+	setLifeCycleState(router, lcs_stopping)
 
 	router.Log(LOG_LEVEL_INFO, "Router shutdown procedure started")
-	router.running = false
 
 	router.TaskMgr.stop()
-
 	for _, srv := range router.servers {
 		srv.Stop()
 	}
 
-	if router.CleanupF != nil {
-		router.CleanupF()
-	}
-
-	os.Remove(router.Path + "/PID.txt")
 	router.writeLogClosure(time.Now())
+	setLifeCycleState(router, lcs_stopped)
 }
 
-// StopServer stops the server opened on the given port
-func (router *Router) StopServer(port int) error {
-	srv := router.servers[port]
-	if srv == nil {
-		return fmt.Errorf("server with port %d not found", port)
-	}
+func (router *Router) IsRunning() bool {
+	return getLifeCycleState(router) == lcs_started
+}
 
-	srv.Stop()
-	return nil
+// Server returns the server running on the given port
+func (router *Router) Server(port int) *Server {
+	return router.servers[port]
 }

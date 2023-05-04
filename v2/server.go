@@ -25,8 +25,8 @@ type Server struct {
 	// Secure is set to indicate whether the server is using
 	// the HTTP or HTTPS protocol
 	Secure bool
-	// Running tells whether the server is running or not
-	Running bool
+	// state tells in which state the server is
+	state lifeCycleState
 	// Online tells wheter the server is responding to external requests
 	Online bool
 	// OnlineTime reports the last time the server was activated or resumed
@@ -191,6 +191,19 @@ func (srv *Server) Port() int {
 	return srv.port
 }
 
+// IsRunning tells whether the server is running or not
+func (srv *Server) IsRunning() bool {
+	return getLifeCycleState(srv) == lcs_started
+}
+
+func (srv *Server) getState() lifeCycleState {
+	return srv.state
+}
+
+func (srv *Server) setState(state lifeCycleState) {
+	srv.state = state
+}
+
 // SetHeader adds an HTTP header that will be set at every connection
 // accepted by the Server
 func (srv *Server) SetHeader(name, value string) *Server {
@@ -229,20 +242,18 @@ func (srv *Server) Header() http.Header {
 // Start prepares every domain and subdomain and starts listening
 // on the TCP port
 func (srv *Server) Start() {
-	if srv.Running {
+	if getLifeCycleState(srv).AlreadyStarted() {
 		return
 	}
+	setLifeCycleState(srv, lcs_starting)
 
-	srv.Running = true
 	srv.Online = true
 
 	srv.OnlineTime = time.Now()
 
 	for _, d := range srv.domains {
 		for _, sd := range d.subdomains {
-			if sd.initF != nil {
-				sd.initF(srv, d, sd, sd.website)
-			}
+			sd.start(srv, d)
 		}
 	}
 
@@ -259,25 +270,23 @@ func (srv *Server) Start() {
 			}
 		}
 	}()
+	setLifeCycleState(srv, lcs_started)
 }
 
 // Stop cleans up every domain and subdomain and stops listening
 // on the TCP port
 func (srv *Server) Stop() {
-	if !srv.Running {
+	if getLifeCycleState(srv).AlreadyStopped() {
 		return
 	}
+	setLifeCycleState(srv, lcs_stopping)
 
-	srv.Running = false
 	srv.Log(LOG_LEVEL_INFO, fmt.Sprintf("Server %s shutdown started", srv.Server.Addr))
-
 	srv.Server.SetKeepAlivesEnabled(false)
 
 	for _, d := range srv.domains {
 		for _, sd := range d.subdomains {
-			if sd.closeF != nil {
-				sd.closeF(srv, d, sd, sd.website)
-			}
+			sd.stop(srv, d)
 		}
 	}
 
@@ -291,4 +300,6 @@ func (srv *Server) Stop() {
 
 	srv.stopChannel <- struct{}{}
 	srv.Log(LOG_LEVEL_INFO, fmt.Sprintf("Server %s shutdown finished", srv.Server.Addr))
+
+	setLifeCycleState(srv, lcs_stopped)
 }

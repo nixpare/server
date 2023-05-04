@@ -124,8 +124,10 @@ composed of:
 The task timer determines if and how ofter the task exec function should be called and can be changed at any time after creation
 
 ## Other utility functions
-Inside the `utility.go` file there are some useful functions, but
-mostly I highlight these two:
+Inside the `utility.go` file of the package there are some useful 
+functions, but mostly I highlight these two of them:
+ + `RandStr`, which generates a random string with the given length
+  populated with the chosen sets of characters (see `CharSet` constants)
  + `PanicToErr`, which can be used to call any function returning an
   error and automatically wrapping them in a panic-safe environment
   that converts the panic into a simple error with a helpful
@@ -148,5 +150,3 @@ mostly I highlight these two:
 	// ...
   }
   ```
-  + `RandStr`, which generates a random string with the given length
-  populated with the chosen sets of characters (see `CharSet` constants)
