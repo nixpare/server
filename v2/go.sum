@@ -2,7 +2,10 @@ github.com/gorilla/securecookie v1.1.1 h1:miw7JPhV+b/lAHSXz4qd/nN9jRiAFV5FwjeKyC
 github.com/gorilla/securecookie v1.1.1/go.mod h1:ra0sb63/xPlUeL+yeDciTfxMRAA+MP+HVt/4epWDjd4=
 github.com/nixpare/comms v1.1.0 h1:FM125OBc4UG/p5Hx36G25ZBVG22gBioLc4imWByxxtM=
 github.com/nixpare/comms v1.1.0/go.mod h1:ZtGVUJ7o60At8pXHFxvpNZyDfD0DbShEV+AWnycwJek=
+<<<<<<< HEAD
 github.com/nixpare/process v1.3.1 h1:Z8feoPuT3FGSN8v/9/N5+6BL177Z1VzqsDqIOsUNp8E=
 github.com/nixpare/process v1.3.1/go.mod h1:LiQiAW56RImkXY87rXF5kLlwhrdjQVx1CLcIhJG2JNg=
+=======
+>>>>>>> v2.3.1
 github.com/nixpare/process v1.3.2 h1:F7UykThjSSllJSwctfm9tkKNn9iwCVeumXJbDrHJdFs=
 github.com/nixpare/process v1.3.2/go.mod h1:2IdeKAf7mICT5CNwS1Ts10eszt57U17fLk8vHD8CdDQ=
