@@ -112,7 +112,7 @@ everything you need for a web request:
   (or even third party ones that need those type of structures)
 
 ## The `TaskManager`
-It can used to manage background function running in background,
+It can used to manage background functions and processes running in background,
 with panic protection to avoid the crash of the entire program and
 the possibility to listen for the router shutdown in order to
 interrupt any sensitive procedure. This functions so have a lifecycle
