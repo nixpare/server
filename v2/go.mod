@@ -6,4 +6,4 @@ require github.com/gorilla/securecookie v1.1.1
 
 require github.com/nixpare/comms v1.1.0
 
-require github.com/nixpare/process v1.3.1
+require github.com/nixpare/process v1.3.2
