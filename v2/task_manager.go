@@ -3,26 +3,28 @@ package server
 import (
 	"sync"
 	"time"
+
+	"github.com/nixpare/process"
 )
 
-// TaskManager is a component of the Router that controls the execution of external programs
-// and tasks registered by the user
+// TaskManager is a component of the Router that controls the
+// execution of external processes and tasks registered by the user
 type TaskManager struct {
-	Router    *Router
-	state     lifeCycleState
-	programs  map[string]*program
-	tasks     map[string]*Task
-	ticker10s *time.Ticker
-	ticker1m  *time.Ticker
-	ticker10m *time.Ticker
-	ticker30m *time.Ticker
-	ticker1h  *time.Ticker
+	Router     *Router
+	state      lifeCycleState
+	processes  map[string]*process.Process
+	tasks      map[string]*Task
+	ticker10s  *time.Ticker
+	ticker1m   *time.Ticker
+	ticker10m  *time.Ticker
+	ticker30m  *time.Ticker
+	ticker1h   *time.Ticker
 }
 
 func (router *Router) newTaskManager() {
 	router.TaskMgr = &TaskManager{
 		Router:   router,
-		programs: make(map[string]*program), tasks: make(map[string]*Task),
+		processes: make(map[string]*process.Process), tasks: make(map[string]*Task),
 		ticker10s: time.NewTicker(time.Second * 10), ticker1m: time.NewTicker(time.Minute),
 		ticker10m: time.NewTicker(time.Minute * 10), ticker30m: time.NewTicker(time.Minute * 30),
 		ticker1h: time.NewTicker(time.Hour),
@@ -81,7 +83,7 @@ func (tm *TaskManager) stop() {
 	setLifeCycleState(tm, lcs_stopping)
 
 	tm.stopAllTasks()
-	tm.stopAllPrograms()
+	tm.stopAllProcesses()
 
 	setLifeCycleState(tm, lcs_stopped)
 }
@@ -123,19 +125,19 @@ func (tm *TaskManager) stopAllTasks() {
 	tm.Router.Log(LOG_LEVEL_INFO, "Tasks cleanup completed")
 }
 
-// stopAllPrograms stops all the running programs registered in the
+// stopAllProcesses stops all the running processs registered in the
 // TaskManager. In case of errors, they will be logged automatically
 // with the Router
-func (tm *TaskManager) stopAllPrograms() {
+func (tm *TaskManager) stopAllProcesses() {
 	wg := new(sync.WaitGroup)
-	for _, p := range tm.programs {
-		if !p.isRunning() {
+	for _, p := range tm.processes {
+		if !p.IsRunning() {
 			continue
 		}
 		wg.Add(1)
 
-		go func(program *program) {
-			if err := program.stop(); err != nil {
+		go func(process *process.Process) {
+			if err := process.Stop(); err != nil {
 				tm.Router.Log(LOG_LEVEL_ERROR, err.Error())
 			}
 			wg.Done()
@@ -143,5 +145,5 @@ func (tm *TaskManager) stopAllPrograms() {
 	}
 
 	wg.Wait()
-	tm.Router.Log(LOG_LEVEL_INFO, "Programs stopped")
+	tm.Router.Log(LOG_LEVEL_INFO, "Processes stopped")
 }
