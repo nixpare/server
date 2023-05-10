@@ -53,75 +53,115 @@ func (router *Router) ClearLogs() error {
 	return nil
 }
 
-// remoteAddress + Method + requestURI + Secure/Unsecure + Code + Written + Duration + Website Name + Domain Name + HostAddr (+ LogError)
 const (
-	http_info_format    = "%-15s - %s %d %-4s %-50s %10.3f MB - (%6d ms) \u279C %s (%s) via %s"
-	http_warning_format = "%-15s - %s %d %-4s %-50s %10.3f MB - (%6d ms) \u279C %s (%s) via %s \u279C %s"
-	http_error_format   = "%-15s - %s %d %-4s %-50s %10.3f MB - (%6d ms) \u279C %s (%s) via %s \u279C %s"
+	default_terminal = "\x1b[0m"
+	black_terminal = "\x1b[30m"
+	dark_red_terminal = "\x1b[31m"
+	dark_green_terminal = "\x1b[32m"
+	dark_yellow_terminal = "\x1b[33m"
+	dark_blue_terminal = "\x1b[34m"
+	dark_magenta_terminal = "\x1b[35m"
+	dark_cyan_terminal = "\x1b[36m"
+	dark_white_terminal = "\x1b[37m"
+	bright_black_terminal = "\x1b[90m"
+	bright_red_terminal = "\x1b[31m"
+	bright_green_terminal = "\x1b[32m"
+	bright_yellow_terminal = "\x1b[33m"
+	bright_blue_terminal = "\x1b[34m"
+	bright_magenta_terminal = "\x1b[35m"
+	bright_cyan_terminal = "\x1b[36m"
+	white_terminal = "\x1b[37m"
 )
+
+var all_terminal_colors = [...]string{ default_terminal, black_terminal, dark_red_terminal, dark_green_terminal, dark_yellow_terminal,
+								dark_blue_terminal, dark_magenta_terminal, dark_cyan_terminal, dark_white_terminal, bright_black_terminal,
+								bright_red_terminal, bright_green_terminal, bright_yellow_terminal, bright_blue_terminal,
+								bright_magenta_terminal, bright_cyan_terminal, white_terminal }
+
+// remoteAddress + Secure/Unsecure (Lock) + Code + Method + requestURI + Written + Duration + Website Name + Domain Name + HostAddr (+ LogError)
+const (
+	http_info_format    = "%s%-15s%s - %s %s%d %-4s %-50s%s - %s%10.3f MB - (%6d ms)%s \u279C %s%s (%s)%s via %s%s%s"
+	http_warning_format = "%s%-15s%s - %s %s%d %-4s %-50s%s - %s%10.3f MB - (%6d ms)%s \u279C %s%s (%s)%s via %s%s%s \u279C %s%s%s"
+	http_error_format   = "%s%-15s%s - %s %s%d %-4s %-50s%s - %s%10.3f MB - (%6d ms)%s \u279C %s%s (%s)%s via %s%s%s \u279C %s%s%s"
+	http_panic_format   = "%s%-15s%s - %s %s%-3s %-4s %-50s%s - %s%10.3f MB - (%6d ms)%s \u279C %s%s (%s)%s via %s%s%s \u279C panic: %s%s%s"
+)
+
+func (route *Route) getLock() string {
+	lock := "\U0001F513" + dark_red_terminal + "U" + default_terminal
+	if route.Secure {
+		lock = "\U0001F512"  + bright_green_terminal + "S" + default_terminal
+	}
+	return lock
+}
 
 // logHTTPInfo logs http request with an exit code < 400
 func (route *Route) logHTTPInfo(m metrics) {
-	lock := "\U0000274C"
-	if route.Secure {
-		lock = "\U0001F512"
-	}
-
 	route.Logf(LOG_LEVEL_INFO, http_info_format,
-		route.RemoteAddress,
-		lock,
-		m.Code,
+		bright_blue_terminal, route.RemoteAddress, default_terminal,
+		route.getLock(),
+		bright_green_terminal, m.Code,
 		route.R.Method,
-		route.logRequestURI,
-		float64(m.Written)/1000000.,
-		m.Duration.Milliseconds(),
-		route.Website.Name,
-		route.Domain.Name,
-		route.Host,
+		route.logRequestURI, default_terminal,
+		bright_black_terminal, float64(m.Written)/1000000.,
+		m.Duration.Milliseconds(), default_terminal,
+		bright_green_terminal, route.Website.Name,
+		route.Domain.Name, default_terminal,
+		bright_blue_terminal, route.Host, default_terminal,
 	)
 }
 
 // logHTTPWarning logs http request with an exit code >= 400 and < 500
 func (route *Route) logHTTPWarning(m metrics) {
-	lock := "\U0000274C"
-	if route.Secure {
-		lock = "\U0001F512"
-	}
-
 	route.Logf(LOG_LEVEL_WARNING, http_warning_format,
-		route.RemoteAddress,
-		lock,
-		m.Code,
+		bright_blue_terminal, route.RemoteAddress, default_terminal,
+		route.getLock(),
+		dark_yellow_terminal, m.Code,
 		route.R.Method,
-		route.logRequestURI,
-		float64(m.Written)/1000000.,
-		m.Duration.Milliseconds(),
-		route.Website.Name,
-		route.Domain.Name,
-		route.Host,
-		route.logErrMessage,
+		route.logRequestURI, default_terminal,
+		bright_black_terminal, float64(m.Written)/1000000.,
+		m.Duration.Milliseconds(), default_terminal,
+		dark_yellow_terminal, route.Website.Name,
+		route.Domain.Name, default_terminal,
+		bright_blue_terminal, route.Host, default_terminal,
+		dark_yellow_terminal, route.logErrMessage, default_terminal,
 	)
 }
 
 // logHTTPError logs http request with an exit code >= 500
 func (route *Route) logHTTPError(m metrics) {
-	lock := "\U0000274C"
-	if route.Secure {
-		lock = "\U0001F512"
+	route.Logf(LOG_LEVEL_FATAL, http_error_format,
+		bright_blue_terminal, route.RemoteAddress, default_terminal,
+		route.getLock(),
+		dark_red_terminal, m.Code,
+		route.R.Method,
+		route.logRequestURI, default_terminal,
+		bright_black_terminal, float64(m.Written)/1000000.,
+		m.Duration.Milliseconds(), default_terminal,
+		dark_red_terminal, route.Website.Name,
+		route.Domain.Name, default_terminal,
+		bright_blue_terminal, route.Host, default_terminal,
+		dark_red_terminal, route.logErrMessage, default_terminal,
+	)
+}
+
+func (route *Route) logHTTPPanic(m metrics) {
+	code := " - "
+	if m.Code != 0 {
+		code = fmt.Sprint(m.Code)
 	}
 
-	route.Logf(LOG_LEVEL_ERROR, http_error_format,
-		route.RemoteAddress,
-		lock,
-		m.Code,
+	route.Logf(LOG_LEVEL_FATAL, http_panic_format,
+		bright_blue_terminal, route.RemoteAddress, default_terminal,
+		route.getLock(),
+		dark_red_terminal, code,
 		route.R.Method,
-		route.logRequestURI,
-		float64(m.Written)/1000000.,
-		m.Duration.Milliseconds(),
-		route.Website.Name,
-		route.Domain.Name,
-		route.Host,
-		route.logErrMessage,
+		route.logRequestURI, default_terminal,
+		bright_black_terminal, float64(m.Written)/1000000.,
+		m.Duration.Milliseconds(), default_terminal,
+		dark_red_terminal, route.Website.Name,
+		route.Domain.Name, default_terminal,
+		bright_blue_terminal, route.Host, default_terminal,
+		dark_red_terminal, route.logErrMessage, default_terminal,
 	)
 }
 
@@ -198,11 +238,37 @@ func (l LogLevel) String() string {
 // an error). It also has the optional field "extra" that can be used to
 // store additional information
 type Log struct {
-	id      string
-	Level   LogLevel  // Level is the Log severity (INFO - DEBUG - WARNING - ERROR - FATAL)
-	Date    time.Time // Date is the timestamp of the log creation
-	Message string    // Message is the main message that should summarize the event
-	Extra   string    // Extra should hold any extra information provided for deeper understanding of the event
+	id         string
+	level      LogLevel  // Level is the Log severity (INFO - DEBUG - WARNING - ERROR - FATAL)
+	date       time.Time // Date is the timestamp of the log creation
+	message    string    // Message is the main message that should summarize the event
+	messageRaw string
+	extra      string    // Extra should hold any extra information provided for deeper understanding of the event
+	extraRaw   string
+}
+
+func (l Log) Level() LogLevel {
+	return l.level
+}
+
+func (l Log) Date() time.Time {
+	return l.date
+}
+
+func (l Log) Message() string {
+	return l.message
+}
+
+func (l Log) MessageRaw() string {
+	return l.messageRaw
+}
+
+func (l Log) Extra() string {
+	return l.extra
+}
+
+func (l Log) ExtraRaw() string {
+	return l.extraRaw
 }
 
 // JSON returns the Log l in a json-encoded string in form of a
@@ -216,8 +282,8 @@ func (l Log) JSON() []byte {
 		Extra   string    `json:"extra"`
 	}{
 		l.id,
-		strings.TrimSpace(l.Level.String()), l.Date,
-		l.Message, l.Extra,
+		strings.TrimSpace(l.level.String()), l.date,
+		l.message, l.extra,
 	}
 
 	b, _ := json.Marshal(jsonL)
@@ -227,23 +293,46 @@ func (l Log) JSON() []byte {
 func (l Log) String() string {
 	return fmt.Sprintf(
 		"[%v] - %v: %s",
-		l.Date.Format(TimeFormat),
-		l.Level, l.Message,
+		l.date.Format(TimeFormat),
+		l.level, l.message,
+	)
+}
+
+func (l Log) Colored() string {
+	var color string
+	switch l.level {
+	case LOG_LEVEL_INFO:
+		color = bright_cyan_terminal
+	case LOG_LEVEL_DEBUG:
+		color = dark_magenta_terminal
+	case LOG_LEVEL_WARNING:
+		color = dark_yellow_terminal
+	case LOG_LEVEL_ERROR:
+		color = dark_red_terminal
+	case LOG_LEVEL_FATAL:
+		color = bright_red_terminal
+	}
+
+	return fmt.Sprintf(
+		"%s[%v]%s - %s%v%s: %s",
+		bright_black_terminal, l.date.Format(TimeFormat), default_terminal,
+		color, l.level, default_terminal,
+		l.messageRaw,
 	)
 }
 
 // Full is like String(), but appends all the extra information
 // associated with the log instance
 func (l Log) Full() string {
-	if l.Extra == "" {
+	if l.extra == "" {
 		return l.String()
 	}
 
 	return fmt.Sprintf(
 		"[%v] - %v: %s -> %s",
-		l.Date.Format(TimeFormat),
-		l.Level, l.Message,
-		l.Extra,
+		l.date.Format(TimeFormat),
+		l.level, l.message,
+		l.extra,
 	)
 }
 
@@ -295,29 +384,51 @@ func (router *Router) newLog(level LogLevel, message string, extra string) Log {
 	defer router.logMutex.Unlock()
 
 	log := Log{
-		fmt.Sprintf(
+		id: fmt.Sprintf(
 			"%02d%02d%02d%02d%02d%02d%03d",
 			t.Year()%100, t.Month(), t.Day(),
 			t.Hour(), t.Minute(), t.Second(), rand.Intn(1000),
-		), level, t,
-		message, extra,
+		),
+		level: level, date: t,
+		message: removeTerminalColors(message), messageRaw: message,
+		extra: removeTerminalColors(extra), extraRaw: extra,
 	}
 
 	router.logs = append(router.logs, log)
 	return log
 }
 
+func removeTerminalColors(s string) string {
+	for _, x := range all_terminal_colors {
+		s = strings.ReplaceAll(s, x, "")
+	}
+	return s
+}
+
+func (router *Router) toTerminal() bool {
+	stat, _ := router.logFile.Stat()
+    return (stat.Mode() & os.ModeCharDevice) == os.ModeCharDevice
+}
+
 // Log creates a Log with the given severity and message; any data after message will be used
 // to populate the extra field of the Log automatically using the built-in function
 // fmt.Sprint(extra...)
 func (router *Router) Log(level LogLevel, message string, extra ...any) {
-	log := router.newLog(level, message, fmt.Sprint(extra...))
+	l := router.newLog(level, message, fmt.Sprint(extra...))
 
 	if router.logFile != nil {
-		if log.Extra != "" {
-			fmt.Fprintf(router.logFile, "%v\n%s\n", log, IndentString(log.Extra, 4))
+		if router.toTerminal() {
+			if l.extra != "" {
+				fmt.Fprintf(router.logFile, "%v\n%s\n", l.Colored(), IndentString(l.extra, 4))
+			} else {
+				fmt.Fprintln(router.logFile, l.Colored())
+			}
 		} else {
-			fmt.Fprintln(router.logFile, log)
+			if l.extra != "" {
+				fmt.Fprintf(router.logFile, "%v\n%s\n", l, IndentString(l.extra, 4))
+			} else {
+				fmt.Fprintln(router.logFile, l)
+			}
 		}
 	}
 }

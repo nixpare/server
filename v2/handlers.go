@@ -247,15 +247,6 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		R:              r,
 	}
 
-	defer func() {
-		if p := recover(); p != nil {
-			route.Log(LOG_LEVEL_FATAL, fmt.Sprintf("Captured panic: %v", p), fmt.Sprintf(
-				"Route: %v\nRequest: %v\nWebsite: %v\nStack trace:\n%v",
-				route, r, route.Website, Stack(),
-			))
-		}
-	}()
-
 	for key, values := range h.srv.headers {
 		for _, value := range values {
 			w.Header().Add(key, value)
@@ -263,6 +254,13 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	route.prep()
+
+	defer func() {
+		if p := recover(); p != nil {
+			route.logErrMessage = fmt.Sprintf("%v\nstack: %s", p, Stack())
+			route.logHTTPPanic(route.getMetrics())
+		}
+	}()
 	route.serve()
 
 	if route.Website.AvoidMetricsAndLogging {
@@ -293,10 +291,6 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (route *Route) serve() {
 	route.W.Header().Set("server", "NixServer")
 	defer func() {
-		if route.W.code == 0 {
-			route.W.WriteHeader(200)
-		}
-		
 		if route.W.code >= 400 {
 			route.serveError()
 		}
@@ -384,6 +378,10 @@ func (route *Route) serve() {
 	}
 
 	route.Subdomain.serveF(route)
+
+	if route.W.code == 0 {
+		route.W.WriteHeader(200)
+	}
 }
 
 // getMetrics returns a view of the Route captured connection metrics
