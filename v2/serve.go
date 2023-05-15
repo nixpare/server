@@ -59,13 +59,6 @@ func (route *Route) ServeFile(filePath string) {
 		filePath = route.Website.Dir + "/" + filePath
 	}
 
-	if strings.HasPrefix(filePath, "~") {
-		home, err := os.UserHomeDir()
-		if err == nil {
-			filePath = strings.Replace(filePath, "~", home, 1)
-		}
-	}
-
 	if strings.Contains(filePath, "..") {
 		route.Error(http.StatusBadRequest, "Bad request URL", "URL contains ..")
 		return
@@ -328,7 +321,8 @@ func (route *Route) ReverseProxy(URL string) error {
 	}
 
 	proxyServer := httputil.NewSingleHostReverseProxy(urlParsed)
-	proxyServer.ErrorLog = log.New(route.Router, fmt.Sprintf("PROXY [%s]", URL), 0)
+	proxyLogger := route.Logger.Clone(nil, "proxy")
+	proxyServer.ErrorLog = log.New(proxyLogger, fmt.Sprintf("PROXY [%s]", URL), 0)
 
 	errChan := make(chan error)
 	defer close(errChan)

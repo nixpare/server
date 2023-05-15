@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/nixpare/comms"
+	"github.com/nixpare/logger"
 )
 
 // TaskTimer tells the TaskManager how often a Task should be executed.
@@ -238,24 +239,23 @@ func (tm *TaskManager) startTask(t *Task) {
 		return
 	}
 
-	err := PanicToErr(func() error {
+	err := logger.PanicToErr(func() error {
 		return t.StartupF(tm, t)
 	})
 
 	if err == nil {
-		tm.Router.Log(LOG_LEVEL_INFO, fmt.Sprintf("Task \"%s\" started successfully", t.name))
+		tm.Logger.Printf(logger.LOG_LEVEL_INFO, "Task \"%s\" started successfully", t.name)
 		t.startupDone = true
 		return
 	}
 
 	if err.Err != nil {
-		tm.Router.Log(LOG_LEVEL_ERROR, fmt.Sprintf("Task \"%s\" startup error: %v", t.name, err.Err))
+		tm.Logger.Printf(logger.LOG_LEVEL_ERROR, "Task \"%s\" startup error: %v", t.name, err.Err)
 		return
 	}
 	if err.PanicErr != nil {
-		tm.Router.Log(
-			LOG_LEVEL_FATAL,
-			fmt.Sprintf("Task \"%s\" startup panic: %v", t.name, err.PanicErr),
+		tm.Logger.Printf(logger.LOG_LEVEL_FATAL,
+			"Task \"%s\" startup panic: %v\n%s", t.name, err.PanicErr,
 			err.Stack,
 		)
 		return
@@ -292,7 +292,7 @@ func (tm *TaskManager) execTask(t *Task) error {
 	go func() {
 		defer func() { execDone <- struct{}{} }()
 
-		err := PanicToErr(func() error {
+		err := logger.PanicToErr(func() error {
 			return t.ExecF(tm, t)
 		})
 
@@ -303,13 +303,12 @@ func (tm *TaskManager) execTask(t *Task) error {
 		t.timer = TASK_TIMER_INACTIVE
 
 		if err.Err != nil {
-			tm.Router.Log(LOG_LEVEL_WARNING, fmt.Sprintf("Task \"%s\" exec error: %v", t.name, err.Err))
+			tm.Logger.Printf(logger.LOG_LEVEL_WARNING, "Task \"%s\" exec error: %v", t.name, err.Err)
 			return
 		}
 		if err.PanicErr != nil {
-			tm.Router.Log(
-				LOG_LEVEL_FATAL,
-				fmt.Sprintf("Task \"%s\" exec panic: %v", t.name, err.PanicErr),
+			tm.Logger.Printf(logger.LOG_LEVEL_FATAL,
+				"Task \"%s\" exec panic: %v\n%s", t.name, err.PanicErr,
 				err.Stack,
 			)
 			return
@@ -320,10 +319,10 @@ func (tm *TaskManager) execTask(t *Task) error {
 	case <-execDone:
 		return nil
 	case <-t.killChan:
-		tm.Router.Log(LOG_LEVEL_ERROR, fmt.Sprintf(
-			"Task \"%s\" execution was forcibly killed\n",
+		tm.Logger.Printf(logger.LOG_LEVEL_ERROR,
+			"Task \"%s\" execution was forcibly killed",
 			t.name,
-		))
+		)
 		return nil
 	}
 }
@@ -341,23 +340,22 @@ func (tm *TaskManager) stopTask(t *Task) {
 
 	t.startupDone = false
 
-	err := PanicToErr(func() error {
+	err := logger.PanicToErr(func() error {
 		return t.CleanupF(tm, t)
 	})
 
 	if err == nil {
-		tm.Router.Log(LOG_LEVEL_INFO, fmt.Sprintf("Task \"%s\" stopped successfully", t.name))
+		tm.Logger.Printf(logger.LOG_LEVEL_INFO, "Task \"%s\" stopped successfully", t.name)
 		return
 	}
 
 	if err.Err != nil {
-		tm.Router.Log(LOG_LEVEL_ERROR, fmt.Sprintf("Task \"%s\" cleanup error: %v", t.name, err.Err))
+		tm.Logger.Printf(logger.LOG_LEVEL_ERROR, "Task \"%s\" cleanup error: %v", t.name, err.Err)
 		return
 	}
 	if err.PanicErr != nil {
-		tm.Router.Log(
-			LOG_LEVEL_FATAL,
-			fmt.Sprintf("Task \"%s\" cleanup panic: %v", t.name, err.PanicErr),
+		tm.Logger.Printf(logger.LOG_LEVEL_FATAL,
+			"Task \"%s\" cleanup panic: %v\n%s", t.name, err.PanicErr,
 			err.Stack,
 		)
 		return
