@@ -7,12 +7,12 @@ import (
 	"embed"
 	"fmt"
 	"html/template"
-	"log"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/gorilla/securecookie"
+	"github.com/nixpare/logger"
 )
 
 // Server is a single HTTP server listening on a TCP port.
@@ -38,6 +38,7 @@ type Server struct {
 	// Router is a reference to the Router (is the server was created through it).
 	// This should not be set by hand.
 	Router  *Router
+	Logger  *logger.Logger
 	domains map[string]*Domain
 	// ServerPath is the path provided on server creation. It is used as the log location
 	// for this specific server
@@ -131,24 +132,11 @@ func newServer(port int, secure bool, path string, certs []Certificate) (*Server
 		srv.Server.TLSConfig = cfg
 	}
 
-	logFile, err := os.OpenFile(
-		fmt.Sprintf("%s/server-%d.log", srv.ServerPath, srv.port),
-		os.O_APPEND|os.O_CREATE|os.O_SYNC|os.O_WRONLY,
-		0777,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	srv.Server.ErrorLog = log.New(logFile, "  ERROR: http-error: ", log.Flags())
+	srv.Logger = logger.DefaultLogger()
 
 	srv.Server.ReadHeaderTimeout = time.Second * 10
 	srv.Server.IdleTimeout = time.Second * 30
 	srv.Server.SetKeepAlivesEnabled(true)
-
-	pid, _ := os.OpenFile(srv.ServerPath+"/PID.txt", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
-	fmt.Fprintln(pid, os.Getpid())
-	pid.Close()
 
 	hashKey := securecookie.GenerateRandomKey(64)
 	if hashKey == nil {
@@ -260,12 +248,12 @@ func (srv *Server) Start() {
 	go func() {
 		if srv.Secure {
 			if err := srv.Server.ListenAndServeTLS("", ""); err != nil && err.Error() != "http: Server closed" {
-				srv.Log(LOG_LEVEL_FATAL, fmt.Sprintf("Server Error: %v", err))
+				srv.Logger.Printf(logger.LOG_LEVEL_FATAL, "Server Error: %v", err)
 				srv.Stop()
 			}
 		} else {
 			if err := srv.Server.ListenAndServe(); err != nil && err.Error() != "http: Server closed" {
-				srv.Log(LOG_LEVEL_FATAL, fmt.Sprintf("Server Error: %v", err))
+				srv.Logger.Printf(logger.LOG_LEVEL_FATAL, "Server Error: %v", err)
 				srv.Stop()
 			}
 		}
@@ -281,7 +269,7 @@ func (srv *Server) Stop() {
 	}
 	setLifeCycleState(srv, lcs_stopping)
 
-	srv.Log(LOG_LEVEL_INFO, fmt.Sprintf("Server %s shutdown started", srv.Server.Addr))
+	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "Server %s shutdown started", srv.Server.Addr)
 	srv.Server.SetKeepAlivesEnabled(false)
 
 	for _, d := range srv.domains {
@@ -291,15 +279,15 @@ func (srv *Server) Stop() {
 	}
 
 	if err := srv.Server.Shutdown(context.Background()); err != nil {
-		srv.Log(LOG_LEVEL_FATAL, fmt.Sprintf(
+		srv.Logger.Printf(logger.LOG_LEVEL_FATAL,
 			"Server %s shutdown crashed due to: %v",
 			srv.Server.Addr, err.Error(),
-		))
+		)
 	}
 	srv.Online = false
 
 	srv.stopChannel <- struct{}{}
-	srv.Log(LOG_LEVEL_INFO, fmt.Sprintf("Server %s shutdown finished", srv.Server.Addr))
+	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "Server %s shutdown finished", srv.Server.Addr)
 
 	setLifeCycleState(srv, lcs_stopped)
 }

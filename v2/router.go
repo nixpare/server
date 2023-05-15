@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"sync"
 	"time"
+
+	"github.com/nixpare/logger"
 )
 
 // Router is the main element of this package and is used to manage
@@ -25,24 +26,14 @@ type Router struct {
 	// "localhost", "127.0.0.1" and "::1" are treated as local connections.
 	IsInternalConn func(remoteAddress string) bool
 	TaskMgr        *TaskManager
-	logFile        *os.File
-	logs           []Log
-	logMutex       *sync.Mutex
+	Logger         *logger.Logger
 }
 
-// NewRouter returns a new Router ready to be set up. Both logFile and serverPath are optional:
-// + if logFile is not provided, os.Stdout will be used by default
-// + if routerPath is not provided, the router will try to get the working directory
-func NewRouter(routerPath string, logFile *os.File) (router *Router, err error) {
+// NewRouter returns a new Router ready to be set up. If routerPath is not provided,
+// the router will try to get the working directory
+func NewRouter(routerPath string) (router *Router, err error) {
 	router = new(Router)
 	router.servers = make(map[int]*Server)
-
-	if logFile == nil {
-		router.logFile = os.Stdout
-	} else {
-		router.logFile = logFile
-	}
-	router.logMutex = new(sync.Mutex)
 
 	if routerPath == "" {
 		routerPath, err = os.Getwd()
@@ -52,6 +43,8 @@ func NewRouter(routerPath string, logFile *os.File) (router *Router, err error) 
 	}
 	routerPath = strings.ReplaceAll(routerPath, "\\", "/")
 	router.Path = routerPath
+
+	router.Logger = logger.DefaultLogger()
 
 	router.offlineClients = make(map[string]offlineClient)
 	router.IsInternalConn = func(remoteAddress string) bool { return false }
@@ -84,6 +77,8 @@ func (router *Router) NewServer(port int, secure bool, path string, certs ...Cer
 	router.servers[srv.port] = srv
 	srv.Router = router
 
+	srv.Logger = router.Logger.Clone(nil, "server", fmt.Sprint(port))
+
 	return srv, nil
 }
 
@@ -102,6 +97,10 @@ func (router *Router) Start() {
 	}
 	setLifeCycleState(router, lcs_starting)
 
+	pid, _ := os.OpenFile(router.Path + "/PID.txt", os.O_WRONLY | os.O_CREATE | os.O_TRUNC, 0777)
+	fmt.Fprintln(pid, os.Getpid())
+	pid.Close()
+
 	for _, srv := range router.servers {
 		srv.Start()
 	}
@@ -119,11 +118,16 @@ func (router *Router) Stop() {
 	}
 	setLifeCycleState(router, lcs_stopping)
 
-	router.Log(LOG_LEVEL_INFO, "Router shutdown procedure started")
+	router.Logger.Print(logger.LOG_LEVEL_INFO, "Router shutdown procedure started")
 
 	router.TaskMgr.stop()
 	for _, srv := range router.servers {
 		srv.Stop()
+	}
+
+	err := os.Remove(router.Path + "/PID.txt")
+	if err != nil {
+		router.Logger.Printf(logger.LOG_LEVEL_ERROR, "error deleting PID file: %v", err)
 	}
 
 	router.writeLogClosure(time.Now())

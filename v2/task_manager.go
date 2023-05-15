@@ -4,6 +4,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nixpare/logger"
 	"github.com/nixpare/process"
 )
 
@@ -11,6 +12,7 @@ import (
 // execution of external processes and tasks registered by the user
 type TaskManager struct {
 	Router     *Router
+	Logger     *logger.Logger
 	state      lifeCycleState
 	processes  map[string]*process.Process
 	tasks      map[string]*Task
@@ -55,7 +57,7 @@ func (tm *TaskManager) start() {
 	}
 
 	wg.Wait()
-	tm.Router.Log(LOG_LEVEL_INFO, "Tasks startup completed")
+	tm.Logger.Print(logger.LOG_LEVEL_INFO, "Tasks startup completed")
 
 	go func() {
 		for getLifeCycleState(tm) == lcs_started {
@@ -122,7 +124,7 @@ func (tm *TaskManager) stopAllTasks() {
 	}
 
 	wg.Wait()
-	tm.Router.Log(LOG_LEVEL_INFO, "Tasks cleanup completed")
+	tm.Logger.Print(logger.LOG_LEVEL_INFO, "Tasks cleanup completed")
 }
 
 // stopAllProcesses stops all the running processs registered in the
@@ -138,12 +140,12 @@ func (tm *TaskManager) stopAllProcesses() {
 
 		go func(process *process.Process) {
 			if err := process.Stop(); err != nil {
-				tm.Router.Log(LOG_LEVEL_ERROR, err.Error())
+				tm.Logger.Print(logger.LOG_LEVEL_ERROR, err.Error())
 			}
 			wg.Done()
 		}(p)
 	}
 
 	wg.Wait()
-	tm.Router.Log(LOG_LEVEL_INFO, "Processes stopped")
+	tm.Logger.Print(logger.LOG_LEVEL_INFO, "Processes stopped")
 }

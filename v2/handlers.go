@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/nixpare/logger"
 )
 
 // Website is used in a subdomain to serve content with
@@ -171,6 +173,7 @@ type Route struct {
 	Srv *Server
 	// Router is a reference to the router this server connection belongs to
 	Router *Router
+	Logger *logger.Logger
 	// Secure is set to tell wheather the current connection is using HTTP (false)
 	// or HTTPS(true), so you can use one Routing function for secure and unsecure
 	// websites
@@ -237,6 +240,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	route := &Route{
 		Srv:            h.srv,
 		Router:         h.srv.Router,
+		Logger:         h.srv.Logger.Clone(nil, "route", strings.ToLower(r.Method)),
 		Secure:         h.secure,
 		RemoteAddress:  r.RemoteAddr,
 		RequestURI:     r.RequestURI,
@@ -254,10 +258,11 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	route.prep()
+	route.Logger = route.Logger.Clone(nil, route.DomainName, route.SubdomainName)
 
 	defer func() {
 		if p := recover(); p != nil {
-			route.logErrMessage = fmt.Sprintf("%v\nstack: %s", p, Stack())
+			route.logErrMessage = fmt.Sprintf("%v\nstack: %s", p, logger.Stack())
 			route.logHTTPPanic(route.getMetrics())
 		}
 	}()
