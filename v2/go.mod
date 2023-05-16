@@ -6,7 +6,7 @@ require (
 	github.com/gorilla/securecookie v1.1.1
 	github.com/nixpare/comms v1.1.0
 	github.com/nixpare/logger v1.1.0
-	github.com/nixpare/process v1.3.2
+	github.com/nixpare/process v1.3.3
 	github.com/yookoala/gofast v0.7.0
 )
 

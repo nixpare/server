@@ -15,16 +15,16 @@ type PHPProcessor struct {
 	logger      *logger.Logger
 }
 
-func CreatePHPProcessor(srv *Server) (php *PHPProcessor, err error) {
+func CreatePHPProcessor(srv *Server, port int) (php *PHPProcessor, err error) {
 	php = new(PHPProcessor)
 	
 	php.logger = srv.Logger.Clone(nil, "php")
-	php.process, err = process.NewProcess("", "php-cgi", process.ParseCommandArgs("-b 8081")...)
+	php.process, err = process.NewProcess("", "php-cgi", process.ParseCommandArgs(fmt.Sprintf("-b %d", port))...)
 	if err != nil {
 		return
 	}
 
-	php.connFactory = gofast.SimpleConnFactory("tcp", ":8081")
+	php.connFactory = gofast.SimpleConnFactory("tcp", fmt.Sprintf(":%d", port))
 	return
 }
 
