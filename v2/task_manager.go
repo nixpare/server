@@ -25,11 +25,12 @@ type TaskManager struct {
 
 func (router *Router) newTaskManager() {
 	router.TaskMgr = &TaskManager{
-		Router:   router,
+		Router:    router,
+		Logger:    router.Logger.Clone(nil, "tasks"),
 		processes: make(map[string]*process.Process), tasks: make(map[string]*Task),
 		ticker10s: time.NewTicker(time.Second * 10), ticker1m: time.NewTicker(time.Minute),
 		ticker10m: time.NewTicker(time.Minute * 10), ticker30m: time.NewTicker(time.Minute * 30),
-		ticker1h: time.NewTicker(time.Hour),
+		ticker1h:  time.NewTicker(time.Hour),
 	}
 }
 
