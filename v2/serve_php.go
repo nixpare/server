@@ -36,8 +36,8 @@ func (php *PHPProcessor) Start() error {
 
 	go func() {
 		exitStatus := php.process.Wait()
-		if (exitStatus.ExitCode != 0 || exitStatus.ExitError != nil) && exitStatus.ExitCode != 0xc000013a {
-			php.logger.Print(logger.LOG_LEVEL_ERROR, exitStatus)
+		if err := exitStatus.Error(); err != nil {
+			php.logger.Print(logger.LOG_LEVEL_ERROR, err)
 		}
 	}()
 
@@ -53,8 +53,8 @@ func (php *PHPProcessor) Stop() error {
 	}
 
 	exitStatus := php.process.Wait()
-	if (exitStatus.ExitCode != 0 || exitStatus.ExitError != nil) && exitStatus.ExitCode != 0xc000013a {
-		return fmt.Errorf("exit status (code %d): %v", exitStatus.ExitCode, exitStatus.ExitError)
+	if err := exitStatus.Error(); err != nil {
+		return err
 	}
 	return nil
 }
