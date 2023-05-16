@@ -132,7 +132,7 @@ func newServer(port int, secure bool, path string, certs []Certificate) (*Server
 		srv.Server.TLSConfig = cfg
 	}
 
-	srv.Logger = logger.DefaultLogger()
+	srv.Logger = logger.DefaultLogger
 
 	srv.Server.ReadHeaderTimeout = time.Second * 10
 	srv.Server.IdleTimeout = time.Second * 30

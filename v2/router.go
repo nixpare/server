@@ -44,7 +44,7 @@ func NewRouter(routerPath string) (router *Router, err error) {
 	routerPath = strings.ReplaceAll(routerPath, "\\", "/")
 	router.Path = routerPath
 
-	router.Logger = logger.DefaultLogger()
+	router.Logger = logger.DefaultLogger
 
 	router.offlineClients = make(map[string]offlineClient)
 	router.IsInternalConn = func(remoteAddress string) bool { return false }
