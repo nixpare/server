@@ -211,7 +211,10 @@ func prepDomainAndSubdomainLocal(route *Route) {
 	host := route.DomainName
 	hostSD := route.SubdomainName
 
+	route.Router.offlineClientsM.Lock()
+	defer route.Router.offlineClientsM.Unlock()
 	savedConfig, ok := route.Router.offlineClients[route.RemoteAddress]
+
 	if ok {
 		route.DomainName = savedConfig.domain
 		route.SubdomainName = savedConfig.subdomain

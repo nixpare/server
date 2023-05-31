@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nixpare/logger"
@@ -15,10 +16,11 @@ type Router struct {
 	servers map[int]*Server
 	// The Path provided when creating the Router or the working directory
 	// if not provided. This defines the path for every server registered
-	Path           string
-	startTime      time.Time
-	state          lifeCycleState
-	offlineClients map[string]offlineClient
+	Path            string
+	startTime       time.Time
+	state           lifeCycleState
+	offlineClientsM *sync.Mutex
+	offlineClients  map[string]offlineClient
 	// IsInternalConn can be used to additionally add rules used to determine whether
 	// an incoming connection must be treated as from a client in the local network or not.
 	// This is used both for the method route.IsInternalConn and for accessing other domains
@@ -46,6 +48,7 @@ func NewRouter(routerPath string) (router *Router, err error) {
 
 	router.Logger = logger.DefaultLogger
 
+	router.offlineClientsM = new(sync.Mutex)
 	router.offlineClients = make(map[string]offlineClient)
 	router.IsInternalConn = func(remoteAddress string) bool { return false }
 
