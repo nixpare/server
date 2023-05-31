@@ -73,9 +73,11 @@ func (route *Route) ServeFile(filePath string) {
 	}
 
 	fileInfo, err := os.Stat(filePath)
-	if err == nil {
-		if fileInfo.IsDir() {
-			route.Error(http.StatusNotFound, "Not found", "Cannot serve directory", filePath)
+	if err != nil {
+		filePath += ".html"
+		_, err = os.Stat(filePath)
+		if err != nil {
+			route.Error(http.StatusNotFound, "Not found")
 			return
 		}
 
@@ -83,20 +85,16 @@ func (route *Route) ServeFile(filePath string) {
 		return
 	}
 
-	fileInfo, err = os.Stat(filePath + ".html")
-	if err != nil {
-		route.Error(http.StatusNotFound, "Not found")
-		return
+	if fileInfo.IsDir() {
+		filePath += ".html"
+		_, err = os.Stat(filePath)
+		if err != nil {
+			route.Error(http.StatusNotFound, "Not found", "Can't serve directory on", route.RequestURI)
+			return
+		}
 	}
 
-	f, err := os.Open(filePath + ".html")
-	if err != nil {
-		route.Error(http.StatusInternalServerError, "Error retreiving page", fmt.Sprintf("Error opening file %s: %v", filePath+".html", err))
-		return
-	}
-	defer f.Close()
-
-	http.ServeContent(route.W, route.R, fileInfo.Name(), fileInfo.ModTime(), f)
+	http.ServeFile(route.W, route.R, filePath)
 }
 
 func (route *Route) serveXFile(xFilePath string) {
