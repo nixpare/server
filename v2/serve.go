@@ -12,6 +12,9 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/gorilla/websocket"
+	"github.com/nixpare/logger"
 )
 
 // Error is used to manually report an HTTP error to send to the
@@ -371,4 +374,20 @@ func (route *Route) IsInternalConn() bool {
 	}
 
 	return route.Router.IsInternalConn(route.RemoteAddress)
+}
+
+var WebsocketUpgrader = websocket.Upgrader {
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+}
+
+func (route *Route) ServeWS(wsu websocket.Upgrader, h func(route *Route, conn *websocket.Conn)) {
+	conn, err := wsu.Upgrade(route.W, route.R, nil)
+	if err != nil {
+		route.Logger.Printf(logger.LOG_LEVEL_WARNING, "Error while upgrading to ws: %v", err)
+		return
+	}
+
+	h(route, conn)
+	conn.Close()
 }

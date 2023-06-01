@@ -113,10 +113,12 @@ type InitCloseFunction func(srv *Server, domain *Domain, subdomain *Subdomain, w
 // ResponseWriter is just a wrapper for the standard http.ResponseWriter interface, the only difference is that
 // it keeps track of the bytes written and the status code, so that can be logged
 type ResponseWriter struct {
-	w        http.ResponseWriter
-	hasWrote bool
-	code     int
-	written  int64
+	w                   http.ResponseWriter
+	disableErrorCapture bool
+	caputedError        []byte
+	hasWrote            bool
+	code                int
+	written             int64
 }
 
 // Header is the equivalent of the http.ResponseWriter method
@@ -126,6 +128,11 @@ func (w *ResponseWriter) Header() http.Header {
 
 // Write is the equivalent of the http.ResponseWriter method
 func (w *ResponseWriter) Write(data []byte) (int, error) {
+	if w.code >= 400 && !w.disableErrorCapture {
+		w.caputedError = append(w.caputedError, data...)
+		return len(data), nil
+	}
+	
 	n, err := w.w.Write(data)
 	w.written += int64(n)
 	if n > 0 {

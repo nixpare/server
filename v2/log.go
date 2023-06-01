@@ -128,7 +128,13 @@ func (route *Route) logHTTPPanic(m metrics) {
 // error template or if the connection method is different from GET or HEAD, the
 // error message is sent as a plain text
 func (route *Route) serveError() {
-	if route.W.hasWrote {
+	route.W.disableErrorCapture = true
+
+	if len(route.W.caputedError) != 0 {
+		route.errMessage = string(route.W.caputedError)
+	}
+
+	if route.errMessage == "" {
 		return
 	}
 

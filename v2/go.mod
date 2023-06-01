@@ -10,4 +10,7 @@ require (
 	github.com/yookoala/gofast v0.7.0
 )
 
-require golang.org/x/tools v0.0.0-20200908211811-12e1bf57a112 // indirect
+require (
+	github.com/gorilla/websocket v1.5.0 // indirect
+	golang.org/x/tools v0.0.0-20200908211811-12e1bf57a112 // indirect
+)

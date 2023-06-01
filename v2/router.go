@@ -19,7 +19,7 @@ type Router struct {
 	Path            string
 	startTime       time.Time
 	state           lifeCycleState
-	offlineClientsM *sync.Mutex
+	offlineClientsM *sync.RWMutex
 	offlineClients  map[string]offlineClient
 	// IsInternalConn can be used to additionally add rules used to determine whether
 	// an incoming connection must be treated as from a client in the local network or not.
@@ -48,7 +48,7 @@ func NewRouter(routerPath string) (router *Router, err error) {
 
 	router.Logger = logger.DefaultLogger
 
-	router.offlineClientsM = new(sync.Mutex)
+	router.offlineClientsM = new(sync.RWMutex)
 	router.offlineClients = make(map[string]offlineClient)
 	router.IsInternalConn = func(remoteAddress string) bool { return false }
 
