@@ -18,7 +18,7 @@ import (
 type Domain struct {
 	Name         string
 	subdomains   map[string]*Subdomain
-	srv          *Server
+	srv          *HTTPServer
 	headers      http.Header
 	errTemplate  *template.Template
 	beforeServeF BeforeServeFunction
@@ -43,7 +43,7 @@ type Subdomain struct {
 	headers     http.Header
 	errTemplate *template.Template
 	offline     bool
-	state       lifeCycleState
+	state       *LifeCycle
 }
 
 // SubdomainConfig is used to create a Subdomain. The Website should not be
@@ -56,18 +56,18 @@ type SubdomainConfig struct {
 	// linked in every connection
 	Website Website
 	// ServeF is the function holding the logic behind the website
-	ServeF  ServeFunction
+	ServeF ServeFunction
 	// InitF is the function called upon server startup
-	InitF   InitCloseFunction
+	InitF InitCloseFunction
 	// CloseF is the function called upon server shutdown
-	CloseF  InitCloseFunction
+	CloseF InitCloseFunction
 }
 
 // RegisterDomain registers a domain in the server. It's asked to specify a
 // display name used in the logs and the effective URL of the domain (do
 // not specify any protocol or port). If the domain name is an empy string
 // it will be treated as the default domain (see srv.RegisterDefaultDomain)
-func (srv *Server) RegisterDomain(displayName, domain string) *Domain {
+func (srv *HTTPServer) RegisterDomain(displayName, domain string) *Domain {
 	d := &Domain{
 		Name:       displayName,
 		subdomains: make(map[string]*Subdomain),
@@ -81,24 +81,24 @@ func (srv *Server) RegisterDomain(displayName, domain string) *Domain {
 
 // RegisterDefaultDomain registers a domain that is called if no other domain
 // matches perfectly the incoming connection
-func (srv *Server) RegisterDefaultDomain(displayName string) *Domain {
+func (srv *HTTPServer) RegisterDefaultDomain(displayName string) *Domain {
 	return srv.RegisterDomain(displayName, "")
 }
 
 // Domain returns the domain with the given name registered in the server, if found
-func (srv *Server) Domain(domain string) *Domain {
+func (srv *HTTPServer) Domain(domain string) *Domain {
 	return srv.domains[domain]
 }
 
 // DefaultDomain returns the default domain, if set
-func (srv *Server) DefaultDomain() *Domain {
+func (srv *HTTPServer) DefaultDomain() *Domain {
 	return srv.domains[""]
 }
 
 // RegisterDefaultRoute is a shortcut for registering the default logic applied for every
 // connection not matching any other specific domain and subdomain. It's
 // the combination of srv.RegisterDefaultDomain(displayName).RegisterDefaultSubdomain(c)
-func (srv *Server) RegisterDefaultRoute(displayName string, c SubdomainConfig) (*Domain, *Subdomain) {
+func (srv *HTTPServer) RegisterDefaultRoute(displayName string, c SubdomainConfig) (*Domain, *Subdomain) {
 	d := srv.RegisterDefaultDomain(displayName)
 	sd := d.RegisterDefaultSubdomain(c)
 
@@ -156,10 +156,11 @@ func (d *Domain) RegisterSubdomain(subdomain string, c SubdomainConfig) *Subdoma
 		Name: subdomain, website: ws,
 		serveF: c.ServeF, initF: c.InitF, closeF: c.CloseF,
 		headers: make(http.Header),
+		state: NewLifeCycleState(),
 	}
 	d.subdomains[subdomain] = sd
 
-	if getLifeCycleState(d.srv) == lcs_started {
+	if d.srv.state.GetState() == LCS_STARTED {
 		sd.start(d.srv, d)
 	}
 
@@ -276,28 +277,28 @@ func (sd *Subdomain) Header() http.Header {
 	return sd.headers
 }
 
-func (sd *Subdomain) start(srv *Server, d *Domain) {
-	if getLifeCycleState(sd).AlreadyStarted() {
+func (sd *Subdomain) start(srv *HTTPServer, d *Domain) {
+	if sd.state.AlreadyStarted() {
 		return
 	}
-	setLifeCycleState(sd, lcs_starting)
+	sd.state.SetState(LCS_STARTING)
 
 	if sd.initF != nil {
 		sd.initF(srv, d, sd, sd.website)
 	}
-	setLifeCycleState(sd, lcs_started)
+	sd.state.SetState(LCS_STARTED)
 }
 
-func (sd *Subdomain) stop(srv *Server, d *Domain) {
-	if getLifeCycleState(sd).AlreadyStopped() {
+func (sd *Subdomain) stop(srv *HTTPServer, d *Domain) {
+	if sd.state.AlreadyStopped() {
 		return
 	}
-	setLifeCycleState(sd, lcs_stopping)
+	sd.state.SetState(LCS_STOPPING)
 
 	if sd.closeF != nil {
 		sd.closeF(srv, d, sd, sd.website)
 	}
-	setLifeCycleState(sd, lcs_stopped)
+	sd.state.SetState(LCS_STOPPED)
 }
 
 // Enable sets the subdomain to online state
@@ -310,21 +311,13 @@ func (sd *Subdomain) Disable() {
 	sd.offline = true
 }
 
-func (sd *Subdomain) getState() lifeCycleState {
-	return sd.state
-}
-
-func (sd *Subdomain) setState(state lifeCycleState) {
-	sd.state = state
-}
-
 // SetErrorTemplate sets the error template used server-wise. It's
 // required an HTML that contains two specific fields, a .Code one and
 // a .Message one, for example like so:
 //
 //	<h2>Error {{ .Code }}</h2>
 //	<p>{{ .Message }}</p>
-func (srv *Server) SetErrorTemplate(content string) error {
+func (srv *HTTPServer) SetErrorTemplate(content string) error {
 	t, err := template.New("error.html").Parse(content)
 	if err != nil {
 		return fmt.Errorf("error parsing template file: %w", err)

@@ -2,53 +2,52 @@ package server
 
 import "sync"
 
-var lifeCycleStateIMap = make(map[lifeCycleI]*sync.Mutex)
-
-type lifeCycleState int
+type LifeCycleState int
 
 const (
-	lcs_stopped  lifeCycleState = iota
-	lcs_stopping
-	lcs_starting
-	lcs_started
+	LCS_STOPPED LifeCycleState = iota
+	LCS_STOPPING
+	LCS_STARTING
+	LCS_STARTED
 )
 
-func (state lifeCycleState) AlreadyStarted() bool {
-	return state == lcs_starting || state == lcs_started
+type LifeCycle struct {
+	state LifeCycleState
+	m     *sync.RWMutex
 }
 
-func (state lifeCycleState) AlreadyStopped() bool {
-	return state == lcs_stopping || state == lcs_stopped
+func NewLifeCycleState() *LifeCycle {
+	return &LifeCycle{m: new(sync.RWMutex)}
 }
 
-type lifeCycleI interface {
-	getState() lifeCycleState
-	setState(state lifeCycleState)
+func (state *LifeCycle) GetState() LifeCycleState {
+	state.m.RLock()
+	defer state.m.RUnlock()
+
+	return state.state
 }
 
-func getLifegetLifeCycleILock(i lifeCycleI) *sync.Mutex {
-	lock := lifeCycleStateIMap[i]
-	if lock != nil {
-		return lock
-	}
+func (state *LifeCycle) SetState(s LifeCycleState) {
+	state.m.Lock()
+	defer state.m.Unlock()
 
-	lock = new(sync.Mutex)
-	lifeCycleStateIMap[i] = lock
-	return lock
+	state.state = s
 }
 
-func getLifeCycleState(i lifeCycleI) lifeCycleState {
-	lock := getLifegetLifeCycleILock(i)
-	lock.Lock()
-	defer lock.Unlock()
+func (state *LifeCycle) AlreadyStarted() bool {
+	state.m.RLock()
+	defer state.m.RUnlock()
 
-	return i.getState()
+	return state.state == LCS_STARTING || state.state == LCS_STARTED
 }
 
-func setLifeCycleState(i lifeCycleI, state lifeCycleState) {
-	lock := getLifegetLifeCycleILock(i)
-	lock.Lock()
-	defer lock.Unlock()
+func (state *LifeCycle) AlreadyStopped() bool {
+	state.m.RLock()
+	defer state.m.RUnlock()
 
-	i.setState(state)
+	return state.state == LCS_STOPPING || state.state == LCS_STOPPED
+}
+
+func (state *LifeCycle) GetLock() *sync.RWMutex {
+	return state.m
 }

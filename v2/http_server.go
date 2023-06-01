@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"crypto/sha256"
-	"crypto/tls"
 	"embed"
 	"fmt"
 	"html/template"
@@ -15,18 +14,18 @@ import (
 	"github.com/nixpare/logger"
 )
 
-// Server is a single HTTP server listening on a TCP port.
+// HTTPServer is a single HTTP server listening on a TCP port.
 // It can handle multiple domains and subdomains. To manage
 // multiple servers listening on different ports use a Router.
 //
 // Before creating any server you should change the HashKeyString and
 // BlockKeyString global variables: see Route.SetCookiePerm method
-type Server struct {
+type HTTPServer struct {
 	// Secure is set to indicate whether the server is using
 	// the HTTP or HTTPS protocol
 	Secure bool
 	// state tells in which state the server is
-	state lifeCycleState
+	state *LifeCycle
 	// Online tells wheter the server is responding to external requests
 	Online bool
 	// OnlineTime reports the last time the server was activated or resumed
@@ -71,7 +70,7 @@ var (
 var staticFS embed.FS
 
 // NewServer creates a new server
-func NewServer(port int, secure bool, path string, certs ...Certificate) (*Server, error) {
+func NewHTTPServer(port int, secure bool, path string, certs ...Certificate) (*HTTPServer, error) {
 	if path == "" {
 		var err error
 		path, err = os.Getwd()
@@ -80,15 +79,17 @@ func NewServer(port int, secure bool, path string, certs ...Certificate) (*Serve
 		}
 	}
 
-	return newServer(port, secure, path, certs)
+	return newHTTPServer(port, secure, path, certs)
 }
 
-func newServer(port int, secure bool, path string, certs []Certificate) (*Server, error) {
-	srv := new(Server)
+func newHTTPServer(port int, secure bool, path string, certs []Certificate) (*HTTPServer, error) {
+	srv := new(HTTPServer)
 
 	srv.Server = new(http.Server)
 	srv.Secure = secure
 	srv.port = port
+
+	srv.state = NewLifeCycleState()
 
 	srv.ServerPath = path
 
@@ -99,37 +100,11 @@ func newServer(port int, secure bool, path string, certs []Certificate) (*Server
 
 	//Setting up Redirect Server parameters
 	if secure {
-		cfg := &tls.Config{
-			CipherSuites: []uint16{
-				tls.TLS_AES_128_GCM_SHA256,
-				tls.TLS_AES_256_GCM_SHA384,
-				tls.TLS_CHACHA20_POLY1305_SHA256,
-				tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-				tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-				tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
-				tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
-				tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256,
-			},
-			CurvePreferences: []tls.CurveID{
-				tls.CurveP256,
-				tls.CurveP384,
-				tls.X25519,
-			},
-			MinVersion: tls.VersionTLS12,
+		var err error
+		srv.Server.TLSConfig, err = GenerateTSLConfig(certs)
+		if err != nil {
+			return nil, err
 		}
-
-		for _, x := range certs {
-			cert, err := tls.LoadX509KeyPair(x.CertPemPath, x.KeyPemPath)
-			if err != nil {
-				return nil, err
-			}
-
-			cfg.Certificates = append(cfg.Certificates, cert)
-		}
-
-		srv.Server.TLSConfig = cfg
 	}
 
 	srv.Logger = logger.DefaultLogger
@@ -175,26 +150,18 @@ func newServer(port int, secure bool, path string, certs []Certificate) (*Server
 }
 
 // Port returns the TCP port listened by the server
-func (srv *Server) Port() int {
+func (srv *HTTPServer) Port() int {
 	return srv.port
 }
 
 // IsRunning tells whether the server is running or not
-func (srv *Server) IsRunning() bool {
-	return getLifeCycleState(srv) == lcs_started
-}
-
-func (srv *Server) getState() lifeCycleState {
-	return srv.state
-}
-
-func (srv *Server) setState(state lifeCycleState) {
-	srv.state = state
+func (srv *HTTPServer) IsRunning() bool {
+	return srv.state.GetState() == LCS_STARTED
 }
 
 // SetHeader adds an HTTP header that will be set at every connection
 // accepted by the Server
-func (srv *Server) SetHeader(name, value string) *Server {
+func (srv *HTTPServer) SetHeader(name, value string) *HTTPServer {
 	srv.headers.Set(name, value)
 	return srv
 }
@@ -208,7 +175,7 @@ func (srv *Server) SetHeader(name, value string) *Server {
 		{"header_name_2", "header_value_2"},
 	})
 */
-func (srv *Server) SetHeaders(headers [][2]string) *Server {
+func (srv *HTTPServer) SetHeaders(headers [][2]string) *HTTPServer {
 	for _, header := range headers {
 		srv.SetHeader(header[0], header[1])
 	}
@@ -217,26 +184,25 @@ func (srv *Server) SetHeaders(headers [][2]string) *Server {
 
 // RemoveHeader removes an HTTP header with the given name from
 // the Server specific headers
-func (srv *Server) RemoveHeader(name string) *Server {
+func (srv *HTTPServer) RemoveHeader(name string) *HTTPServer {
 	srv.headers.Del(name)
 	return srv
 }
 
 // Header returns the underlying http.Header intance
-func (srv *Server) Header() http.Header {
+func (srv *HTTPServer) Header() http.Header {
 	return srv.headers
 }
 
 // Start prepares every domain and subdomain and starts listening
 // on the TCP port
-func (srv *Server) Start() {
-	if getLifeCycleState(srv).AlreadyStarted() {
+func (srv *HTTPServer) Start() {
+	if srv.state.AlreadyStarted() {
 		return
 	}
-	setLifeCycleState(srv, lcs_starting)
 
+	srv.state.SetState(LCS_STARTING)
 	srv.Online = true
-
 	srv.OnlineTime = time.Now()
 
 	for _, d := range srv.domains {
@@ -258,19 +224,21 @@ func (srv *Server) Start() {
 			}
 		}
 	}()
-	setLifeCycleState(srv, lcs_started)
+
+	srv.state.SetState(LCS_STARTED)
 }
 
 // Stop cleans up every domain and subdomain and stops listening
 // on the TCP port
-func (srv *Server) Stop() {
-	if getLifeCycleState(srv).AlreadyStopped() {
+func (srv *HTTPServer) Stop() {
+	if srv.state.AlreadyStopped() {
 		return
 	}
-	setLifeCycleState(srv, lcs_stopping)
 
-	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "Server %s shutdown started", srv.Server.Addr)
+	srv.state.SetState(LCS_STOPPING)
+	srv.Online = false
 	srv.Server.SetKeepAlivesEnabled(false)
+	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "Server %s shutdown started", srv.Server.Addr)
 
 	for _, d := range srv.domains {
 		for _, sd := range d.subdomains {
@@ -284,10 +252,9 @@ func (srv *Server) Stop() {
 			srv.Server.Addr, err.Error(),
 		)
 	}
-	srv.Online = false
 
 	srv.stopChannel <- struct{}{}
 	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "Server %s shutdown finished", srv.Server.Addr)
 
-	setLifeCycleState(srv, lcs_stopped)
+	srv.state.SetState(LCS_STOPPED)
 }

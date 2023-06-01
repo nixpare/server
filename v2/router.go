@@ -13,12 +13,14 @@ import (
 // Router is the main element of this package and is used to manage
 // all the servers and the background tasks.
 type Router struct {
-	servers map[int]*Server
+	httpServers map[int]*HTTPServer
+	tcpServers  map[int]*TCPServer
+	udpServers  map[int]*UDPServer
 	// The Path provided when creating the Router or the working directory
 	// if not provided. This defines the path for every server registered
 	Path            string
 	startTime       time.Time
-	state           lifeCycleState
+	state           *LifeCycle
 	offlineClientsM *sync.RWMutex
 	offlineClients  map[string]offlineClient
 	// IsInternalConn can be used to additionally add rules used to determine whether
@@ -35,7 +37,10 @@ type Router struct {
 // the router will try to get the working directory
 func NewRouter(routerPath string) (router *Router, err error) {
 	router = new(Router)
-	router.servers = make(map[int]*Server)
+
+	router.httpServers = make(map[int]*HTTPServer)
+	router.tcpServers = make(map[int]*TCPServer)
+	router.udpServers = make(map[int]*UDPServer)
 
 	if routerPath == "" {
 		routerPath, err = os.Getwd()
@@ -45,6 +50,8 @@ func NewRouter(routerPath string) (router *Router, err error) {
 	}
 	routerPath = strings.ReplaceAll(routerPath, "\\", "/")
 	router.Path = routerPath
+
+	router.state = NewLifeCycleState()
 
 	router.Logger = logger.DefaultLogger
 
@@ -62,69 +69,94 @@ func NewRouter(routerPath string) (router *Router, err error) {
 
 // NewServer creates a new HTTP/HTTPS Server linked to the Router. See NewServer function
 // for more information
-func (router *Router) NewServer(port int, secure bool, path string, certs ...Certificate) (*Server, error) {
-	_, ok := router.servers[port]
+func (router *Router) NewHTTPServer(port int, secure bool, path string, certs ...Certificate) (*HTTPServer, error) {
+	_, ok := router.httpServers[port]
 	if ok {
-		return nil, fmt.Errorf("server listening to port %d already registered", port)
+		return nil, fmt.Errorf("http server listening to port %d already registered", port)
 	}
 
 	if path == "" {
 		path = router.Path
 	}
 
-	srv, err := newServer(port, secure, path, certs)
+	srv, err := newHTTPServer(port, secure, path, certs)
 	if err != nil {
 		return nil, err
 	}
 
-	router.servers[srv.port] = srv
+	router.httpServers[srv.port] = srv
 	srv.Router = router
 
-	srv.Logger = router.Logger.Clone(nil, "server", fmt.Sprint(port))
+	srv.Logger = router.Logger.Clone(nil, "server", "http", fmt.Sprint(port))
 
 	return srv, nil
 }
 
-func (router *Router) getState() lifeCycleState {
-	return router.state
-}
+// NewServer creates a new TCP Server linked to the Router. See NewTCPServer function
+// for more information
+func (router *Router) NewTCPServer(address string, port int, secure bool, certs ...Certificate) (*TCPServer, error) {
+	_, ok := router.tcpServers[port]
+	if ok {
+		return nil, fmt.Errorf("tcp server listening to port %d already registered", port)
+	}
 
-func (router *Router) setState(state lifeCycleState) {
-	router.state = state
+	srv, err := NewTCPServer(address, port, secure, certs...)
+	if err != nil {
+		return nil, err
+	}
+
+	router.tcpServers[srv.port] = srv
+	srv.Router = router
+
+	srv.Logger = router.Logger.Clone(nil, "server", "tcp", fmt.Sprint(port))
+
+	return srv, nil
 }
 
 // Start starts all the registered servers and the background task manager
 func (router *Router) Start() {
-	if getLifeCycleState(router).AlreadyStarted() {
+	if router.state.AlreadyStarted() {
 		return
 	}
-	setLifeCycleState(router, lcs_starting)
+	router.state.SetState(LCS_STARTING)
 
-	pid, _ := os.OpenFile(router.Path + "/PID.txt", os.O_WRONLY | os.O_CREATE | os.O_TRUNC, 0777)
+	pid, _ := os.OpenFile(router.Path+"/PID.txt", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
 	fmt.Fprintln(pid, os.Getpid())
 	pid.Close()
 
-	for _, srv := range router.servers {
+	for _, srv := range router.httpServers {
+		srv.Start()
+	}
+	for _, srv := range router.tcpServers {
+		srv.Start()
+	}
+	for _, srv := range router.udpServers {
 		srv.Start()
 	}
 	router.TaskMgr.start()
 
-	setLifeCycleState(router, lcs_started)
+	router.state.SetState(LCS_STARTED)
 }
 
 // Stop starts the shutdown procedure of the entire router with all
 // the servers registered, the background programs and tasks and
 // lastly executes the router.CleanupF function, if set
 func (router *Router) Stop() {
-	if getLifeCycleState(router).AlreadyStopped() {
+	if router.state.AlreadyStopped() {
 		return
 	}
-	setLifeCycleState(router, lcs_stopping)
+	router.state.SetState(LCS_STOPPING)
 
 	router.Logger.Print(logger.LOG_LEVEL_INFO, "Router shutdown procedure started")
 
 	router.TaskMgr.stop()
-	for _, srv := range router.servers {
+	for _, srv := range router.udpServers {
+		srv.Stop()
+	}
+	for _, srv := range router.tcpServers {
+		srv.Stop()
+	}
+	for _, srv := range router.httpServers {
 		srv.Stop()
 	}
 
@@ -134,14 +166,24 @@ func (router *Router) Stop() {
 	}
 
 	router.writeLogClosure(time.Now())
-	setLifeCycleState(router, lcs_stopped)
+	router.state.SetState(LCS_STOPPED)
 }
 
 func (router *Router) IsRunning() bool {
-	return getLifeCycleState(router) == lcs_started
+	return router.state.GetState() == LCS_STARTED
 }
 
 // Server returns the server running on the given port
-func (router *Router) Server(port int) *Server {
-	return router.servers[port]
+func (router *Router) HTTPServer(port int) *HTTPServer {
+	return router.httpServers[port]
+}
+
+// Server returns the server running on the given port
+func (router *Router) TCPServer(port int) *TCPServer {
+	return router.tcpServers[port]
+}
+
+// Server returns the server running on the given port
+func (router *Router) UDPServer(port int) *UDPServer {
+	return router.udpServers[port]
 }
