@@ -3,6 +3,7 @@ package server
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"math/big"
@@ -83,4 +84,38 @@ func isAbs(path string) bool {
 	}
 
 	return filepath.IsAbs(path)
+}
+
+func GenerateTSLConfig(certs []Certificate) (*tls.Config, error) {
+	cfg := &tls.Config{
+		CipherSuites: []uint16{
+			tls.TLS_AES_128_GCM_SHA256,
+			tls.TLS_AES_256_GCM_SHA384,
+			tls.TLS_CHACHA20_POLY1305_SHA256,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
+			tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256,
+		},
+		CurvePreferences: []tls.CurveID{
+			tls.CurveP256,
+			tls.CurveP384,
+			tls.X25519,
+		},
+		MinVersion: tls.VersionTLS12,
+	}
+
+	for _, x := range certs {
+		cert, err := tls.LoadX509KeyPair(x.CertPemPath, x.KeyPemPath)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg.Certificates = append(cfg.Certificates, cert)
+	}
+
+	return cfg, nil
 }

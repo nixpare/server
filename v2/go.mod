@@ -11,6 +11,6 @@ require (
 )
 
 require (
-	github.com/gorilla/websocket v1.5.0 // indirect
+	github.com/gorilla/websocket v1.5.0
 	golang.org/x/tools v0.0.0-20200908211811-12e1bf57a112 // indirect
 )

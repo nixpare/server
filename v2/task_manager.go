@@ -11,42 +11,35 @@ import (
 // TaskManager is a component of the Router that controls the
 // execution of external processes and tasks registered by the user
 type TaskManager struct {
-	Router     *Router
-	Logger     *logger.Logger
-	state      lifeCycleState
-	processes  map[string]*process.Process
-	tasks      map[string]*Task
-	ticker10s  *time.Ticker
-	ticker1m   *time.Ticker
-	ticker10m  *time.Ticker
-	ticker30m  *time.Ticker
-	ticker1h   *time.Ticker
+	Router    *Router
+	Logger    *logger.Logger
+	state     *LifeCycle
+	processes map[string]*process.Process
+	tasks     map[string]*Task
+	ticker10s *time.Ticker
+	ticker1m  *time.Ticker
+	ticker10m *time.Ticker
+	ticker30m *time.Ticker
+	ticker1h  *time.Ticker
 }
 
 func (router *Router) newTaskManager() {
 	router.TaskMgr = &TaskManager{
 		Router:    router,
 		Logger:    router.Logger.Clone(nil, "tasks"),
+		state: NewLifeCycleState(),
 		processes: make(map[string]*process.Process), tasks: make(map[string]*Task),
 		ticker10s: time.NewTicker(time.Second * 10), ticker1m: time.NewTicker(time.Minute),
 		ticker10m: time.NewTicker(time.Minute * 10), ticker30m: time.NewTicker(time.Minute * 30),
-		ticker1h:  time.NewTicker(time.Hour),
+		ticker1h: time.NewTicker(time.Hour),
 	}
 }
-
-func (tm *TaskManager) getState() lifeCycleState {
-	return tm.state
-}
-
-func (tm *TaskManager) setState(state lifeCycleState) {
-	tm.state = state
-} 
 
 func (tm *TaskManager) start() {
-	if getLifeCycleState(tm).AlreadyStarted() {
+	if tm.state.AlreadyStarted() {
 		return
 	}
-	setLifeCycleState(tm, lcs_starting)
+	tm.state.SetState(LCS_STARTING)
 
 	wg := new(sync.WaitGroup)
 	for _, t := range tm.tasks {
@@ -61,7 +54,7 @@ func (tm *TaskManager) start() {
 	tm.Logger.Print(logger.LOG_LEVEL_INFO, "Tasks startup completed")
 
 	go func() {
-		for getLifeCycleState(tm) == lcs_started {
+		for tm.state.GetState() == LCS_STARTED {
 			select {
 			case <-tm.ticker10s.C:
 				tm.runTasksWithTimer(TASK_TIMER_10_SECONDS)
@@ -76,19 +69,19 @@ func (tm *TaskManager) start() {
 			}
 		}
 	}()
-	setLifeCycleState(tm, lcs_started)
+	tm.state.SetState(LCS_STARTED)
 }
 
 func (tm *TaskManager) stop() {
-	if getLifeCycleState(tm).AlreadyStopped() {
+	if tm.state.AlreadyStopped() {
 		return
 	}
-	setLifeCycleState(tm, lcs_stopping)
+	tm.state.SetState(LCS_STOPPING)
 
 	tm.stopAllTasks()
 	tm.stopAllProcesses()
 
-	setLifeCycleState(tm, lcs_stopped)
+	tm.state.SetState(LCS_STOPPED)
 }
 
 func (tm *TaskManager) stopAllTasks() {

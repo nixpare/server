@@ -108,7 +108,7 @@ type BeforeServeFunction func(route *Route) bool
 // when the relative server is started or stopped. Bear in mind that if you use the same function on
 // multiple subdomain, maybe belonging to different servers, you could have to manually check that this function is done
 // only once
-type InitCloseFunction func(srv *Server, domain *Domain, subdomain *Subdomain, website *Website)
+type InitCloseFunction func(srv *HTTPServer, domain *Domain, subdomain *Subdomain, website *Website)
 
 // ResponseWriter is just a wrapper for the standard http.ResponseWriter interface, the only difference is that
 // it keeps track of the bytes written and the status code, so that can be logged
@@ -132,7 +132,7 @@ func (w *ResponseWriter) Write(data []byte) (int, error) {
 		w.caputedError = append(w.caputedError, data...)
 		return len(data), nil
 	}
-	
+
 	n, err := w.w.Write(data)
 	w.written += int64(n)
 	if n > 0 {
@@ -177,7 +177,7 @@ type Route struct {
 	// R is the standard [http.Request] without any modification
 	R *http.Request
 	// Srv is a reference to the server this connection went through
-	Srv *Server
+	Srv *HTTPServer
 	// Router is a reference to the router this server connection belongs to
 	Router *Router
 	Logger *logger.Logger
@@ -231,11 +231,11 @@ type Route struct {
 // the responsible for creating the Route that will handle the connection
 type handler struct {
 	secure bool
-	srv    *Server
+	srv    *HTTPServer
 }
 
 // setHandler sets the http.Handler to the http.Server
-func (srv *Server) setHandler() {
+func (srv *HTTPServer) setHandler() {
 	srv.Server.Handler = handler{srv.Secure, srv}
 }
 
