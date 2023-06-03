@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"embed"
+	"errors"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -70,7 +71,7 @@ var (
 var staticFS embed.FS
 
 // NewServer creates a new server
-func NewHTTPServer(port int, secure bool, path string, certs ...Certificate) (*HTTPServer, error) {
+func NewHTTPServer(address string, port int, secure bool, path string, certs ...Certificate) (*HTTPServer, error) {
 	if path == "" {
 		var err error
 		path, err = os.Getwd()
@@ -79,10 +80,10 @@ func NewHTTPServer(port int, secure bool, path string, certs ...Certificate) (*H
 		}
 	}
 
-	return newHTTPServer(port, secure, path, certs)
+	return newHTTPServer(address, port, secure, path, certs)
 }
 
-func newHTTPServer(port int, secure bool, path string, certs []Certificate) (*HTTPServer, error) {
+func newHTTPServer(address string, port int, secure bool, path string, certs []Certificate) (*HTTPServer, error) {
 	srv := new(HTTPServer)
 
 	srv.Server = new(http.Server)
@@ -213,12 +214,12 @@ func (srv *HTTPServer) Start() {
 
 	go func() {
 		if srv.Secure {
-			if err := srv.Server.ListenAndServeTLS("", ""); err != nil && err.Error() != "http: Server closed" {
+			if err := srv.Server.ListenAndServeTLS("", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				srv.Logger.Printf(logger.LOG_LEVEL_FATAL, "Server Error: %v", err)
 				srv.Stop()
 			}
 		} else {
-			if err := srv.Server.ListenAndServe(); err != nil && err.Error() != "http: Server closed" {
+			if err := srv.Server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				srv.Logger.Printf(logger.LOG_LEVEL_FATAL, "Server Error: %v", err)
 				srv.Stop()
 			}

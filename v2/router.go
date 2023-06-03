@@ -15,7 +15,6 @@ import (
 type Router struct {
 	httpServers map[int]*HTTPServer
 	tcpServers  map[int]*TCPServer
-	udpServers  map[int]*UDPServer
 	// The Path provided when creating the Router or the working directory
 	// if not provided. This defines the path for every server registered
 	Path            string
@@ -40,7 +39,6 @@ func NewRouter(routerPath string) (router *Router, err error) {
 
 	router.httpServers = make(map[int]*HTTPServer)
 	router.tcpServers = make(map[int]*TCPServer)
-	router.udpServers = make(map[int]*UDPServer)
 
 	if routerPath == "" {
 		routerPath, err = os.Getwd()
@@ -61,15 +59,12 @@ func NewRouter(routerPath string) (router *Router, err error) {
 
 	router.newTaskManager()
 
-	router.startTime = time.Now()
-	router.writeLogStart(router.startTime)
-
 	return
 }
 
 // NewServer creates a new HTTP/HTTPS Server linked to the Router. See NewServer function
 // for more information
-func (router *Router) NewHTTPServer(port int, secure bool, path string, certs ...Certificate) (*HTTPServer, error) {
+func (router *Router) NewHTTPServer(address string, port int, secure bool, path string, certs ...Certificate) (*HTTPServer, error) {
 	_, ok := router.httpServers[port]
 	if ok {
 		return nil, fmt.Errorf("http server listening to port %d already registered", port)
@@ -79,7 +74,7 @@ func (router *Router) NewHTTPServer(port int, secure bool, path string, certs ..
 		path = router.Path
 	}
 
-	srv, err := newHTTPServer(port, secure, path, certs)
+	srv, err := newHTTPServer(address, port, secure, path, certs)
 	if err != nil {
 		return nil, err
 	}
@@ -124,13 +119,13 @@ func (router *Router) Start() {
 	fmt.Fprintln(pid, os.Getpid())
 	pid.Close()
 
+	router.startTime = time.Now()
+	router.writeLogStart(router.startTime)
+
 	for _, srv := range router.httpServers {
 		srv.Start()
 	}
 	for _, srv := range router.tcpServers {
-		srv.Start()
-	}
-	for _, srv := range router.udpServers {
 		srv.Start()
 	}
 	router.TaskMgr.start()
@@ -150,9 +145,6 @@ func (router *Router) Stop() {
 	router.Logger.Print(logger.LOG_LEVEL_INFO, "Router shutdown procedure started")
 
 	router.TaskMgr.stop()
-	for _, srv := range router.udpServers {
-		srv.Stop()
-	}
 	for _, srv := range router.tcpServers {
 		srv.Stop()
 	}
@@ -173,17 +165,12 @@ func (router *Router) IsRunning() bool {
 	return router.state.GetState() == LCS_STARTED
 }
 
-// Server returns the server running on the given port
+// Server returns the HTTP server running on the given port
 func (router *Router) HTTPServer(port int) *HTTPServer {
 	return router.httpServers[port]
 }
 
-// Server returns the server running on the given port
+// Server returns the TCP server running on the given port
 func (router *Router) TCPServer(port int) *TCPServer {
 	return router.tcpServers[port]
-}
-
-// Server returns the server running on the given port
-func (router *Router) UDPServer(port int) *UDPServer {
-	return router.udpServers[port]
 }

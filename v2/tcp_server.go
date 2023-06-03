@@ -2,6 +2,7 @@ package server
 
 import (
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -66,31 +67,42 @@ func (srv *TCPServer) Start() {
 		return
 	}
 
-	srv.state = NewLifeCycleState()
 	srv.Online = true
+	srv.state.SetState(LCS_STARTED)
 
-	for srv.state.GetState() == LCS_STARTED {
-		conn, err := srv.listener.Accept()
-		if err != nil {
-			fmt.Println("Accept error:", err)
-			continue
+	go func() {
+		for srv.state.GetState() == LCS_STARTED {
+			conn, err := srv.listener.Accept()
+			if err != nil {
+				if !errors.Is(err, net.ErrClosed) {
+					srv.Logger.Print(logger.LOG_LEVEL_ERROR, err)
+				}
+				
+				continue
+			}
+	
+			c := createConn(conn)
+	
+			if srv.Online && srv.ConnHandler != nil {
+				go func() {
+					err := logger.PanicToErr(func() error {
+						srv.ConnHandler(srv, c)
+						return nil
+					})
+					if err != nil {
+						srv.Logger.Printf(logger.LOG_LEVEL_ERROR, "Panic captured: %v", err.Error())
+					}
+				}()
+			}
 		}
-
-		c := createConn(conn)
-
-		if srv.Online && srv.ConnHandler != nil {
-			go srv.ConnHandler(srv, c)
-		}
-	}
+	}()
 }
 
 func (srv *TCPServer) Stop() error {
 	srv.state.SetState(LCS_STOPPING)
-	defer func() {
-		srv.Online = false
-		srv.state.SetState(LCS_STOPPED)
-	}()
+	srv.Online = false
 
+	defer srv.state.SetState(LCS_STOPPED)
 	return srv.listener.Close()
 }
 
@@ -115,13 +127,13 @@ func createConn(conn net.Conn) *Conn {
 	}
 }
 
-func TCPProxyHandler(port int) ConnHandlerFunc {
-	dest := fmt.Sprintf(":%d", port)
+func TCPProxy(address string, port int) ConnHandlerFunc {
+	dest := fmt.Sprintf("%s:%d", address, port)
 
 	return func(srv *TCPServer, conn *Conn) {
 		proxyDest, err := net.Dial("tcp", dest)
 		if err != nil {
-			panic(err)
+			srv.Logger.Print(logger.LOG_LEVEL_ERROR, err)
 		}
 
 		done := make(chan struct{})
