@@ -61,7 +61,7 @@ func (tm *TaskManager) StartProcess(name string) error {
 	go func() {
 		exitStatus := p.Wait()
 		if exitStatus.ExitCode != 0 || exitStatus.ExitError != nil {
-			tm.Router.Logger.Printf(logger.LOG_LEVEL_ERROR, "exit error on process %s: %v", p.ExecName, exitStatus)
+			tm.Router.Logger.Printf(logger.LOG_LEVEL_ERROR, "exit error on process %s: %v\n%s", p.ExecName, exitStatus, string(p.Stderr()))
 		}
 	}()
 
