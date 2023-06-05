@@ -11,15 +11,20 @@ import (
 
 type PHPProcessor struct {
 	connFactory gofast.ConnFactory
-	process     *process.Process
-	logger      *logger.Logger
+	Process     *process.Process
+	Logger      *logger.Logger
 }
 
-func CreatePHPProcessor(srv *HTTPServer, port int) (php *PHPProcessor, err error) {
+func NewPHPProcessor(srv *HTTPServer, port int, args ...string) (php *PHPProcessor, err error) {
 	php = new(PHPProcessor)
 
-	php.logger = srv.Logger.Clone(nil, "php")
-	php.process, err = process.NewProcess("", "php-cgi", process.ParseCommandArgs(fmt.Sprintf("-b %d", port))...)
+	php.Logger = srv.Logger.Clone(nil, "php")
+	php.Process, err = process.NewProcess(
+		"", "php-cgi",
+		append(
+			process.ParseCommandArgs(fmt.Sprintf("-b %d", port)),
+			process.ParseCommandArgs(args...)...
+		)...)
 	if err != nil {
 		return
 	}
@@ -29,15 +34,15 @@ func CreatePHPProcessor(srv *HTTPServer, port int) (php *PHPProcessor, err error
 }
 
 func (php *PHPProcessor) Start() error {
-	err := php.process.Start(nil, nil, nil)
+	err := php.Process.Start(nil, nil, nil)
 	if err != nil {
 		return err
 	}
 
 	go func() {
-		exitStatus := php.process.Wait()
+		exitStatus := php.Process.Wait()
 		if err := exitStatus.Error(); err != nil {
-			php.logger.Print(logger.LOG_LEVEL_ERROR, err)
+			php.Logger.Print(logger.LOG_LEVEL_ERROR, err)
 		}
 	}()
 
@@ -45,14 +50,14 @@ func (php *PHPProcessor) Start() error {
 }
 
 func (php *PHPProcessor) Stop() error {
-	if php.process.IsRunning() {
-		err := php.process.Stop()
+	if php.Process.IsRunning() {
+		err := php.Process.Stop()
 		if err != nil {
 			return err
 		}
 	}
 
-	exitStatus := php.process.Wait()
+	exitStatus := php.Process.Wait()
 	if err := exitStatus.Error(); err != nil {
 		return err
 	}
