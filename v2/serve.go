@@ -11,40 +11,57 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/nixpare/logger"
 )
 
-// Error is used to manually report an HTTP error to send to the
-// client.
-//
-// It sets the http status code (so it should not be set
-// before) and if the connection is done via a GET request, it will
-// try to serve the html error template with the status code and
-// error message in it, otherwise if the error template does not exist
-// or the request is done via another method (like POST), the error
-// message will be sent as a plain text.
-//
-// The last optional list of elements can be used just for logging or
-// debugging: the elements will be saved in the logs
-func (route *Route) Error(statusCode int, message string, a ...any) {
-	route.W.WriteHeader(statusCode)
+// serveError serves the error in a predefines error template (if set) and only
+// if no other information was alredy sent to the ResponseWriter. If there is no
+// error template or if the connection method is different from GET or HEAD, the
+// error message is sent as a plain text
+func (route *Route) serveError() {
+	route.W.disableErrorCapture = true
 
-	route.errMessage = message
-	if message == "" {
-		route.errMessage = "Undefined error"
-	}
-
-	route.logErrMessage = route.errMessage
-	if len(a) > 0 {
-		v := make([]string, 0, len(a))
-		for _, el := range a {
-			v = append(v, fmt.Sprint(el))
+	if len(route.W.caputedError) != 0 {
+		if strings.Contains(http.DetectContentType(route.W.caputedError), "text/html") {
+			route.W.Write(route.W.caputedError)
+		} else {
+			route.errMessage = string(route.W.caputedError)
 		}
-		route.logErrMessage = strings.Join(v, " ")
 	}
+
+	if route.errMessage == "" {
+		return
+	}
+
+	if route.errTemplate == nil {
+		route.ServeText(route.errMessage)
+		return
+	}
+
+	if route.Method == "GET" || route.Method == "HEAD" {
+		data := struct {
+			Code    int
+			Message string
+		}{
+			Code:    route.W.code,
+			Message: route.errMessage,
+		}
+
+		var buf bytes.Buffer
+		if err := route.errTemplate.Execute(&buf, data); err != nil {
+			route.Logger.Printf(logger.LOG_LEVEL_ERROR, "Error serving template file: %v", err)
+			return
+		}
+
+		route.ServeData(buf.Bytes())
+		return
+	}
+
+	route.ServeText(route.errMessage)
 }
 
 // Errorf is like the method Route.Error but you can format the output
@@ -313,31 +330,81 @@ func DecodeCookiePerm[T any](route *Route, name string) (value T, found bool, er
 	return
 }
 
+func (route *Route) NewReverseProxy(dest string) (*httputil.ReverseProxy, error) {
+	URL, err := url.Parse(dest)
+	if err != nil {
+		return nil, err
+	}
+
+	reverseProxy := &httputil.ReverseProxy {
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			pr.SetURL(URL)
+			pr.SetXForwarded()
+
+			pr.Out.RequestURI = route.RequestURI
+			
+			var query string
+			if len(route.QueryMap) != 0 {
+				first := true
+				for key, value := range route.QueryMap {
+					if key == "domain" || key == "subdomain" {
+						continue
+					}
+
+					if (first) {
+						first = false
+					} else {
+						query += "&"
+					}
+
+					switch key {
+					case "proxy-domain":
+						key = "domain"
+					case "proxy-subdomain":
+						key = "subdomain"
+					}
+
+					query += key + "=" + value
+				}
+			}
+
+			pr.Out.RequestURI += "?" + query
+			pr.Out.URL.RawQuery = query
+		},
+		ErrorLog: log.New(logger.DefaultLogger, fmt.Sprintf("Proxy [%s] ", dest), 0),
+		ModifyResponse: func(r *http.Response) error {
+			if strings.Contains(r.Header.Get("Server"), "PareServer") {
+				r.Header.Del("Server")
+			}
+			return nil
+		},
+	}
+
+	return reverseProxy, nil
+}
+
 // ReverseProxy runs a reverse proxy to the provided url. Returns an error is the
 // url could not be parsed or if an error has occurred during the connection
-func (route *Route) ReverseProxy(URL string) error {
-	urlParsed, err := url.Parse(URL)
+func (route *Route) ReverseProxy(dest string) error {
+	reverseProxy, err := route.NewReverseProxy(dest)
 	if err != nil {
 		return err
 	}
 
-	proxyServer := httputil.NewSingleHostReverseProxy(urlParsed)
-	proxyLogger := route.Logger.Clone(nil, "proxy")
-	proxyServer.ErrorLog = log.New(proxyLogger, fmt.Sprintf("PROXY [%s]", URL), 0)
+	var returnErr error
+	returnErrM := new(sync.Mutex)
 
-	errChan := make(chan error)
-	defer close(errChan)
-
-	proxyServer.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		errChan <- err
+	reverseProxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		returnErrM.Lock()
+		defer returnErrM.Unlock()
+		returnErr = err
 	}
 
-	go func() {
-		proxyServer.ServeHTTP(route.W, route.R)
-		errChan <- nil
-	}()
+	reverseProxy.ServeHTTP(route.W, route.R)
 
-	return <-errChan
+	returnErrM.Lock()
+	defer returnErrM.Unlock()
+	return returnErr
 }
 
 // RespBody returns the response body bytes
@@ -374,6 +441,14 @@ func (route *Route) IsInternalConn() bool {
 	}
 
 	return route.Router.IsInternalConn(route.RemoteAddress)
+}
+
+func (route *Route) IsLocalhost() bool {
+	if strings.Contains(route.Host, "localhost") || strings.Contains(route.Host, "127.0.0.1") || strings.Contains(route.Host, "::1") {
+		return true
+	}
+
+	return route.Router.IsLocalhost(route.Host)
 }
 
 var WebsocketUpgrader = websocket.Upgrader {

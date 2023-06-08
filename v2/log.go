@@ -1,7 +1,7 @@
 package server
 
 import (
-	"bytes"
+	"errors"
 	"fmt"
 	"time"
 
@@ -10,6 +10,11 @@ import (
 
 var (
 	TimeFormat = "2006-01-02 15:04:05.00" // TimeFormat defines which timestamp to use with the logs. It can be modified.
+)
+
+var (
+	ErrNotFound = errors.New("not found")
+	ErrAlreadyRegistered = errors.New("already registered")
 )
 
 func (router *Router) plainPrintf(level logger.LogLevel, message string, extra string, format string, a ...any) {
@@ -52,6 +57,42 @@ func (route *Route) getLock() string {
 	return lock
 }
 
+// Error is used to manually report an HTTP error to send to the
+// client.
+//
+// It sets the http status code (so it should not be set
+// before) and if the connection is done via a GET request, it will
+// try to serve the html error template with the status code and
+// error message in it, otherwise if the error template does not exist
+// or the request is done via another method (like POST), the error
+// message will be sent as a plain text.
+//
+// The last optional list of elements can be used just for logging or
+// debugging: the elements will be saved in the logs
+func (route *Route) Error(statusCode int, message any, a ...any) {
+	route.W.WriteHeader(statusCode)
+	
+	route.errMessage = fmt.Sprint(message)
+	if message == "" {
+		route.errMessage = "Undefined error"
+	}
+
+	if len(a) > 0 {
+		first := true
+		for _, x := range a {
+			if first {
+				first = false
+			} else {
+				route.logErrMessage += " "
+			}
+
+			route.logErrMessage += fmt.Sprint(x)
+		}
+	} else {
+		route.logErrMessage = route.errMessage
+	}
+}
+
 // logHTTPInfo logs http request with an exit code < 400
 func (route *Route) logHTTPInfo(m metrics) {
 	route.Logger.Printf(logger.LOG_LEVEL_INFO, http_info_format,
@@ -70,6 +111,10 @@ func (route *Route) logHTTPInfo(m metrics) {
 
 // logHTTPWarning logs http request with an exit code >= 400 and < 500
 func (route *Route) logHTTPWarning(m metrics) {
+	if route.logErrMessage == "" {
+		route.logErrMessage = "Unknown error"
+	}
+
 	route.Logger.Printf(logger.LOG_LEVEL_WARNING, http_warning_format,
 		logger.BRIGHT_BLUE_COLOR, route.RemoteAddress, logger.DEFAULT_COLOR,
 		route.getLock(),
@@ -87,7 +132,11 @@ func (route *Route) logHTTPWarning(m metrics) {
 
 // logHTTPError logs http request with an exit code >= 500
 func (route *Route) logHTTPError(m metrics) {
-	route.Logger.Printf(logger.LOG_LEVEL_FATAL, http_error_format,
+	if route.logErrMessage == "" {
+		route.logErrMessage = "Unknown error"
+	}
+
+	route.Logger.Printf(logger.LOG_LEVEL_ERROR, http_error_format,
 		logger.BRIGHT_BLUE_COLOR, route.RemoteAddress, logger.DEFAULT_COLOR,
 		route.getLock(),
 		logger.DARK_RED_COLOR, m.Code,
@@ -103,6 +152,10 @@ func (route *Route) logHTTPError(m metrics) {
 }
 
 func (route *Route) logHTTPPanic(m metrics) {
+	if route.logErrMessage == "" {
+		route.logErrMessage = "Unknown error"
+	}
+
 	code := " - "
 	if m.Code != 0 {
 		code = fmt.Sprint(m.Code)
@@ -121,48 +174,6 @@ func (route *Route) logHTTPPanic(m metrics) {
 		logger.BRIGHT_BLUE_COLOR, route.Host, logger.DEFAULT_COLOR,
 		logger.DARK_RED_COLOR, route.logErrMessage, logger.DEFAULT_COLOR,
 	)
-}
-
-// serveError serves the error in a predefines error template (if set) and only
-// if no other information was alredy sent to the ResponseWriter. If there is no
-// error template or if the connection method is different from GET or HEAD, the
-// error message is sent as a plain text
-func (route *Route) serveError() {
-	route.W.disableErrorCapture = true
-
-	if len(route.W.caputedError) != 0 {
-		route.errMessage = string(route.W.caputedError)
-	}
-
-	if route.errMessage == "" {
-		return
-	}
-
-	if route.errTemplate == nil {
-		route.ServeText(route.errMessage)
-		return
-	}
-
-	if route.Method == "GET" || route.Method == "HEAD" {
-		data := struct {
-			Code    int
-			Message string
-		}{
-			Code:    route.W.code,
-			Message: route.errMessage,
-		}
-
-		var buf bytes.Buffer
-		if err := route.errTemplate.Execute(&buf, data); err != nil {
-			route.Logger.Printf(logger.LOG_LEVEL_ERROR, "Error serving template file: %v", err)
-			return
-		}
-
-		route.ServeData(buf.Bytes())
-		return
-	}
-
-	route.ServeText(route.errMessage)
 }
 
 // Log creates a Log with the given severity and message; any data after message will be used

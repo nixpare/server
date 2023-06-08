@@ -28,13 +28,15 @@ type Router struct {
 	// via the http queries from desired IPs. By default, only the connection coming from
 	// "localhost", "127.0.0.1" and "::1" are treated as local connections.
 	IsInternalConn func(remoteAddress string) bool
-	TaskMgr        *TaskManager
+	IsLocalhost    func(host string) bool
+	TaskManager    *TaskManager
 	Logger         *logger.Logger
 }
 
 // NewRouter returns a new Router ready to be set up. If routerPath is not provided,
-// the router will try to get the working directory
-func NewRouter(routerPath string) (router *Router, err error) {
+// the router will try to get the working directory; if logger is nil, the standard
+// logger.DefaultLogger will be used
+func NewRouter(routerPath string, l *logger.Logger) (router *Router, err error) {
 	router = new(Router)
 
 	router.httpServers = make(map[int]*HTTPServer)
@@ -51,11 +53,16 @@ func NewRouter(routerPath string) (router *Router, err error) {
 
 	router.state = NewLifeCycleState()
 
-	router.Logger = logger.DefaultLogger
+	if l == nil {
+		l = logger.DefaultLogger
+	}
+	router.Logger = l
 
 	router.offlineClientsM = new(sync.RWMutex)
 	router.offlineClients = make(map[string]offlineClient)
+
 	router.IsInternalConn = func(remoteAddress string) bool { return false }
+	router.IsLocalhost = func(host string) bool { return false }
 
 	router.newTaskManager()
 
@@ -128,7 +135,7 @@ func (router *Router) Start() {
 	for _, srv := range router.tcpServers {
 		srv.Start()
 	}
-	router.TaskMgr.start()
+	router.TaskManager.start()
 
 	router.state.SetState(LCS_STARTED)
 }
@@ -144,7 +151,7 @@ func (router *Router) Stop() {
 
 	router.Logger.Print(logger.LOG_LEVEL_INFO, "Router shutdown procedure started")
 
-	router.TaskMgr.stop()
+	router.TaskManager.stop()
 	for _, srv := range router.tcpServers {
 		srv.Stop()
 	}

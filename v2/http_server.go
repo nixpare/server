@@ -31,7 +31,6 @@ type HTTPServer struct {
 	Online bool
 	// OnlineTime reports the last time the server was activated or resumed
 	OnlineTime  time.Time
-	stopChannel chan struct{}
 	// Server is the underlying HTTP server from the standard library
 	Server *http.Server
 	port   int
@@ -93,8 +92,6 @@ func newHTTPServer(address string, port int, secure bool, path string, certs []C
 	srv.state = NewLifeCycleState()
 
 	srv.ServerPath = path
-
-	srv.stopChannel = make(chan struct{}, 1)
 
 	srv.Server.Addr = fmt.Sprintf(":%d", port)
 	srv.setHandler()
@@ -203,6 +200,8 @@ func (srv *HTTPServer) Start() {
 	}
 
 	srv.state.SetState(LCS_STARTING)
+	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "Server %d startup started", srv.port)
+
 	srv.Online = true
 	srv.OnlineTime = time.Now()
 
@@ -215,17 +214,18 @@ func (srv *HTTPServer) Start() {
 	go func() {
 		if srv.Secure {
 			if err := srv.Server.ListenAndServeTLS("", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				srv.Logger.Printf(logger.LOG_LEVEL_FATAL, "Server Error: %v", err)
+				srv.Logger.Printf(logger.LOG_LEVEL_FATAL, "Server %d error: %v", srv.port, err)
 				srv.Stop()
 			}
 		} else {
 			if err := srv.Server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				srv.Logger.Printf(logger.LOG_LEVEL_FATAL, "Server Error: %v", err)
+				srv.Logger.Printf(logger.LOG_LEVEL_FATAL, "Server %d error: %v", srv.port, err)
 				srv.Stop()
 			}
 		}
 	}()
 
+	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "Server %d startup completed", srv.port)
 	srv.state.SetState(LCS_STARTED)
 }
 
@@ -237,9 +237,10 @@ func (srv *HTTPServer) Stop() {
 	}
 
 	srv.state.SetState(LCS_STOPPING)
+	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "Server %d shutdown started", srv.port)
+
 	srv.Online = false
 	srv.Server.SetKeepAlivesEnabled(false)
-	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "Server %s shutdown started", srv.Server.Addr)
 
 	for _, d := range srv.domains {
 		for _, sd := range d.subdomains {
@@ -249,13 +250,11 @@ func (srv *HTTPServer) Stop() {
 
 	if err := srv.Server.Shutdown(context.Background()); err != nil {
 		srv.Logger.Printf(logger.LOG_LEVEL_FATAL,
-			"Server %s shutdown crashed due to: %v",
-			srv.Server.Addr, err.Error(),
+			"Server %d shutdown crashed due to: %v",
+			srv.port, err.Error(),
 		)
 	}
 
-	srv.stopChannel <- struct{}{}
-	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "Server %s shutdown finished", srv.Server.Addr)
-
+	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "Server %d shutdown finished", srv.port)
 	srv.state.SetState(LCS_STOPPED)
 }

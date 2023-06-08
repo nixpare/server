@@ -2,7 +2,6 @@ package server
 
 import (
 	"net"
-	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -34,7 +33,8 @@ func (route *Route) prep() {
 
 	route.prepLogRequestURI()
 
-	route.DomainName, route.SubdomainName = prepDomainAndSubdomainNames(route.R)
+	route.DomainName, route.SubdomainName = route.prepDomainAndSubdomainNames()
+
 	if route.IsInternalConn() {
 		prepDomainAndSubdomainLocal(route)
 	}
@@ -119,16 +119,17 @@ func (route *Route) prepLogRequestURI() {
 
 // prepDomainAndSubdomainNames parses the incoming request and separates
 // the domain part from the subdomain part, just from a "string" standpoint
-func prepDomainAndSubdomainNames(r *http.Request) (string, string) {
-	host, _, err := net.SplitHostPort(r.Host)
+func (route *Route) prepDomainAndSubdomainNames() (string, string) {
+	host, _, err := net.SplitHostPort(route.R.Host)
 	if err != nil {
-		host, _, err = net.SplitHostPort(r.Host + ":0")
+		host, _, err = net.SplitHostPort(route.R.Host + ":0")
 		if err != nil {
-			return r.Host, ""
+			return route.R.Host, ""
 		}
 	}
 
-	if strings.HasSuffix(host, "127.0.0.1") || strings.HasSuffix(host, "::1") {
+	route.Host = host
+	if route.IsLocalhost() {
 		return "localhost", ""
 	}
 
@@ -197,7 +198,7 @@ func (route *Route) prepDomainAndSubdomain() routePrepError {
 		}
 	}
 
-	route.Website = route.Subdomain.website
+	route.Website = route.Subdomain.Website
 	return err_no_err
 }
 

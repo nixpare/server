@@ -33,19 +33,21 @@ const (
 // does not mean that you can't handle panics by yourself, but if they are not handled
 // its like catching them and returning their message as an error.
 // If a function returns an error, this will be logged, providing the task name and which
-// function called it automatically (the task will be disabled if the startup fails,
+// function called it automatically (the task will be disabled if the initialization fails,
 // but you can do it manually, see router.SetBackgroundTaskState)
 type Task struct {
 	name        string
-	StartupF    TaskFunc      // StartupF is the function called when the Task is started
+	InitF       TaskFunc      // InitF is the function called when the Task is started
 	ExecF       TaskFunc      // ExecF is the function called every time the Task must be executed (from the timer or manually)
 	CleanupF    TaskFunc      // CleanupF is the function called when the Task is removed from the TaskManager or when the TaskManager is stopped (e.g. on Router shutdown)
-	timer       TaskTimer     // TaskTimer is the Task execution interval, that is how often the function ExecF is called
+	Timer       TaskTimer     // TaskTimer is the Task execution interval, that is how often the function ExecF is called
 	exitChan    chan struct{} // exitChan will receive the signal of the server shutting down
 	killChan    chan struct{} // killChan will kill the exec function after the 10 seconds are gone
-	startupDone bool
+	initDone    bool
 	running     bool
 	bc          *comms.Broadcaster[struct{}]
+	TaskManager *TaskManager
+	Logger      *logger.Logger
 }
 
 // Name returns the name of the function
@@ -80,7 +82,7 @@ func (t *Task) ListenForExit() bool {
 }
 
 func (t *Task) IsReady() bool {
-	return t.startupDone
+	return t.initDone
 }
 
 func (t *Task) IsRunning() bool {
@@ -95,18 +97,16 @@ func (t *Task) Wait() {
 	t.bc.Get()
 }
 
-// TaskFunc is the executable part of the program. The manager will provide, upon
-// call, the router (and thus the server) and the task itself; changed to the task
-// are allowed (exept for the name): you can modify through the router the timer of
+// TaskFunc is the executable part of the program. You can modify the timer of
 // the task and also the functions themselves!
 // See TaskInitFunc, NewTask and router.RegisterBackgroundTask for the creation of a Task
-type TaskFunc func(tm *TaskManager, t *Task) error
+type TaskFunc func(t *Task) error
 
 // TaskInitFunc is called when creating a task and is provided by the user.
 // This function need to return 3 TaskFunc (they can be nil) and they will be
 // set to the created task.
 // The kind of functions are:
-//  - the startup function: called only upon creation, if it fails (panics or
+//  - the initialization function: called only upon creation, if it fails (panics or
 //		returns an error) the task will be disabled automatically
 //  - the exec function: called every time, could be interrupted if the server is
 //		shutting down; in this case, you will receive a signal on Task.ListenForExit,
@@ -116,9 +116,9 @@ type TaskFunc func(tm *TaskManager, t *Task) error
 //		potentially blocking (must end in a reasonable time)
 // Example of usage:
 /* func() {
-	taskInitF := func() (startupF, execF, cleanupF TaskFunc) {
+	taskInitF := func() (initF, execF, cleanupF TaskFunc) {
 		var myNeededValiable package.AnyType
-		startupF = func(tm *server.TaskManager, t *server.Task) {
+		initF = func(tm *server.TaskManager, t *server.Task) {
 			myNeededVariable = package.InitializeNewValiable()
 			// DO SOME OTHER STUFF WITH router AND t
 		}
@@ -134,43 +134,32 @@ type TaskFunc func(tm *TaskManager, t *Task) error
 	}
 	task := tm.NewTask("myTask", taskInitF, server.TaskTimerInactive)
 }*/
-type TaskInitFunc func() (startupF, execF, cleanupF TaskFunc)
+type TaskInitFunc func() (initF, execF, cleanupF TaskFunc)
 
 // NewTask creates and registers a new Task with the given name, displayName, initialization
 // function (f TaskInitFunc) and execution timer, the TaskManager initialize it calling the
-// startupF function provided by f (if any). If it returns an error the Task will not be
+// initF function provided by f (if any). If it returns an error the Task will not be
 // registered in the TaskManager.
 func (tm *TaskManager) NewTask(name string, f TaskInitFunc, timer TaskTimer) error {
 	if t, _ := tm.getTask(name); t != nil {
 		return fmt.Errorf("task \"%s\" already registered", name)
 	}
 
-	startupF, execF, cleanupF := f()
+	initF, execF, cleanupF := f()
 	t := &Task{
-		name: name, StartupF: startupF,
+		name: name, InitF: initF,
 		ExecF: execF, CleanupF: cleanupF,
-		timer: timer,
+		Timer: timer,
 		bc:    comms.NewBroadcaster[struct{}](),
+		TaskManager: tm,
+		Logger: tm.Logger.Clone(nil, name),
 	}
 
 	tm.tasks[name] = t
 
-	if tm.Router.IsRunning() {
+	if tm.state.AlreadyStarted() {
 		tm.startTask(t)
 	}
-	return nil
-}
-
-// SetTaskTimer sets the Task timer to the given one and activates the startup
-// procedure if it was not already done
-func (tm *TaskManager) SetTaskTimer(name string, timer TaskTimer) error {
-	t, err := tm.getTask(name)
-	if err != nil {
-		return err
-	}
-
-	t.timer = timer
-	tm.startTask(t)
 	return nil
 }
 
@@ -231,39 +220,36 @@ func (tm *TaskManager) GetTasksNames() []string {
 	return names
 }
 
-// startTask runs the startup function, catching every possible error or panic,
-// and then sets the flag Task.startupDone to true. If the function fails it deactivates
+// startTask runs the initialization function, catching every possible error or panic,
+// and then sets the flag Task.initDone to true. If the function fails it deactivates
 // the task
 func (tm *TaskManager) startTask(t *Task) {
-	if t == nil || t.StartupF == nil || t.startupDone {
+	if t == nil || t.initDone {
 		return
 	}
 
+	if t.InitF == nil {
+		t.initDone = true
+		return
+	}
+
+	tm.Logger.Printf(logger.LOG_LEVEL_INFO, "Task \"%s\" initialization started", t.name)
 	err := logger.PanicToErr(func() error {
-		return t.StartupF(tm, t)
+		return t.InitF(t)
 	})
-
-	if err == nil {
-		tm.Logger.Printf(logger.LOG_LEVEL_INFO, "Task \"%s\" started successfully", t.name)
-		t.startupDone = true
+	if err != nil {
+		tm.Logger.Printf(logger.LOG_LEVEL_ERROR, "Task \"%s\" initialization error: %v", t.name, err)
+		t.initDone = false
+		t.Timer = TASK_TIMER_INACTIVE
 		return
 	}
 
-	if err.Err != nil {
-		tm.Logger.Printf(logger.LOG_LEVEL_ERROR, "Task \"%s\" startup error: %v", t.name, err.Err)
-		return
-	}
-	if err.PanicErr != nil {
-		tm.Logger.Printf(logger.LOG_LEVEL_FATAL,
-			"Task \"%s\" startup panic: %v\n%s", t.name, err.PanicErr,
-			err.Stack,
-		)
-		return
-	}
+	t.initDone = true
+	tm.Logger.Printf(logger.LOG_LEVEL_INFO, "Task \"%s\" initialization successful", t.name)
 }
 
 // execTask runs the exec function, catching every possible error or panic,
-// only if the manager has already executed the startup function and if the previous
+// only if the manager has already executed the initialization function and if the previous
 // exec function has terminated. It also listens for the kill signal in case the server
 // is shutting down and the task is taking too long to execute
 func (tm *TaskManager) execTask(t *Task) error {
@@ -271,8 +257,8 @@ func (tm *TaskManager) execTask(t *Task) error {
 		return nil
 	}
 
-	if !t.startupDone {
-		return fmt.Errorf("can't execute task \"%s\": startup is not done", t.name)
+	if !t.initDone {
+		return fmt.Errorf("can't execute task \"%s\": not initialized", t.name)
 	}
 
 	t.exitChan = make(chan struct{})
@@ -293,24 +279,18 @@ func (tm *TaskManager) execTask(t *Task) error {
 		defer func() { execDone <- struct{}{} }()
 
 		err := logger.PanicToErr(func() error {
-			return t.ExecF(tm, t)
+			tm.Logger.Printf(logger.LOG_LEVEL_INFO, "Task \"%s\" execution started", t.name)
+			return t.ExecF(t)
 		})
-
 		if err == nil {
+			tm.Logger.Printf(logger.LOG_LEVEL_INFO, "Task \"%s\" execution terminated successfully", t.name)
 			return
 		}
 
-		t.timer = TASK_TIMER_INACTIVE
+		t.Timer = TASK_TIMER_INACTIVE
 
-		if err.Err != nil {
-			tm.Logger.Printf(logger.LOG_LEVEL_WARNING, "Task \"%s\" exec error: %v", t.name, err.Err)
-			return
-		}
-		if err.PanicErr != nil {
-			tm.Logger.Printf(logger.LOG_LEVEL_FATAL,
-				"Task \"%s\" exec panic: %v\n%s", t.name, err.PanicErr,
-				err.Stack,
-			)
+		if err != nil {
+			tm.Logger.Printf(logger.LOG_LEVEL_ERROR, "Task \"%s\" exec error: %v", t.name, err)
 			return
 		}
 	}()
@@ -329,7 +309,7 @@ func (tm *TaskManager) execTask(t *Task) error {
 
 // stopTask runs the cleanup function, catching every possible error or panic
 func (tm *TaskManager) stopTask(t *Task) {
-	if t == nil || t.CleanupF == nil || !t.startupDone {
+	if t == nil || !t.initDone {
 		return
 	}
 
@@ -337,34 +317,26 @@ func (tm *TaskManager) stopTask(t *Task) {
 		t.exitChan <- struct{}{}
 		t.Wait()
 	}
+	t.initDone = false
 
-	t.startupDone = false
+	if t.CleanupF == nil {
+		return
+	}
 
 	err := logger.PanicToErr(func() error {
-		return t.CleanupF(tm, t)
+		return t.CleanupF(t)
 	})
-
-	if err == nil {
-		tm.Logger.Printf(logger.LOG_LEVEL_INFO, "Task \"%s\" stopped successfully", t.name)
+	if err != nil {
+		tm.Logger.Printf(logger.LOG_LEVEL_ERROR, "Task \"%s\" cleanup error: %v", t.name, err)
 		return
 	}
 
-	if err.Err != nil {
-		tm.Logger.Printf(logger.LOG_LEVEL_ERROR, "Task \"%s\" cleanup error: %v", t.name, err.Err)
-		return
-	}
-	if err.PanicErr != nil {
-		tm.Logger.Printf(logger.LOG_LEVEL_FATAL,
-			"Task \"%s\" cleanup panic: %v\n%s", t.name, err.PanicErr,
-			err.Stack,
-		)
-		return
-	}
+	tm.Logger.Printf(logger.LOG_LEVEL_INFO, "Task \"%s\" stopped successfully", t.name)
 }
 
 func (tm *TaskManager) runTasksWithTimer(timer TaskTimer) {
 	for _, t := range tm.tasks {
-		if t.timer == timer {
+		if t.Timer == timer {
 			go tm.execTask(t)
 		}
 	}

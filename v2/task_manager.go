@@ -24,10 +24,10 @@ type TaskManager struct {
 }
 
 func (router *Router) newTaskManager() {
-	router.TaskMgr = &TaskManager{
+	router.TaskManager = &TaskManager{
 		Router:    router,
 		Logger:    router.Logger.Clone(nil, "tasks"),
-		state: NewLifeCycleState(),
+		state:     NewLifeCycleState(),
 		processes: make(map[string]*process.Process), tasks: make(map[string]*Task),
 		ticker10s: time.NewTicker(time.Second * 10), ticker1m: time.NewTicker(time.Minute),
 		ticker10m: time.NewTicker(time.Minute * 10), ticker30m: time.NewTicker(time.Minute * 30),
@@ -41,17 +41,11 @@ func (tm *TaskManager) start() {
 	}
 	tm.state.SetState(LCS_STARTING)
 
-	wg := new(sync.WaitGroup)
+	tm.Logger.Print(logger.LOG_LEVEL_INFO, "Tasks initialization started")
 	for _, t := range tm.tasks {
-		wg.Add(1)
-		go func(task *Task) {
-			tm.startTask(task)
-			wg.Done()
-		}(t)
+		tm.startTask(t)
 	}
-
-	wg.Wait()
-	tm.Logger.Print(logger.LOG_LEVEL_INFO, "Tasks startup completed")
+	tm.Logger.Print(logger.LOG_LEVEL_INFO, "Tasks initialization completed")
 
 	go func() {
 		for tm.state.GetState() == LCS_STARTED {
@@ -69,6 +63,7 @@ func (tm *TaskManager) start() {
 			}
 		}
 	}()
+	
 	tm.state.SetState(LCS_STARTED)
 }
 
@@ -85,6 +80,8 @@ func (tm *TaskManager) stop() {
 }
 
 func (tm *TaskManager) stopAllTasks() {
+	tm.Logger.Print(logger.LOG_LEVEL_INFO, "Tasks cleanup started")
+
 	tm.ticker1m.Stop()
 	tm.ticker10m.Stop()
 	tm.ticker30m.Stop()
@@ -125,6 +122,7 @@ func (tm *TaskManager) stopAllTasks() {
 // TaskManager. In case of errors, they will be logged automatically
 // with the Router
 func (tm *TaskManager) stopAllProcesses() {
+	tm.Logger.Print(logger.LOG_LEVEL_INFO, "Stopping every process")
 	wg := new(sync.WaitGroup)
 	for _, p := range tm.processes {
 		if !p.IsRunning() {

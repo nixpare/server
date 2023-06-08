@@ -108,7 +108,7 @@ type BeforeServeFunction func(route *Route) bool
 // when the relative server is started or stopped. Bear in mind that if you use the same function on
 // multiple subdomain, maybe belonging to different servers, you could have to manually check that this function is done
 // only once
-type InitCloseFunction func(srv *HTTPServer, domain *Domain, subdomain *Subdomain, website *Website)
+type InitCloseFunction func(srv *HTTPServer, domain *Domain, subdomain *Subdomain) error
 
 // ResponseWriter is just a wrapper for the standard http.ResponseWriter interface, the only difference is that
 // it keeps track of the bytes written and the status code, so that can be logged
@@ -258,22 +258,58 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		R:              r,
 	}
 
-	for key, values := range h.srv.headers {
-		for _, value := range values {
-			w.Header().Add(key, value)
-		}
+	route.serveHTTP()
+}
+
+func (route *Route) serveHTTP() {
+	err := logger.PanicToErr(func() error {
+		route.prep()
+		route.Logger = route.Logger.Clone(nil, route.DomainName, route.SubdomainName, route.Domain.Name, route.Website.Name)
+		return nil
+	})
+	if err != nil {
+		route.Error(http.StatusInternalServerError, "Internal server error")
+		route.serveError()
+		route.Logger.Printf(logger.LOG_LEVEL_FATAL, "error preparing request: %v\n%v", err.Error(), route)
+		return
 	}
 
-	route.prep()
-	route.Logger = route.Logger.Clone(nil, route.DomainName, route.SubdomainName)
+	err = logger.PanicToErr(func() error {
+		route.serve()
+		return nil
+	})
+	if err != nil {
+		if route.W.code == 0 {
+			route.Error(http.StatusInternalServerError, "Internal server error", err)
+			if !route.W.hasWrote {
+				route.serveError()
+			}
+		} else {
+			if !route.W.hasWrote {
+				route.serveError()
+			}
 
-	defer func() {
-		if p := recover(); p != nil {
-			route.logErrMessage = fmt.Sprintf("%v\nstack: %s", p, logger.Stack())
-			route.logHTTPPanic(route.getMetrics())
+			if route.logErrMessage == "" {
+				route.logErrMessage = fmt.Sprintf("panic after response: %v", err)
+			} else {
+				route.logErrMessage = fmt.Sprintf(
+					"panic after response: %v -> response error: %s\n%s",
+					err.Unwrap(),
+					route.logErrMessage,
+					err.Stack,
+				)
+			}
 		}
-	}()
-	route.serve()
+
+		route.logHTTPPanic(route.getMetrics())
+		return
+	}
+
+	route.W.WriteHeader(200)
+
+	if route.W.code >= 400 {
+		route.serveError()
+	}
 
 	if route.Website.AvoidMetricsAndLogging {
 		return
@@ -301,52 +337,59 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // each function, then will handle the errors and finally the serve
 // function of the subdomain
 func (route *Route) serve() {
-	route.W.Header().Set("server", "NixServer")
-	defer func() {
-		if route.W.code >= 400 {
-			route.serveError()
+	if route.Website.PageHeaders != nil {
+		if value, ok := route.Website.PageHeaders[route.RequestURI]; ok {
+			for _, h := range value {
+				route.W.Header().Set(h[0], h[1])
+			}
 		}
-	}()
+	}
 
-	domain := route.Domain
-	if domain != nil {
-		for key, values := range domain.headers {
+	if route.Subdomain != nil {
+		for key, values := range route.Subdomain.headers {
 			for _, value := range values {
 				route.W.Header().Set(key, value)
 			}
 		}
 	}
 
-	subdomain := route.Subdomain
-	if subdomain != nil {
-		for key, values := range subdomain.headers {
+	if route.Domain != nil {
+		for key, values := range route.Domain.headers {
 			for _, value := range values {
 				route.W.Header().Set(key, value)
 			}
 		}
 	}
+
+	for key, values := range route.Srv.headers {
+		for _, value := range values {
+			route.W.Header().Set(key, value)
+		}
+	}
+
+	route.W.Header().Set("Server", "NixPare")
 
 	route.errTemplate = route.Srv.errTemplate
-	if domain != nil {
-		if domain.errTemplate != nil {
-			route.errTemplate = domain.errTemplate
+	if route.Domain != nil {
+		if route.Domain.errTemplate != nil {
+			route.errTemplate = route.Domain.errTemplate
 		}
 	}
-	if subdomain != nil {
-		if subdomain.errTemplate != nil {
-			route.errTemplate = subdomain.errTemplate
+	if route.Subdomain != nil {
+		if route.Subdomain.errTemplate != nil {
+			route.errTemplate = route.Subdomain.errTemplate
 		}
 	}
 
 	var doNotContinue bool
-	if route.Domain.beforeServeF != nil {
-		doNotContinue = route.Domain.beforeServeF(route)
+	if route.Domain.BeforeServeF != nil {
+		doNotContinue = route.Domain.BeforeServeF(route)
 	}
 	if doNotContinue {
 		return
 	}
 
-	if route.Subdomain != nil && route.Subdomain.offline {
+	if route.Subdomain != nil && !route.Subdomain.online {
 		route.err = err_website_offline
 	}
 
@@ -383,17 +426,7 @@ func (route *Route) serve() {
 		return
 	}
 
-	if value, ok := route.Website.PageHeaders[route.RequestURI]; ok {
-		for _, h := range value {
-			route.W.Header().Add(h[0], h[1])
-		}
-	}
-
 	route.Subdomain.serveF(route)
-
-	if route.W.code == 0 {
-		route.W.WriteHeader(200)
-	}
 }
 
 // getMetrics returns a view of the Route captured connection metrics
