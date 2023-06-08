@@ -141,7 +141,7 @@ type TaskInitFunc func() (initF, execF, cleanupF TaskFunc)
 // initF function provided by f (if any). If it returns an error the Task will not be
 // registered in the TaskManager.
 func (tm *TaskManager) NewTask(name string, f TaskInitFunc, timer TaskTimer) error {
-	if t, _ := tm.getTask(name); t != nil {
+	if t, _ := tm.Task(name); t != nil {
 		return fmt.Errorf("task \"%s\" already registered", name)
 	}
 
@@ -163,20 +163,18 @@ func (tm *TaskManager) NewTask(name string, f TaskInitFunc, timer TaskTimer) err
 	return nil
 }
 
-// StartTask runs the Task immediatly
-func (tm *TaskManager) StartTask(name string) error {
-	t, err := tm.getTask(name)
-	if err != nil {
-		return err
+func (tm *TaskManager) Task(name string) (*Task, error) {
+	t := tm.tasks[name]
+	if t == nil {
+		return nil, fmt.Errorf("task: %w", ErrNotFound)
 	}
 
-	tm.startTask(t)
-	return nil
+	return t, nil
 }
 
 // ExecTask runs the Task immediatly
 func (tm *TaskManager) ExecTask(name string) error {
-	t, err := tm.getTask(name)
+	t, err := tm.Task(name)
 	if err != nil {
 		return err
 	}
@@ -184,22 +182,10 @@ func (tm *TaskManager) ExecTask(name string) error {
 	return tm.execTask(t)
 }
 
-// StopTask runs the cleanup function provided and stops the Task, but can
-// be restarted afterward
-func (tm *TaskManager) StopTask(name string) error {
-	t, err := tm.getTask(name)
-	if err != nil {
-		return err
-	}
-
-	tm.stopTask(t)
-	return nil
-}
-
 // RemoveTask runs the cleanup function provided and removes the Task from
 // the TaskManager
 func (tm *TaskManager) RemoveTask(name string) error {
-	t, err := tm.getTask(name)
+	t, err := tm.Task(name)
 	if err != nil {
 		return err
 	}
@@ -340,13 +326,4 @@ func (tm *TaskManager) runTasksWithTimer(timer TaskTimer) {
 			go tm.execTask(t)
 		}
 	}
-}
-
-func (tm *TaskManager) getTask(name string) (*Task, error) {
-	t := tm.tasks[name]
-	if t == nil {
-		return nil, fmt.Errorf("task \"%s\" not found", name)
-	}
-
-	return t, nil
 }
