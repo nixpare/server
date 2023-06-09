@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"log"
 	"net/http"
 	"os"
 	"time"
@@ -106,10 +107,10 @@ func newHTTPServer(address string, port int, secure bool, path string, certs []C
 	}
 
 	srv.Logger = logger.DefaultLogger
+	srv.Server.ErrorLog = log.New(srv.Logger, "", 0)
 
 	srv.Server.ReadHeaderTimeout = time.Second * 10
 	srv.Server.IdleTimeout = time.Second * 30
-	srv.Server.SetKeepAlivesEnabled(true)
 
 	hashKey := securecookie.GenerateRandomKey(64)
 	if hashKey == nil {

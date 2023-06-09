@@ -270,17 +270,17 @@ func (route *Route) serveHTTP() {
 	if err != nil {
 		route.Error(http.StatusInternalServerError, "Internal server error")
 		route.serveError()
-		route.Logger.Printf(logger.LOG_LEVEL_FATAL, "error preparing request: %v\n%v", err.Error(), route)
+		route.Logger.Printf(logger.LOG_LEVEL_FATAL, "error preparing request: %v\n%v", err, route)
 		return
 	}
 
-	err = logger.PanicToErr(func() error {
+	panicErr := logger.CapturePanic(func() error {
 		route.serve()
 		return nil
 	})
-	if err != nil {
+	if panicErr != nil {
 		if route.W.code == 0 {
-			route.Error(http.StatusInternalServerError, "Internal server error", err)
+			route.Error(http.StatusInternalServerError, "Internal server error", panicErr)
 			if !route.W.hasWrote {
 				route.serveError()
 			}
@@ -290,13 +290,13 @@ func (route *Route) serveHTTP() {
 			}
 
 			if route.logErrMessage == "" {
-				route.logErrMessage = fmt.Sprintf("panic after response: %v", err)
+				route.logErrMessage = fmt.Sprintf("panic after response: %v", panicErr)
 			} else {
 				route.logErrMessage = fmt.Sprintf(
 					"panic after response: %v -> response error: %s\n%s",
-					err.Unwrap(),
+					panicErr.Unwrap(),
 					route.logErrMessage,
-					err.Stack,
+					panicErr.Stack(),
 				)
 			}
 		}
@@ -390,6 +390,7 @@ func (route *Route) serve() {
 	}
 
 	if route.Subdomain != nil && !route.Subdomain.online {
+		route.Logger.Debug(route.Subdomain.Name, route.Subdomain.Website)
 		route.err = err_website_offline
 	}
 
