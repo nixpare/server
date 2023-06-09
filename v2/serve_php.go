@@ -15,10 +15,10 @@ type PHPProcessor struct {
 	Logger      *logger.Logger
 }
 
-func NewPHPProcessor(srv *HTTPServer, port int, args ...string) (php *PHPProcessor, err error) {
+func NewPHPProcessor(port int, args ...string) (php *PHPProcessor, err error) {
 	php = new(PHPProcessor)
 
-	php.Logger = srv.Logger.Clone(nil, "php")
+	php.Logger = logger.DefaultLogger.Clone(nil, "php-cgi")
 	php.Process, err = process.NewProcess(
 		"", "php-cgi",
 		append(
@@ -50,18 +50,21 @@ func (php *PHPProcessor) Start() error {
 }
 
 func (php *PHPProcessor) Stop() error {
+	php.Logger.Debug("php stop called ...")
+
 	if php.Process.IsRunning() {
+		php.Logger.Debug("php is running ...")
+
 		err := php.Process.Stop()
 		if err != nil {
 			return err
 		}
 	}
 
+	php.Logger.Debug("php waiting for exit ...")
 	exitStatus := php.Process.Wait()
-	if err := exitStatus.Error(); err != nil {
-		return err
-	}
-	return nil
+	php.Logger.Debug("php exited:", exitStatus, exitStatus.Error())
+	return exitStatus.Error()
 }
 
 func (route *Route) ServePHP(php *PHPProcessor) {

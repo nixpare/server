@@ -58,7 +58,7 @@ func NewTCPServer(address string, port int, secure bool, certs ...Certificate) (
 		address: address,
 		port: port,
 		state: NewLifeCycleState(),
-		Logger: logger.DefaultLogger,
+		Logger: logger.DefaultLogger.Clone(nil, "server", "tcp", fmt.Sprint(port)),
 	}, nil
 }
 

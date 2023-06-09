@@ -36,7 +36,7 @@ type Router struct {
 // NewRouter returns a new Router ready to be set up. If routerPath is not provided,
 // the router will try to get the working directory; if logger is nil, the standard
 // logger.DefaultLogger will be used
-func NewRouter(routerPath string, l *logger.Logger) (router *Router, err error) {
+func NewRouter(routerPath string) (router *Router, err error) {
 	router = new(Router)
 
 	router.httpServers = make(map[int]*HTTPServer)
@@ -53,10 +53,7 @@ func NewRouter(routerPath string, l *logger.Logger) (router *Router, err error) 
 
 	router.state = NewLifeCycleState()
 
-	if l == nil {
-		l = logger.DefaultLogger
-	}
-	router.Logger = l
+	router.Logger = logger.DefaultLogger
 
 	router.offlineClientsM = new(sync.RWMutex)
 	router.offlineClients = make(map[string]offlineClient)
@@ -88,8 +85,7 @@ func (router *Router) NewHTTPServer(address string, port int, secure bool, path 
 
 	router.httpServers[srv.port] = srv
 	srv.Router = router
-
-	srv.Logger = router.Logger.Clone(nil, "server", "http", fmt.Sprint(port))
+	srv.Logger.SetParent(router.Logger)
 
 	return srv, nil
 }
@@ -109,8 +105,7 @@ func (router *Router) NewTCPServer(address string, port int, secure bool, certs 
 
 	router.tcpServers[srv.port] = srv
 	srv.Router = router
-
-	srv.Logger = router.Logger.Clone(nil, "server", "tcp", fmt.Sprint(port))
+	srv.Logger.SetParent(router.Logger)
 
 	return srv, nil
 }

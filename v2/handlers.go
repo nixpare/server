@@ -247,7 +247,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	route := &Route{
 		Srv:            h.srv,
 		Router:         h.srv.Router,
-		Logger:         h.srv.Logger.Clone(nil, "route", strings.ToLower(r.Method)),
+		Logger:         h.srv.Logger.Clone(nil, "route", r.Method),
 		Secure:         h.secure,
 		RemoteAddress:  r.RemoteAddr,
 		RequestURI:     r.RequestURI,
@@ -264,7 +264,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (route *Route) serveHTTP() {
 	err := logger.PanicToErr(func() error {
 		route.prep()
-		route.Logger = route.Logger.Clone(nil, route.DomainName, route.SubdomainName, route.Domain.Name, route.Website.Name)
+		route.Logger.AddTags(route.DomainName, route.SubdomainName, route.Domain.Name, route.Website.Name)
 		return nil
 	})
 	if err != nil {

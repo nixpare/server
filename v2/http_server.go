@@ -106,7 +106,7 @@ func newHTTPServer(address string, port int, secure bool, path string, certs []C
 		}
 	}
 
-	srv.Logger = logger.DefaultLogger
+	srv.Logger = logger.DefaultLogger.Clone(nil, "server", "http", fmt.Sprint(port))
 	srv.Server.ErrorLog = log.New(srv.Logger, "", 0)
 
 	srv.Server.ReadHeaderTimeout = time.Second * 10

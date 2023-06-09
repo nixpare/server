@@ -28,6 +28,10 @@ github.com/nixpare/logger v1.1.12 h1:KQjqVUzXbKpNYMkaSAVwULT7hLRIkwQn22oUxnU35+I
 github.com/nixpare/logger v1.1.12/go.mod h1:2k39FBc5lNeHo3K84bOMjvd+HOZsIe+k4EO09tu+wF4=
 github.com/nixpare/logger v1.1.13 h1:lrIRSxEISPdOiNWgkvVysEbP57EyvNvzBxuw/e/LO+0=
 github.com/nixpare/logger v1.1.13/go.mod h1:2k39FBc5lNeHo3K84bOMjvd+HOZsIe+k4EO09tu+wF4=
+github.com/nixpare/logger v1.2.0 h1:rl1W4ooOeszuhgIWnNp/kssUnTrkGNL+MuZJUC5PuNc=
+github.com/nixpare/logger v1.2.0/go.mod h1:2k39FBc5lNeHo3K84bOMjvd+HOZsIe+k4EO09tu+wF4=
+github.com/nixpare/logger v1.2.1 h1:041wK0Zu205P3Eelra7nwzZ0/ywZf0EKfxgKF9NoSsQ=
+github.com/nixpare/logger v1.2.1/go.mod h1:2k39FBc5lNeHo3K84bOMjvd+HOZsIe+k4EO09tu+wF4=
 github.com/nixpare/process v1.3.5 h1:h7rhysGLV4OHDWjIY+7BbJ7E2ILOfFFbRSf/jY2WkRM=
 github.com/nixpare/process v1.3.5/go.mod h1:CC4KFXY2x6ZijTz+fQX5nIWBWtoMAMLbWcS+YXnbr48=
 github.com/smartystreets/assertions v0.0.0-20180927180507-b2de0cb4f26d/go.mod h1:OnSkiWE9lh6wB0YB77sQom3nweQdgAjqCqsofrRNTgc=
