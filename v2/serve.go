@@ -145,7 +145,7 @@ func (route *Route) ServeCustomFile(fileName string, data []byte) {
 
 // ServeData serves raw bytes to the client
 func (route *Route) ServeData(data []byte) {
-	route.W.Write(data)
+	http.ServeContent(route.W, route.R, "", time.Now(), bytes.NewReader(data))
 }
 
 // ServeText serves a string (as raw bytes) to the client
