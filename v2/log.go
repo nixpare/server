@@ -18,8 +18,7 @@ var (
 )
 
 func (router *Router) plainPrintf(level logger.LogLevel, message string, extra string, format string, a ...any) {
-	log := logger.NewLog(level, message, extra)
-	router.Logger.AddLog(*log)
+	router.Logger.AddLog(level, message, extra, false)
 	if out := router.Logger.Out; out != nil {
 		fmt.Fprintf(out, format, a...)
 	}
