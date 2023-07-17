@@ -10,51 +10,48 @@ import (
 
 func logs(router *server.Router, args []string) (resp []byte, err error) {
 	var pretty bool
+	var logs []logger.Log
 
-	if args[0] == "--pretty" {
+	if len(args) != 0 && args[0] == "--pretty" {
 		pretty = true
 		args = args[1:]
 	}
 
 	if len(args) == 0 {
-		for _, l := range router.Logger.Logs() {
-			resp = append(resp, []byte(l.Full() + "\n")...)
-		}
-		return
-	}
-
-	var logs []logger.Log
-
-	switch args[0] {
-	case "help":
-		resp = []byte(logsHelp("help"))
-		return
-	case "tags":
-		logs = router.Logger.LogsMatch(args[1:]...)
-	case "tags-any":
-		logs = router.Logger.LogsMatchAny(args[1:]...)
-	case "level":
-		levels := fromStringToLogLevel(args[1:])
-		logs = router.Logger.LogsLevelMatchAny(levels...)
-	case "list-tags":
-		tags := make(map[string]bool)
-		for _, l := range router.Logger.Logs() {
-			for _, t := range l.Tags() {
-				tags[t] = true
+		logs = router.Logger.Logs()
+	} else {
+		switch args[0] {
+		case "help":
+			resp = []byte(logsHelp("help"))
+			return
+		case "tags":
+			logs = router.Logger.LogsMatch(args[1:]...)
+		case "tags-any":
+			logs = router.Logger.LogsMatchAny(args[1:]...)
+		case "level":
+			levels := fromStringToLogLevel(args[1:])
+			logs = router.Logger.LogsLevelMatchAny(levels...)
+		case "list-tags":
+			tags := make(map[string]bool)
+			for _, l := range router.Logger.Logs() {
+				for _, t := range l.Tags() {
+					tags[t] = true
+				}
 			}
+	
+			resp = []byte("Available tags: [ ")
+			for t := range tags {
+				resp = append(resp, []byte(t + " ")...)
+			}
+			resp = append(resp, []byte("]")...)
+			
+			return
+		default:
+			return nil, errors.New(logsHelp(args[0]))
 		}
-
-		resp = []byte("Available tags: [ ")
-		for t := range tags {
-			resp = append(resp, []byte(t + " ")...)
-		}
-		resp = append(resp, []byte("]")...)
-		
-		return
-	default:
-		return nil, errors.New(logsHelp(args[0]))
 	}
 
+	resp = []byte("\n")
 	if pretty {
 		for _, l := range logs {
 			resp = append(resp, []byte(l.FullColored() + "\n")...)
