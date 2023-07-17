@@ -27,7 +27,7 @@ type CustomCommandFunc func(router *server.Router, args ...string) (resp []byte,
 var customCommands = make(map[string]CustomCommandFunc)
 
 func ListenForCommands(pipePath string, router *server.Router) error {
-	p, err := openNamedPipeConn(`\\.\pipe` + pipePath, router)
+	p, err := openNamedPipeConn(`\\.\pipe`+pipePath, router)
 	if err != nil {
 		return err
 	}
@@ -44,7 +44,7 @@ func RegisterCustomCommand(cmd string, f CustomCommandFunc) {
 }
 
 func SendCommand(pipePath, payload string) (resp string, err error) {
-	conn, err := npipe.DialTimeout(`\\.\pipe` + pipePath, time.Second)
+	conn, err := npipe.DialTimeout(`\\.\pipe`+pipePath, time.Second)
 	if err != nil {
 		return
 	}
@@ -148,7 +148,7 @@ func (p *pipeConn) ExecuteCommands(cmd string, args ...string) (resp []byte, err
 		return
 	case "offline":
 		if len(args) < 2 {
-			return nil, errors.New("invalid command: required port number and time duration in minutes")
+			return nil, errors.New("invalid command: required server port and time duration in minutes")
 		}
 
 		port, err := strconv.Atoi(args[0])
@@ -166,15 +166,18 @@ func (p *pipeConn) ExecuteCommands(cmd string, args ...string) (resp []byte, err
 			return nil, fmt.Errorf("error parsing time duration: %w", err)
 		}
 
-		GoOfflineFor(srv, duration)
+		err = GoOfflineFor(srv, time.Duration(int(time.Minute) * duration))
+		if err == nil {
+			resp = []byte(fmt.Sprintf("Server offline for %d minutes", duration))
+		}
 	case "online":
 		if len(args) < 1 {
-			return nil, errors.New("invalid command: required port number")
+			return nil, errors.New("invalid command: required server port")
 		}
 
 		port, err := strconv.Atoi(args[0])
 		if err != nil {
-			return nil, fmt.Errorf("error parsing port number: %w", err)
+			return nil, fmt.Errorf("error parsing server port: %w", err)
 		}
 
 		srv := p.router.HTTPServer(port)
@@ -182,15 +185,18 @@ func (p *pipeConn) ExecuteCommands(cmd string, args ...string) (resp []byte, err
 			return nil, fmt.Errorf("server with port %d not found", port)
 		}
 
-		GoOnline(srv)
+		err = GoOnline(srv)
+		if err == nil {
+			resp = []byte("Server online")
+		}
 	case "extend-offline":
 		if len(args) < 2 {
-			return nil, errors.New("invalid command: required port number and time duration in minutes")
+			return nil, errors.New("invalid command: required server port and time duration in minutes")
 		}
 
 		port, err := strconv.Atoi(args[0])
 		if err != nil {
-			return nil, fmt.Errorf("error parsing port number: %w", err)
+			return nil, fmt.Errorf("error parsing server port: %w", err)
 		}
 
 		srv := p.router.HTTPServer(port)
@@ -203,22 +209,36 @@ func (p *pipeConn) ExecuteCommands(cmd string, args ...string) (resp []byte, err
 			return nil, fmt.Errorf("error parsing time duration: %w", err)
 		}
 
-		ExtendOffline(srv, duration)
+		err = ExtendOffline(srv, time.Duration(int(time.Minute) * duration))
+		if err == nil {
+			resp = []byte(fmt.Sprintf("Server offline period extended by %d minutes", duration))
+		}
 	case "proc":
 		return p.processCmd(args)
 	case "task":
 		return p.taskCmd(args)
 	case "logs":
-		return Logs(args...)
+		return logs(p.router, args)
 	default:
 		f, ok := customCommands[cmd]
 		if !ok {
-			err = fmt.Errorf("this command does not exist. Received %s", cmd)
+			err = errors.New(commandNotFound(cmd))
 			return
 		}
-		
+
 		return f(p.router, args...)
 	}
 
 	return
+}
+
+func commandNotFound(cmd string) string {
+	return fmt.Sprintf("unknown command \"%s\": available commands:\n", cmd) +
+					   "  * built-in commands:\n" +
+					   "      - ping                    : replies just \"pong\", to test if the server can responde\n" +
+					   "      - online                  : set the server back online \n" +
+					   "      - offile <minutes>        : set the server offline for the provided period\n" +
+					   "      - extend-offile <minutes> : extends the server offline time with the provided period\n" +
+					   "      - proc [...]              : manage processes registered in the server, see \"proc help\"\n" +
+					   "      - task [...]              : manage processes registered in the server, see \"proc help\"\n"
 }

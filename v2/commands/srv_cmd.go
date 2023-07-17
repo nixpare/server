@@ -8,7 +8,7 @@ import (
 	"github.com/nixpare/server/v2"
 )
 
-func GoOfflineFor(srv *server.HTTPServer, d int) error {
+func GoOfflineFor(srv *server.HTTPServer, d time.Duration) error {
 	taskName := fmt.Sprintf("Back Online (%d)", srv.Port())
 
 	t := srv.Router.TaskManager.GetTask(taskName)
@@ -65,11 +65,11 @@ func GoOnline(srv *server.HTTPServer) error {
 	return nil
 }
 
-func ExtendOffline(srv *server.HTTPServer, d int) error {
+func ExtendOffline(srv *server.HTTPServer, d time.Duration) error {
 	if srv.Online {
 		return GoOfflineFor(srv, d)
 	} else {
-		dd := int(time.Until(srv.OnlineTime).Minutes()) + d
+		dd := time.Until(srv.OnlineTime) + d
 		return GoOfflineFor(srv, dd)
 	}
 }
