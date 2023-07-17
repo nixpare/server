@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -89,12 +90,51 @@ func (t *Task) IsRunning() bool {
 	return t.running
 }
 
+// Init runs the initialization function, catching every possible error or panic,
+// and then sets the flag Task.initDone to true. If the function fails it deactivates
+// the task
+func (t *Task) Init() error {
+	if t.initDone {
+		return errors.New("task already initialized")
+	}
+
+	if t.InitF == nil {
+		t.initDone = true
+		return nil
+	}
+
+	err := logger.PanicToErr(func() error {
+		return t.InitF(t)
+	})
+	if err != nil {
+		t.initDone = false
+		t.Timer = TASK_TIMER_INACTIVE
+		return fmt.Errorf("task initialization: %w", err)
+	}
+
+	t.initDone = true
+	return nil
+}
+
 func (t *Task) Wait() {
 	if !t.running {
 		return
 	}
 
 	t.bc.Get()
+}
+
+func (t *Task) String() string {
+	infoStr := "inactive"
+	if t.Timer != TASK_TIMER_INACTIVE {
+		infoStr = fmt.Sprintf("every %d sec", t.Timer)
+	}
+
+	if t.IsRunning() {
+		infoStr += " - running"
+	}
+
+	return fmt.Sprintf("%s (%s)", t.name, infoStr)
 }
 
 // TaskFunc is the executable part of the program. You can modify the timer of
@@ -141,42 +181,37 @@ type TaskInitFunc func() (initF, execF, cleanupF TaskFunc)
 // initF function provided by f (if any). If it returns an error the Task will not be
 // registered in the TaskManager.
 func (tm *TaskManager) NewTask(name string, f TaskInitFunc, timer TaskTimer) error {
-	if t, _ := tm.Task(name); t != nil {
-		return fmt.Errorf("task \"%s\" already registered", name)
+	if t := tm.GetTask(name); t != nil {
+		return fmt.Errorf("new task \"%s\": %w", name, ErrAlreadyRegistered)
 	}
 
 	initF, execF, cleanupF := f()
 	t := &Task{
 		name: name, InitF: initF,
 		ExecF: execF, CleanupF: cleanupF,
-		Timer: timer,
-		bc:    comms.NewBroadcaster[struct{}](),
+		Timer:       timer,
+		bc:          comms.NewBroadcaster[struct{}](),
 		TaskManager: tm,
-		Logger: tm.Logger.Clone(nil, "task", name),
+		Logger:      tm.Logger.Clone(nil, "task", name),
 	}
 
 	tm.tasks[name] = t
 
 	if tm.state.AlreadyStarted() {
-		tm.startTask(t)
+		tm.initTask(t)
 	}
 	return nil
 }
 
-func (tm *TaskManager) Task(name string) (*Task, error) {
-	t := tm.tasks[name]
-	if t == nil {
-		return nil, fmt.Errorf("task: %w", ErrNotFound)
-	}
-
-	return t, nil
+func (tm *TaskManager) GetTask(name string) *Task {
+	return tm.tasks[name]
 }
 
 // ExecTask runs the Task immediatly
 func (tm *TaskManager) ExecTask(name string) error {
-	t, err := tm.Task(name)
-	if err != nil {
-		return err
+	t := tm.GetTask(name)
+	if t == nil {
+		return fmt.Errorf("get task \"%s\": %w", name, ErrNotFound)
 	}
 
 	return tm.execTask(t)
@@ -184,10 +219,23 @@ func (tm *TaskManager) ExecTask(name string) error {
 
 // RemoveTask runs the cleanup function provided and removes the Task from
 // the TaskManager
+func (tm *TaskManager) KillTask(name string) error {
+	t := tm.GetTask(name)
+	if t == nil {
+		return fmt.Errorf("get task \"%s\": %w", name, ErrNotFound)
+	}
+
+	tm.killTask(t)
+	delete(tm.tasks, name)
+	return nil
+}
+
+// RemoveTask runs the cleanup function provided and removes the Task from
+// the TaskManager
 func (tm *TaskManager) RemoveTask(name string) error {
-	t, err := tm.Task(name)
-	if err != nil {
-		return err
+	t := tm.GetTask(name)
+	if t == nil {
+		return fmt.Errorf("get task \"%s\": %w", name, ErrNotFound)
 	}
 
 	tm.stopTask(t)
@@ -206,10 +254,10 @@ func (tm *TaskManager) GetTasksNames() []string {
 	return names
 }
 
-// startTask runs the initialization function, catching every possible error or panic,
+// initTask runs the initialization function, catching every possible error or panic,
 // and then sets the flag Task.initDone to true. If the function fails it deactivates
 // the task
-func (tm *TaskManager) startTask(t *Task) {
+func (tm *TaskManager) initTask(t *Task) {
 	if t == nil || t.initDone {
 		return
 	}
@@ -291,6 +339,36 @@ func (tm *TaskManager) execTask(t *Task) error {
 		)
 		return nil
 	}
+}
+
+// stopTask runs the cleanup function, catching every possible error or panic
+func (tm *TaskManager) killTask(t *Task) {
+	if t == nil || !t.initDone {
+		return
+	}
+
+	if !t.running {
+		return
+	}
+
+	t.exitChan <- struct{}{}
+	t.Wait()
+
+	t.initDone = false
+
+	if t.CleanupF == nil {
+		return
+	}
+
+	err := logger.PanicToErr(func() error {
+		return t.CleanupF(t)
+	})
+	if err != nil {
+		tm.Logger.Printf(logger.LOG_LEVEL_ERROR, "Task \"%s\" cleanup error: %v", t.name, err)
+		return
+	}
+
+	tm.Logger.Printf(logger.LOG_LEVEL_INFO, "Task \"%s\" stopped successfully", t.name)
 }
 
 // stopTask runs the cleanup function, catching every possible error or panic

@@ -125,18 +125,10 @@ func (tm *TaskManager) ProcessIsRunning(name string) (bool, error) {
 	return p.IsRunning(), nil
 }
 
-// GetProcessPID returns the process PID (-1 if it's not running)
-func (tm *TaskManager) GetProcessPID(name string) (int, error) {
-	p, err := tm.FindProcess(name)
-	if err != nil {
-		return -1, err
-	}
-
-	if !p.IsRunning() {
-		return -1, nil
-	}
-
-	return p.Exec.Process.Pid, nil
+// GetProcess returns the process registered with the given name, or
+// nil if not found
+func (tm *TaskManager) GetProcess(name string) *process.Process {
+	return tm.processes[name]
 }
 
 // GetProcessesNames returns a slice containing all the names

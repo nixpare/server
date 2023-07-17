@@ -43,7 +43,7 @@ func (tm *TaskManager) start() {
 
 	tm.Logger.Print(logger.LOG_LEVEL_INFO, "Tasks initialization started")
 	for _, t := range tm.tasks {
-		tm.startTask(t)
+		tm.initTask(t)
 	}
 	tm.Logger.Print(logger.LOG_LEVEL_INFO, "Tasks initialization completed")
 
@@ -63,7 +63,7 @@ func (tm *TaskManager) start() {
 			}
 		}
 	}()
-	
+
 	tm.state.SetState(LCS_STARTED)
 }
 
