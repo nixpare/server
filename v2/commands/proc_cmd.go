@@ -3,7 +3,6 @@ package commands
 import (
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/nixpare/server/v2"
 )
@@ -30,21 +29,24 @@ func (p *pipeConn) processCmd(args []string) (resp []byte, err error) {
 		return nil, errors.New(procHelp(args[0]))
 	}
 
-	procName := strings.Join(args[1:], " ")
-
 	switch args[0] {
 	case "start":
-		err = p.router.TaskManager.StartProcess(procName)
+		err = p.router.TaskManager.StartProcess(args[1])
 		if err != nil {
 			return
 		}
 	case "stop":
-		err = p.router.TaskManager.StopProcess(procName)
+		err = p.router.TaskManager.StopProcess(args[1])
 		if err != nil {
 			return
 		}
 	case "restart":
-		err = p.router.TaskManager.RestartProcess(procName)
+		err = p.router.TaskManager.RestartProcess(args[1])
+		if err != nil {
+			return
+		}
+	case "kill":
+		err = p.router.TaskManager.KillProcess(args[1])
 		if err != nil {
 			return
 		}
@@ -79,13 +81,14 @@ func procHelp(cmd string) string {
 	var res string
 
 	if cmd == "help" {
-		res += "Manage processes registered in the server. The valid options are:\n"
+		res += "Manage processes registered in the server. The valid options are:\n\n"
 	} else {
-		res += fmt.Sprintf("invalid sub-command \"%s\" sent: the valid options are:\n", cmd)
+		res += fmt.Sprintf("invalid sub-command \"%s\" sent: the valid options are:\n\n", cmd)
 	}
 
-	return res + "  - list                    : list all the processes with basic information on their status\n" +
-				 "  - start <process name>    : starts the process with the given name\n" +
-				 "  - stop <process name>     : stops the process with the given name\n" +
-				 "  - restart <process name>  : restarts the process with the given name"
+	return res + "    - list                    : list all the processes with basic information on their status\n" +
+				 "    - start <process name>    : starts the process with the given name\n" +
+				 "    - stop <process name>     : stops the process with the given name\n" +
+				 "    - restart <process name>  : restarts the process with the given name\n" +
+				 "    - kill <process name>     : kills the process with the given name\n"
 }

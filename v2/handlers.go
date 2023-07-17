@@ -404,7 +404,7 @@ func (route *Route) serve() {
 			route.Error(http.StatusBadRequest, "Bad Request URL")
 
 		case err_server_offline:
-			t := route.Srv.OnlineTime.Add(time.Minute * 30)
+			t := route.Srv.OnlineTime.Add(time.Minute)
 			route.W.Header().Set("Retry-After", t.Format(time.RFC1123))
 			route.Error(http.StatusServiceUnavailable, "Server temporarly offline, retry in "+time.Until(t).Truncate(time.Second).String())
 

@@ -15,15 +15,15 @@ type TaskTimer int
 
 const (
 	// TASK_TIMER_10_SECONDS determines a Task execution interval of 10 seconds
-	TASK_TIMER_10_SECONDS = TaskTimer(time.Second * 10)
+	TASK_TIMER_10_SECONDS = TaskTimer(time.Second / 1000000000 * 10)
 	// TASK_TIMER_1_MINUTE determines a Task execution interval of 1 minute
-	TASK_TIMER_1_MINUTE = TaskTimer(time.Minute * 1)
+	TASK_TIMER_1_MINUTE = TaskTimer(time.Minute / 1000000000 * 1)
 	// TASK_TIMER_10_MINUTES determines a Task execution interval of 10 minutes
-	TASK_TIMER_10_MINUTES = TaskTimer(time.Minute * 10)
+	TASK_TIMER_10_MINUTES = TaskTimer(time.Minute / 1000000000 * 10)
 	// TASK_TIMER_30_MINUTES determines a Task execution interval of 30 minutes
-	TASK_TIMER_30_MINUTES = TaskTimer(time.Minute * 30)
+	TASK_TIMER_30_MINUTES = TaskTimer(time.Minute / 1000000000 * 30)
 	// TASK_TIMER_1_HOUR determines a Task execution interval of 1 hour
-	TASK_TIMER_1_HOUR = TaskTimer(time.Hour)
+	TASK_TIMER_1_HOUR = TaskTimer(time.Hour / 1000000000)
 	// TASK_TIMER_INACTIVE deactivates the Task automatic execution
 	TASK_TIMER_INACTIVE = -1
 )
@@ -127,7 +127,7 @@ func (t *Task) Wait() {
 func (t *Task) String() string {
 	infoStr := "inactive"
 	if t.Timer != TASK_TIMER_INACTIVE {
-		infoStr = fmt.Sprintf("every %d sec", t.Timer)
+		infoStr = fmt.Sprintf("every %d secs", t.Timer)
 	}
 
 	if t.IsRunning() {

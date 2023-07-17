@@ -9,21 +9,63 @@ import (
 )
 
 func logs(router *server.Router, args []string) (resp []byte, err error) {
-	if len(args) == 0 {
-		return router.Logger.JSON(), nil
+	var pretty bool
+
+	if args[0] == "--pretty" {
+		pretty = true
+		args = args[1:]
 	}
 
+	if len(args) == 0 {
+		for _, l := range router.Logger.Logs() {
+			resp = append(resp, []byte(l.Full() + "\n")...)
+		}
+		return
+	}
+
+	var logs []logger.Log
+
 	switch args[0] {
+	case "help":
+		resp = []byte(logsHelp("help"))
+		return
 	case "tags":
-		return logger.LogsToJSON(router.Logger.LogsMatch(args[1:]...)), nil
+		logs = router.Logger.LogsMatch(args[1:]...)
 	case "tags-any":
-		return logger.LogsToJSON(router.Logger.LogsMatchAny(args[1:]...)), nil
+		logs = router.Logger.LogsMatchAny(args[1:]...)
 	case "level":
 		levels := fromStringToLogLevel(args[1:])
-		return logger.LogsToJSON(router.Logger.LogsLevelMatchAny(levels...)), nil
+		logs = router.Logger.LogsLevelMatchAny(levels...)
+	case "list-tags":
+		tags := make(map[string]bool)
+		for _, l := range router.Logger.Logs() {
+			for _, t := range l.Tags() {
+				tags[t] = true
+			}
+		}
+
+		resp = []byte("Available tags: [ ")
+		for t := range tags {
+			resp = append(resp, []byte(t + " ")...)
+		}
+		resp = append(resp, []byte("]")...)
+		
+		return
 	default:
 		return nil, errors.New(logsHelp(args[0]))
 	}
+
+	if pretty {
+		for _, l := range logs {
+			resp = append(resp, []byte(l.FullColored() + "\n")...)
+		}
+	} else {
+		for _, l := range logs {
+			resp = append(resp, []byte(l.Full() + "\n")...)
+		}
+	}
+	
+	return
 }
 
 func fromStringToLogLevel(levels []string) []logger.LogLevel {
@@ -48,8 +90,15 @@ func fromStringToLogLevel(levels []string) []logger.LogLevel {
 }
 
 func logsHelp(cmd string) string {
-	return fmt.Sprintf("invalid sub-command \"%s\" sent: the valid options are:\n", cmd) +
-					   "  - tags     [ list of tags to match ]\n" +
-					   "  - tags-any [ list of possible tags to match ]\n" +
-					   "  - level    [ list of possible levels to match ]"
+	var res string
+	if cmd == "help" {
+		res = "Manage server logs. The valid options are:\n\n"
+	} else {
+		res = fmt.Sprintf("invalid sub-command \"%s\" sent: the valid options are:\n\n", cmd)
+	}
+	return res + "    - tags [ tags ... ]       : get all the logs that matches all the tags provided\n" +
+				 "    - tags-any [ tags ... ]   : get all the logs that matches at least one tag\n" +
+				 "    - level    [ levels ... ] : get all the logs with one of the log severities provided\n" +
+				 "    - list-tags               : list of tags currently used by logs\n\n" +
+				 "If --pretty is used as the first argument, the result will be colourful\n"
 }

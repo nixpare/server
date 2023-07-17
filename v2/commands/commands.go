@@ -2,37 +2,72 @@ package commands
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/nixpare/logger"
-	"github.com/nixpare/process"
 	"github.com/nixpare/server/v2"
 	"gopkg.in/natefinch/npipe.v2"
 )
 
 type pipeConn struct {
-	router *server.Router
-	ln     *npipe.PipeListener
-	logger *logger.Logger
+	router  *server.Router
+	ln      *npipe.PipeListener
+	logger  *logger.Logger
+	running bool
+	exitC   chan struct{}
 }
 
 type CustomCommandFunc func(router *server.Router, args ...string) (resp []byte, err error)
 
+const commandTaskName = "Command Pipe"
+
 var customCommands = make(map[string]CustomCommandFunc)
 
 func ListenForCommands(pipePath string, router *server.Router) error {
-	p, err := openNamedPipeConn(`\\.\pipe`+pipePath, router)
+	err := router.TaskManager.NewTask(commandTaskName, func() (initF server.TaskFunc, execF server.TaskFunc, cleanupF server.TaskFunc) {
+		var p *pipeConn
+
+		initF = func(t *server.Task) error {
+			var err error
+			p, err = openNamedPipeConn(pipePath, router)
+			return err
+		}
+
+		execF = func(t *server.Task) error {
+			if p.running {
+				t.Logger.Printf(logger.LOG_LEVEL_INFO, "Task %s already running, doing nothing", t.Name())
+				return nil
+			}
+
+			p.running = true
+			go func() {
+				if t.ListenForExit() {
+					p.exitC <- struct{}{}
+				}
+			}()
+			
+			p.listenNamedPipe()
+			return nil
+		}
+
+		cleanupF = func(t *server.Task) error {
+			close(p.exitC)
+			return nil
+		}
+
+		return
+	}, server.TASK_TIMER_INACTIVE)
 	if err != nil {
 		return err
 	}
 
-	go p.listenNamedPipe()
+	go router.TaskManager.ExecTask(commandTaskName)
 	return nil
 }
 
@@ -43,19 +78,20 @@ func RegisterCustomCommand(cmd string, f CustomCommandFunc) {
 	customCommands[cmd] = f
 }
 
-func SendCommand(pipePath, payload string) (resp string, err error) {
-	conn, err := npipe.DialTimeout(`\\.\pipe`+pipePath, time.Second)
+func SendCommand(pipePath string, args ...string) (resp string, err error) {
+	conn, err := npipe.DialTimeout(`\\.\pipe` + pipePath, time.Second)
 	if err != nil {
 		return
 	}
 
-	_, err = conn.Write([]byte(payload + "\n"))
+	data, _ := json.Marshal(args)
+	_, err = conn.Write(append(data, []byte("\n")...))
 	if err != nil {
 		err = fmt.Errorf("failed writing command: %v", err)
 		return
 	}
 
-	data, err := io.ReadAll(conn)
+	data, err = io.ReadAll(conn)
 	if err != nil {
 		err = fmt.Errorf("failed reading response: %v", err)
 		return
@@ -74,24 +110,34 @@ func openNamedPipeConn(pipeName string, router *server.Router) (*pipeConn, error
 		router: router,
 		ln:     ln,
 		logger: router.Logger.Clone(nil, "pipe"),
+		exitC:  make(chan struct{}),
 	}
 
 	return p, nil
 }
 
 func (p *pipeConn) listenNamedPipe() {
-	for p.router.IsRunning() {
-		conn, err := p.ln.Accept()
-		if err != nil {
-			p.logger.Printf(
-				logger.LOG_LEVEL_ERROR,
-				"Error in pipe connection: %v\n", err,
-			)
-			continue
-		}
+	go func() {
+		for p.running {
+			conn, err := p.ln.Accept()
+			if err != nil {
+				if errors.Is(err, npipe.ErrClosed) {
+					break
+				}
+				
+				p.logger.Printf(
+					logger.LOG_LEVEL_ERROR,
+					"Error in pipe connection: %v\n", err,
+				)
+				continue
+			}
 
-		go p.handleConnection(conn)
-	}
+			go p.handleConnection(conn)
+		}
+	}()
+
+	<- p.exitC
+	p.running = false
 
 	err := p.ln.Close()
 	if err != nil {
@@ -111,16 +157,25 @@ func (p *pipeConn) handleConnection(conn net.Conn) {
 		)
 	}
 
-	args := process.ParseCommandArgs(strings.Trim(cmd, " \n"))
-
 	var resp []byte
-	err = logger.PanicToErr(func() error {
-		resp, err = p.ExecuteCommands(args[0], args[1:]...)
-		return err
-	})
-	if err != nil {
-		resp = []byte("Command error: " + err.Error())
-	}
+
+	func() {
+		var args []string
+
+		err = json.Unmarshal([]byte(cmd), &args)
+		if err != nil {
+			resp = []byte("Command decode error: " + err.Error())
+			return
+		}
+
+		err = logger.PanicToErr(func() error {
+			resp, err = p.ExecuteCommands(args[0], args[1:]...)
+			return err
+		})
+		if err != nil {
+			resp = []byte("Command error: " + err.Error())
+		}
+	}()
 
 	if len(resp) > 0 {
 		_, err = conn.Write(resp)
@@ -143,6 +198,9 @@ func (p *pipeConn) handleConnection(conn net.Conn) {
 
 func (p *pipeConn) ExecuteCommands(cmd string, args ...string) (resp []byte, err error) {
 	switch cmd {
+	case "help":
+		resp = []byte(commandNotFound(cmd))
+		return
 	case "ping":
 		resp = []byte("pong")
 		return
@@ -217,7 +275,7 @@ func (p *pipeConn) ExecuteCommands(cmd string, args ...string) (resp []byte, err
 		return p.processCmd(args)
 	case "task":
 		return p.taskCmd(args)
-	case "logs":
+	case "log":
 		return logs(p.router, args)
 	default:
 		f, ok := customCommands[cmd]
@@ -233,12 +291,27 @@ func (p *pipeConn) ExecuteCommands(cmd string, args ...string) (resp []byte, err
 }
 
 func commandNotFound(cmd string) string {
-	return fmt.Sprintf("unknown command \"%s\": available commands:\n", cmd) +
-					   "  * built-in commands:\n" +
-					   "      - ping                    : replies just \"pong\", to test if the server can responde\n" +
-					   "      - online                  : set the server back online \n" +
-					   "      - offile <minutes>        : set the server offline for the provided period\n" +
-					   "      - extend-offile <minutes> : extends the server offline time with the provided period\n" +
-					   "      - proc [...]              : manage processes registered in the server, see \"proc help\"\n" +
-					   "      - task [...]              : manage processes registered in the server, see \"proc help\"\n"
+	var res string
+	if cmd == "help" {
+		res = "NixServer Manager: "
+	} else {
+		res = fmt.Sprintf("unknown command \"%s\": ", cmd)
+	}
+
+	customCmds := "[ "
+	for c := range customCommands {
+		customCmds += c + " "
+	}
+	customCmds += "]"
+
+	return res + "available commands:\n" +
+				 "  * built-in commands:\n" +
+				 "      - ping                    : replies just \"pong\", to test if the server can responde\n" +
+				 "      - online                  : set the server back online \n" +
+				 "      - offile <minutes>        : set the server offline for the provided period\n" +
+				 "      - extend-offile <minutes> : extends the server offline time with the provided period\n" +
+				 "      - proc [...]              : manage processes registered in the server, see \"proc help\"\n" +
+				 "      - task [...]              : manage processes registered in the server, see \"task help\"\n" +
+				 "      - log [...]               : manage logs, see \"log help\"\n" +
+				 "  * custom commands: " + customCmds
 }

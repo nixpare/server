@@ -3,7 +3,6 @@ package commands
 import (
 	"errors"
 	"fmt"
-	"strconv"
 
 	"github.com/nixpare/server/v2"
 )
@@ -62,21 +61,15 @@ func (p *pipeConn) taskCmd(args []string) (resp []byte, err error) {
 
 		var found bool
 		for _, x := range taskTimers {
-			if args[1] == x {
-				timer, err := strconv.Atoi(x)
-				if err == nil {
-					t.Timer = server.TaskTimer(timer)
-				} else {
-					t.Timer = server.TASK_TIMER_INACTIVE
-				}
-
+			if args[2] == x {
+				t.Timer = fromStringToTimer(args[2])
 				found = true
 				break
 			}
 		}
 
 		if !found {
-			err = errors.New(timerHelp(args[1]))
+			err = errors.New(timerHelp(args[2]))
 			return
 		}
 	}
@@ -108,22 +101,41 @@ func taskList(router *server.Router) (resp []byte, err error) {
 
 func timerHelp(timer string) string {
 	if timer == "" {
-		return "Timer options: [1s, 1m, 10m, 30m, 1h, inactive]"
+		return fmt.Sprintf("Timer options: %v", taskTimers)
 	}
-	return fmt.Sprintf("invalid timer \"%s\" sent: the valid options are: [1s, 1m, 10m, 30m, 1h, inactive]", timer)
+	return fmt.Sprintf("invalid timer \"%s\" sent: the valid options are: %v", timer, taskTimers)
 }
 
 func taskHelp(cmd string) string {
 	var res string
 
 	if cmd == "help" {
-		res += "Manage tasks registered in the server. The valid options are:\n"
+		res += "Manage tasks registered in the server. The valid options are:\n\n"
 	} else {
-		res += fmt.Sprintf("invalid sub-command \"%s\" sent: the valid options are:\n", cmd)
+		res += fmt.Sprintf("invalid sub-command \"%s\" sent: the valid options are:\n\n", cmd)
 	}
 
 	return res + "  - list                          : list all the processes with basic information on their status\n" +
 				 "  - exec <task name>              : executes the task with the given name\n" +
 				 "  - kill <task name>              : kills the task with the given name\n" +
-				 "  - set-timer <task name> <timer> : set the timer for the task. Use \"set-timer list\" for the available options"
+				 "  - set-timer <task name> <timer> : set the timer for the task. Use \"set-timer list\" for the available options\n"
+}
+
+func fromStringToTimer(timer string) server.TaskTimer {
+	switch timer {
+	case "10s":
+		return server.TASK_TIMER_10_SECONDS
+	case "1m":
+		return server.TASK_TIMER_1_MINUTE
+	case "10m":
+		return server.TASK_TIMER_10_MINUTES
+	case "30m":
+		return server.TASK_TIMER_30_MINUTES
+	case "1h":
+		return server.TASK_TIMER_1_HOUR
+	case "inactive":
+		return server.TASK_TIMER_INACTIVE
+	default:
+		return server.TASK_TIMER_INACTIVE
+	}
 }
