@@ -4,9 +4,11 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/nixpare/logger"
 	"github.com/nixpare/process"
@@ -24,14 +26,42 @@ type CustomCommandFunc func(router *server.Router, args ...string) (resp []byte,
 
 var customCommands = make(map[string]CustomCommandFunc)
 
-func ListenForCommands(pipeName string, router *server.Router) error {
-	p, err := openNamedPipeConn(pipeName, router)
+func ListenForCommands(pipePath string, router *server.Router) error {
+	p, err := openNamedPipeConn(`\\.\pipe` + pipePath, router)
 	if err != nil {
 		return err
 	}
 
 	go p.listenNamedPipe()
 	return nil
+}
+
+func RegisterCustomCommand(cmd string, f CustomCommandFunc) {
+	if f == nil {
+		return
+	}
+	customCommands[cmd] = f
+}
+
+func SendCommand(pipePath, payload string) (resp string, err error) {
+	conn, err := npipe.DialTimeout(`\\.\pipe` + pipePath, time.Second)
+	if err != nil {
+		return
+	}
+
+	_, err = conn.Write([]byte(payload + "\n"))
+	if err != nil {
+		err = fmt.Errorf("failed writing command: %v", err)
+		return
+	}
+
+	data, err := io.ReadAll(conn)
+	if err != nil {
+		err = fmt.Errorf("failed reading response: %v", err)
+		return
+	}
+	resp = string(data)
+	return
 }
 
 func openNamedPipeConn(pipeName string, router *server.Router) (*pipeConn, error) {
