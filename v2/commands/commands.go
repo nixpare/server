@@ -65,7 +65,7 @@ func SendCommand(pipePath, payload string) (resp string, err error) {
 }
 
 func openNamedPipeConn(pipeName string, router *server.Router) (*pipeConn, error) {
-	ln, err := npipe.Listen(`\\.\pipe\` + pipeName)
+	ln, err := npipe.Listen(`\\.\pipe` + pipeName)
 	if err != nil {
 		return nil, fmt.Errorf("cannot listen pipe named %s: %v", pipeName, err)
 	}
