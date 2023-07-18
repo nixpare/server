@@ -41,7 +41,7 @@ func logs(router *server.Router, args []string) (resp []byte, err error) {
 	
 			resp = []byte("Available tags: [ ")
 			for t := range tags {
-				resp = append(resp, []byte(t + " ")...)
+				resp = append(resp, []byte(fmt.Sprintf("<%s> ", t))...)
 			}
 			resp = append(resp, []byte("]")...)
 			

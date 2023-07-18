@@ -178,7 +178,7 @@ func (route *Route) prepDomainAndSubdomain() routePrepError {
 			route.Website = &Website{ Name: "Not Found" }
 
 			if net.ParseIP(route.DomainName) == nil {
-				route.Domain.Name = "Domain NF"
+				route.Domain.Name = "DNF"
 			} else {
 				route.Domain.Name = "DIPA"
 			}
@@ -191,7 +191,7 @@ func (route *Route) prepDomainAndSubdomain() routePrepError {
 	if route.Subdomain == nil {
 		route.Subdomain = route.Domain.subdomains["*"]
 		if route.Subdomain == nil {
-			route.Subdomain = &Subdomain{ Name: "Subdomain NF", online: true }
+			route.Subdomain = &Subdomain{ Name: "SNF", online: true }
 			route.Website = &Website{ Name: "Not Found" }
 
 			return err_subdomain_not_found
