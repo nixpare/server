@@ -1,61 +1,74 @@
 package commands
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/nixpare/server/v2"
+	"github.com/nixpare/server/v2/pipe"
 )
 
 var taskTimers = [...]string{"10s", "1m", "10m", "30m", "1h", "inactive"}
 
-func (p *pipeConn) taskCmd(args []string) (resp []byte, err error) {
+func taskCmd(router *server.Router, conn pipe.ServerConn, args ...string) (exitCode int, err error) {
 	if len(args) == 0 {
-		return nil, errors.New(taskHelp(""))
+		conn.WriteError(taskHelp(""))
+		exitCode = 1
+		return
 	}
 
 	if len(args) == 1 {
 		if args[0] == "help" {
-			resp = []byte(taskHelp("help"))
+			conn.WriteOutput(taskHelp("help"))
 			return
 		}
 
 		if args[0] != "list" {
-			return nil, errors.New(taskHelp(args[0]))
+			conn.WriteError(taskHelp(args[0]))
+			exitCode = 1
+			return
 		}
 
-		return taskList(p.router)
+		conn.WriteOutput(taskList(router))
+		return 
 	}
 
 	if len(args) < 2 {
-		return nil, errors.New(taskHelp(args[0]))
+		conn.WriteError(taskHelp(args[0]))
+		exitCode = 1
+		return
 	}
 
 	switch args[0] {
 	case "exec":
-		err = p.router.TaskManager.ExecTask(args[1])
+		err = router.TaskManager.ExecTask(args[1])
 		if err != nil {
+			conn.WriteError(fmt.Sprintf("Error executing task: %v", err))
+			exitCode = 1
 			return
 		}
 	case "kill":
-		err = p.router.TaskManager.KillTask(args[1])
+		err = router.TaskManager.KillTask(args[1])
 		if err != nil {
+			conn.WriteError(fmt.Sprintf("Error killing task: %v", err))
+			exitCode = 1
 			return
 		}
 	case "set-timer":
 		if len(args) < 3 {
 			if args[1] == "list" {
-				resp = []byte(timerHelp(""))
+				conn.WriteOutput(timerHelp(""))
 				return
 			}
 
-			err = errors.New(taskHelp(args[0]))
+			conn.WriteError(taskHelp(args[0]))
+			exitCode = 1
 			return
 		}
 
-		t := p.router.TaskManager.GetTask(args[1])
+		t := router.TaskManager.GetTask(args[1])
 		if t == nil {
-			err = errors.New("task not found")
+			conn.WriteError("Task not found")
+			exitCode = 1
 			return
 		}
 
@@ -69,41 +82,38 @@ func (p *pipeConn) taskCmd(args []string) (resp []byte, err error) {
 		}
 
 		if !found {
-			err = errors.New(timerHelp(args[2]))
+			conn.WriteError(timerHelp(args[2]))
+			exitCode = 1
 			return
 		}
 	}
 
-	resp = []byte("Done")
+	conn.WriteOutput("Done")
 	return
 }
 
-func taskList(router *server.Router) (resp []byte, err error) {
-	var i int
-	resp = []byte("Tasks list:\n")
-	for _, taskName := range router.TaskManager.GetTasksNames() {
-		if i != 0 {
-			resp = append(resp, []byte("\n")...)
-		}
-		i++
+func taskList(router *server.Router) string {	
+	resp := "Tasks list: "
+	taskNames := router.TaskManager.GetTasksNames()
 
-		task := router.TaskManager.GetTask(taskName)
-
-		resp = append(resp, []byte(fmt.Sprintf("  %d) %v", i, task))...)
+	if len(taskNames) == 0 {
+		resp += "Empty"
+		return resp
 	}
 
-	if i == 0 {
-		resp = append(resp, []byte("  Empty")...)
+	for i, taskName := range taskNames {
+		process := router.TaskManager.GetProcess(taskName)
+		resp += fmt.Sprintf("\n  %d) %s: %v", i+1, taskName, process)
 	}
-
-	return
+	
+	return resp
 }
 
 func timerHelp(timer string) string {
 	if timer == "" {
 		return fmt.Sprintf("Timer options: %v", taskTimers)
 	}
-	return fmt.Sprintf("invalid timer \"%s\" sent: the valid options are: %v", timer, taskTimers)
+	return fmt.Sprintf("Invalid timer \"%s\" sent: the valid options are: %v", timer, taskTimers)
 }
 
 func taskHelp(cmd string) string {
@@ -112,13 +122,13 @@ func taskHelp(cmd string) string {
 	if cmd == "help" {
 		res += "Manage tasks registered in the server. The valid options are:\n\n"
 	} else {
-		res += fmt.Sprintf("invalid sub-command \"%s\" sent: the valid options are:\n\n", cmd)
+		res += fmt.Sprintf("Invalid sub-command \"%s\" sent: the valid options are:\n\n", cmd)
 	}
 
 	return res + "  - list                          : list all the processes with basic information on their status\n" +
 				 "  - exec <task name>              : executes the task with the given name\n" +
 				 "  - kill <task name>              : kills the task with the given name\n" +
-				 "  - set-timer <task name> <timer> : set the timer for the task. Use \"set-timer list\" for the available options\n"
+				 "  - set-timer <task name> <timer> : set the timer for the task. Use \"set-timer list\" for the available options"
 }
 
 func fromStringToTimer(timer string) server.TaskTimer {

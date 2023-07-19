@@ -2,10 +2,12 @@ package commands
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/nixpare/logger"
 	"github.com/nixpare/server/v2"
+	"github.com/nixpare/server/v2/pipe"
 )
 
 func GoOfflineFor(srv *server.HTTPServer, d time.Duration) error {
@@ -70,4 +72,119 @@ func ExtendOffline(srv *server.HTTPServer, d time.Duration) error {
 		dd := time.Until(srv.OnlineTime) + d
 		return GoOfflineFor(srv, dd)
 	}
+}
+
+func offlineCmd(router *server.Router, conn pipe.ServerConn, args ...string) (exitCode int, err error) {
+	if len(args) < 2 {
+		conn.WriteError("Invalid command: required server port and time duration in minutes")
+		exitCode = 1
+		return
+	}
+
+	var port int
+	port, err = strconv.Atoi(args[0])
+	if err != nil {
+		conn.WriteError(fmt.Sprintf("Error parsing port number: %v", err))
+		exitCode = 1
+		return
+	}
+
+	srv := router.HTTPServer(port)
+	if srv == nil {
+		conn.WriteError(fmt.Sprintf("Server with port %d not found", port))
+		exitCode = 1
+		return
+	}
+
+	var duration int
+	duration, err = strconv.Atoi(args[1])
+	if err != nil {
+		conn.WriteError(fmt.Sprintf("Error parsing time duration: %v", err))
+		exitCode = 1
+		return
+	}
+
+	err = GoOfflineFor(srv, time.Duration(int(time.Minute) * duration))
+	if err != nil {
+		conn.WriteError(fmt.Sprintf("Error sending the server %d offline: %v", port, err))
+		exitCode = 1
+		return
+	}
+
+	conn.WriteOutput(fmt.Sprintf("Server offline for %d minutes", duration))
+	return
+}
+
+func onlineCmd(router *server.Router, conn pipe.ServerConn, args ...string) (exitCode int, err error) {
+	if len(args) < 1 {
+		conn.WriteError("Invalid command: required server port")
+		exitCode = 1
+		return
+	}
+
+	var port int
+	port, err = strconv.Atoi(args[0])
+	if err != nil {
+		conn.WriteError(fmt.Sprintf("error parsing port number: %v", err))
+		exitCode = 1
+		return
+	}
+
+	srv := router.HTTPServer(port)
+	if srv == nil {
+		conn.WriteError(fmt.Sprintf("server with port %d not found", port))
+		exitCode = 1
+		return
+	}
+
+	err = GoOnline(srv)
+	if err != nil {
+		conn.WriteError(fmt.Sprintf("Error sending the server %d online: %v", port, err))
+		exitCode = 1
+		return
+	}
+
+	conn.WriteOutput("Server online")
+	return
+}
+
+func extendOfflineCmd(router *server.Router, conn pipe.ServerConn, args ...string) (exitCode int, err error) {
+	if len(args) < 2 {
+		conn.WriteError("Invalid command: required server port and time duration in minutes")
+		exitCode = 1
+		return
+	}
+
+	var port int
+	port, err = strconv.Atoi(args[0])
+	if err != nil {
+		conn.WriteError(fmt.Sprintf("error parsing port number: %v", err))
+		exitCode = 1
+		return
+	}
+
+	srv := router.HTTPServer(port)
+	if srv == nil {
+		conn.WriteError(fmt.Sprintf("server with port %d not found", port))
+		exitCode = 1
+		return
+	}
+
+	var duration int
+	duration, err = strconv.Atoi(args[1])
+	if err != nil {
+		conn.WriteError(fmt.Sprintf("error parsing time duration: %v", err))
+		exitCode = 1
+		return
+	}
+
+	err = ExtendOffline(srv, time.Duration(int(time.Minute) * duration))
+	if err == nil {
+		conn.WriteError(fmt.Sprintf("Error extending server %d offline period: %v", port, err))
+		exitCode = 1
+		return
+	}
+
+	conn.WriteOutput(fmt.Sprintf("Server offline period extended by %d minutes", duration))
+	return
 }

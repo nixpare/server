@@ -1,64 +1,50 @@
 package commands
 
 import (
-	"bufio"
+	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
-	"net"
-	"strconv"
-	"time"
 
 	"github.com/nixpare/logger"
 	"github.com/nixpare/server/v2"
-	"gopkg.in/natefinch/npipe.v2"
+	"github.com/nixpare/server/v2/pipe"
 )
 
-type pipeConn struct {
-	router  *server.Router
-	ln      *npipe.PipeListener
-	logger  *logger.Logger
-	running bool
-	exitC   chan struct{}
-}
-
-type CustomCommandFunc func(router *server.Router, args ...string) (resp []byte, err error)
+type CustomCommandFunc func(router *server.Router, p pipe.ServerConn, args ...string) (exitCode int, err error)
 
 const commandTaskName = "Command Pipe"
 
 var customCommands = make(map[string]CustomCommandFunc)
 
-func ListenForCommands(pipePath string, router *server.Router) error {
+func ListenForCommands(pipeName string, router *server.Router) error {
 	err := router.TaskManager.NewTask(commandTaskName, func() (initF server.TaskFunc, execF server.TaskFunc, cleanupF server.TaskFunc) {
-		var p *pipeConn
+		var p pipe.PipeServer
+		pLogger := router.Logger.Clone(nil, "pipe")
+		var running bool
 
 		initF = func(t *server.Task) error {
 			var err error
-			p, err = openNamedPipeConn(pipePath, router)
+			p, err = pipe.NewPipeServer(pipeName)
 			return err
 		}
 
 		execF = func(t *server.Task) error {
-			if p.running {
-				t.Logger.Printf(logger.LOG_LEVEL_INFO, "Task %s already running, doing nothing", t.Name())
+			if running {
+				t.Logger.Printf(logger.LOG_LEVEL_INFO, "Task \"%s\" already running, doing nothing", t.Name())
 				return nil
 			}
 
-			p.running = true
+			defer func() { running = false }()
+
 			go func() {
 				if t.ListenForExit() {
-					p.exitC <- struct{}{}
+					p.Close(nil)
 				}
 			}()
 			
-			p.listenNamedPipe()
-			return nil
-		}
-
-		cleanupF = func(t *server.Task) error {
-			close(p.exitC)
-			return nil
+			return p.Listen(func(conn pipe.ServerConn) (exitCode int, err error) {
+				return commandHandler(conn, router, pLogger)
+			})
 		}
 
 		return
@@ -78,216 +64,84 @@ func RegisterCustomCommand(cmd string, f CustomCommandFunc) {
 	customCommands[cmd] = f
 }
 
-func SendCommand(pipePath string, args ...string) (resp string, err error) {
-	conn, err := npipe.DialTimeout(`\\.\pipe` + pipePath, time.Second)
+func SendCommand(pipeName string, args ...string) (stdout string, stderr string, exitCode int, err error) {
+	stdoutBuf := new(bytes.Buffer)
+	stderrBuf := new(bytes.Buffer)
+
+	data, err := json.Marshal(args)
 	if err != nil {
 		return
 	}
 
-	data, _ := json.Marshal(args)
-	_, err = conn.Write(append(data, []byte("\n")...))
-	if err != nil {
-		err = fmt.Errorf("failed writing command: %v", err)
-		return
-	}
+	exitCode, err = pipe.ConnectToPipe(pipeName, func(conn pipe.ClientConn) (exitCode int, err error) {
+		return conn.Pipe(bytes.NewReader(data), stdoutBuf, stderrBuf)
+	})
+	stdout = stdoutBuf.String()
+	stderr = stderrBuf.String()
 
-	data, err = io.ReadAll(conn)
-	if err != nil {
-		err = fmt.Errorf("failed reading response: %v", err)
-		return
-	}
-	resp = string(data)
 	return
 }
 
-func openNamedPipeConn(pipeName string, router *server.Router) (*pipeConn, error) {
-	ln, err := npipe.Listen(`\\.\pipe` + pipeName)
+func commandHandler(conn pipe.ServerConn, router *server.Router, pLogger *logger.Logger) (exitCode int, err error) {
+	var cmd string
+	cmd, err = conn.ListenMessage()
 	if err != nil {
-		return nil, fmt.Errorf("cannot listen pipe named %s: %v", pipeName, err)
+		pLogger.Printf(logger.LOG_LEVEL_WARNING, "Failed reading command: %v", err)
+		exitCode = -1
+		return
 	}
 
-	p := &pipeConn{
-		router: router,
-		ln:     ln,
-		logger: router.Logger.Clone(nil, "pipe"),
-		exitC:  make(chan struct{}),
+	var args []string
+	err = json.Unmarshal([]byte(cmd), &args)
+
+	if err != nil {
+		msg := fmt.Sprintf("Command decode error: %v", err)
+		pLogger.Print(logger.LOG_LEVEL_ERROR, msg)
+		conn.WriteError(msg)
+		exitCode = 1
+		return
 	}
 
-	return p, nil
+	err = logger.PanicToErr(func() error {
+		exitCode, err = ExecuteCommands(router, conn, args[0], args[1:]...)
+		return err
+	})
+	if err != nil {
+		pLogger.Printf(logger.LOG_LEVEL_ERROR, "Command error: %v", err.Error())
+	}
+
+	return
 }
 
-func (p *pipeConn) listenNamedPipe() {
-	go func() {
-		for p.running {
-			conn, err := p.ln.Accept()
-			if err != nil {
-				if errors.Is(err, npipe.ErrClosed) {
-					break
-				}
-				
-				p.logger.Printf(
-					logger.LOG_LEVEL_ERROR,
-					"Error in pipe connection: %v\n", err,
-				)
-				continue
-			}
-
-			go p.handleConnection(conn)
-		}
-	}()
-
-	<- p.exitC
-	p.running = false
-
-	err := p.ln.Close()
-	if err != nil {
-		p.logger.Printf(
-			logger.LOG_LEVEL_ERROR,
-			"Error while closing pipe: %v\n", err,
-		)
-	}
-}
-
-func (p *pipeConn) handleConnection(conn net.Conn) {
-	cmd, err := bufio.NewReader(conn).ReadString('\n')
-	if err != nil {
-		p.logger.Printf(
-			logger.LOG_LEVEL_WARNING,
-			"Failed reading command: %v", err,
-		)
-	}
-
-	var resp []byte
-
-	func() {
-		var args []string
-
-		err = json.Unmarshal([]byte(cmd), &args)
-		if err != nil {
-			resp = []byte("Command decode error: " + err.Error())
-			return
-		}
-
-		err = logger.PanicToErr(func() error {
-			resp, err = p.ExecuteCommands(args[0], args[1:]...)
-			return err
-		})
-		if err != nil {
-			resp = []byte("Command error: " + err.Error())
-		}
-	}()
-
-	if len(resp) > 0 {
-		_, err = conn.Write(resp)
-		if err != nil {
-			p.logger.Printf(
-				logger.LOG_LEVEL_ERROR,
-				"Failed writing command response: %v", err,
-			)
-		}
-	}
-
-	err = conn.Close()
-	if err != nil {
-		p.logger.Printf(
-			logger.LOG_LEVEL_WARNING,
-			"Failed closing command connection: %v", err,
-		)
-	}
-}
-
-func (p *pipeConn) ExecuteCommands(cmd string, args ...string) (resp []byte, err error) {
+func ExecuteCommands(router *server.Router, conn pipe.ServerConn, cmd string, args ...string) (exitCode int, err error) {
 	switch cmd {
 	case "help":
-		resp = []byte(commandNotFound(cmd))
+		conn.WriteOutput(commandNotFound(cmd))
 		return
 	case "ping":
-		resp = []byte("pong")
+		conn.WriteOutput("pong")
 		return
 	case "offline":
-		if len(args) < 2 {
-			return nil, errors.New("invalid command: required server port and time duration in minutes")
-		}
-
-		port, err := strconv.Atoi(args[0])
-		if err != nil {
-			return nil, fmt.Errorf("error parsing port number: %w", err)
-		}
-
-		srv := p.router.HTTPServer(port)
-		if srv == nil {
-			return nil, fmt.Errorf("server with port %d not found", port)
-		}
-
-		duration, err := strconv.Atoi(args[1])
-		if err != nil {
-			return nil, fmt.Errorf("error parsing time duration: %w", err)
-		}
-
-		err = GoOfflineFor(srv, time.Duration(int(time.Minute) * duration))
-		if err == nil {
-			resp = []byte(fmt.Sprintf("Server offline for %d minutes", duration))
-		}
+		return offlineCmd(router, conn, args...)
 	case "online":
-		if len(args) < 1 {
-			return nil, errors.New("invalid command: required server port")
-		}
-
-		port, err := strconv.Atoi(args[0])
-		if err != nil {
-			return nil, fmt.Errorf("error parsing server port: %w", err)
-		}
-
-		srv := p.router.HTTPServer(port)
-		if srv == nil {
-			return nil, fmt.Errorf("server with port %d not found", port)
-		}
-
-		err = GoOnline(srv)
-		if err == nil {
-			resp = []byte("Server online")
-		}
+		return onlineCmd(router, conn, args...)
 	case "extend-offline":
-		if len(args) < 2 {
-			return nil, errors.New("invalid command: required server port and time duration in minutes")
-		}
-
-		port, err := strconv.Atoi(args[0])
-		if err != nil {
-			return nil, fmt.Errorf("error parsing server port: %w", err)
-		}
-
-		srv := p.router.HTTPServer(port)
-		if srv == nil {
-			return nil, fmt.Errorf("server with port %d not found", port)
-		}
-
-		duration, err := strconv.Atoi(args[1])
-		if err != nil {
-			return nil, fmt.Errorf("error parsing time duration: %w", err)
-		}
-
-		err = ExtendOffline(srv, time.Duration(int(time.Minute) * duration))
-		if err == nil {
-			resp = []byte(fmt.Sprintf("Server offline period extended by %d minutes", duration))
-		}
+		return extendOfflineCmd(router, conn, args...)
 	case "proc":
-		return p.processCmd(args)
+		return processCmd(router, conn, args...)
 	case "task":
-		return p.taskCmd(args)
+		return taskCmd(router, conn, args...)
 	case "log":
-		return logs(p.router, args)
+		return logs(router, conn, args...)
 	default:
 		f, ok := customCommands[cmd]
 		if !ok {
-			err = errors.New(commandNotFound(cmd))
+			conn.WriteError(commandNotFound(cmd))
 			return
 		}
 
-		return f(p.router, args...)
+		return f(router, conn, args...)
 	}
-
-	return
 }
 
 func commandNotFound(cmd string) string {
@@ -295,7 +149,7 @@ func commandNotFound(cmd string) string {
 	if cmd == "help" {
 		res = "NixServer Manager: "
 	} else {
-		res = fmt.Sprintf("unknown command \"%s\": ", cmd)
+		res = fmt.Sprintf("Unknown command \"%s\": ", cmd)
 	}
 
 	customCmds := "[ "

@@ -10,7 +10,12 @@ require (
 	github.com/yookoala/gofast v0.7.0
 )
 
-require gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce
+require github.com/Microsoft/go-winio v0.6.1
+
+require (
+	golang.org/x/mod v0.12.0 // indirect
+	golang.org/x/sys v0.10.0 // indirect
+)
 
 require (
 	github.com/gorilla/websocket v1.5.0

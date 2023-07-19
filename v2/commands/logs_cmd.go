@@ -1,14 +1,14 @@
 package commands
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/nixpare/logger"
 	"github.com/nixpare/server/v2"
+	"github.com/nixpare/server/v2/pipe"
 )
 
-func logs(router *server.Router, args []string) (resp []byte, err error) {
+func logs(router *server.Router, conn pipe.ServerConn, args ...string) (exitCode int, err error) {
 	var pretty bool
 	var logs []logger.Log
 
@@ -22,7 +22,7 @@ func logs(router *server.Router, args []string) (resp []byte, err error) {
 	} else {
 		switch args[0] {
 		case "help":
-			resp = []byte(logsHelp("help"))
+			conn.WriteOutput(logsHelp("help"))
 			return
 		case "tags":
 			logs = router.Logger.LogsMatch(args[1:]...)
@@ -32,37 +32,44 @@ func logs(router *server.Router, args []string) (resp []byte, err error) {
 			levels := fromStringToLogLevel(args[1:])
 			logs = router.Logger.LogsLevelMatchAny(levels...)
 		case "list-tags":
-			tags := make(map[string]bool)
-			for _, l := range router.Logger.Logs() {
-				for _, t := range l.Tags() {
-					tags[t] = true
-				}
-			}
-	
-			resp = []byte("Available tags: [ ")
-			for t := range tags {
-				resp = append(resp, []byte(fmt.Sprintf("<%s> ", t))...)
-			}
-			resp = append(resp, []byte("]")...)
-			
+			conn.WriteOutput(listTags(router))
 			return
 		default:
-			return nil, errors.New(logsHelp(args[0]))
+			conn.WriteError(logsHelp(args[0]))
+			exitCode = 1
+			return
 		}
 	}
 
-	resp = []byte("\n")
+	resp := "\n"
 	if pretty {
 		for _, l := range logs {
-			resp = append(resp, []byte(l.FullColored() + "\n")...)
+			resp += l.FullColored() + "\n"
 		}
 	} else {
 		for _, l := range logs {
-			resp = append(resp, []byte(l.Full() + "\n")...)
+			resp += l.Full() + "\n"
 		}
 	}
 	
+	conn.WriteOutput(resp)
 	return
+}
+
+func listTags(router *server.Router) string {
+	tags := make(map[string]bool)
+	for _, l := range router.Logger.Logs() {
+		for _, t := range l.Tags() {
+			tags[t] = true
+		}
+	}
+
+	res := "Available tags: [ "
+	for t := range tags {
+		res += fmt.Sprintf("<%s> ", t)
+	}
+	res += "]"
+	return res
 }
 
 func fromStringToLogLevel(levels []string) []logger.LogLevel {
@@ -97,5 +104,5 @@ func logsHelp(cmd string) string {
 				 "    - tags-any [ tags ... ]   : get all the logs that matches at least one tag\n" +
 				 "    - level    [ levels ... ] : get all the logs with one of the log severities provided\n" +
 				 "    - list-tags               : list of tags currently used by logs\n\n" +
-				 "If --pretty is used as the first argument, the result will be colourful\n"
+				 "If --pretty is used as the first argument, the result will be colourful"
 }
