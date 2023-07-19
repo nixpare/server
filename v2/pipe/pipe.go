@@ -161,7 +161,7 @@ func (cc ClientConn) Pipe(stdin io.Reader, stdout io.Writer, stderr io.Writer) (
 			out, exitCode, err = cc.ListenResponse()
 
 			if err == nil {
-				_, err = stdout.Write([]byte(out + "\n"))
+				_, err = stdout.Write([]byte(out))
 				if err != nil {
 					exitC <- err
 					return
@@ -170,7 +170,7 @@ func (cc ClientConn) Pipe(stdin io.Reader, stdout io.Writer, stderr io.Writer) (
 			}
 
 			if errors.Is(err, ErrStandardError) {
-				_, err = stderr.Write([]byte(out + "\n"))
+				_, err = stderr.Write([]byte(out))
 				if err != nil {
 					exitC <- err
 					return

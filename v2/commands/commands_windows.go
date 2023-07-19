@@ -10,11 +10,11 @@ import (
 	"github.com/nixpare/server/v2/pipe"
 )
 
-type CustomCommandFunc func(router *server.Router, p pipe.ServerConn, args ...string) (exitCode int, err error)
+type CustomCommandHandler func(router *server.Router, p pipe.ServerConn, args ...string) (exitCode int, err error)
 
 const commandTaskName = "Command Pipe"
 
-var customCommands = make(map[string]CustomCommandFunc)
+var customCommands = make(map[string]CustomCommandHandler)
 
 func ListenForCommands(pipeName string, router *server.Router) error {
 	err := router.TaskManager.NewTask(commandTaskName, func() (initF server.TaskFunc, execF server.TaskFunc, cleanupF server.TaskFunc) {
@@ -57,7 +57,7 @@ func ListenForCommands(pipeName string, router *server.Router) error {
 	return nil
 }
 
-func RegisterCustomCommand(cmd string, f CustomCommandFunc) {
+func RegisterCustomCommand(cmd string, f CustomCommandHandler) {
 	if f == nil {
 		return
 	}
@@ -82,12 +82,29 @@ func SendCommand(pipeName string, args ...string) (stdout string, stderr string,
 	return
 }
 
+func InitCommand(pipeName string, h pipe.ClientHandlerFunc, args ...string) (exitCode int, err error) {
+	data, err := json.Marshal(args)
+	if err != nil {
+		return
+	}
+	cmd := string(data)
+
+	return pipe.ConnectToPipe(pipeName, func(conn pipe.ClientConn) (exitCode int, err error) {
+		err = conn.WriteMessage(cmd)
+		if err != nil {
+			return
+		}
+
+		return h(conn)
+	})
+}
+
 func commandHandler(conn pipe.ServerConn, router *server.Router, pLogger *logger.Logger) (exitCode int, err error) {
 	var cmd string
 	cmd, err = conn.ListenMessage()
 	if err != nil {
 		pLogger.Printf(logger.LOG_LEVEL_WARNING, "Failed reading command: %v", err)
-		exitCode = -1
+		exitCode = 10
 		return
 	}
 
@@ -107,9 +124,9 @@ func commandHandler(conn pipe.ServerConn, router *server.Router, pLogger *logger
 		return err
 	})
 	if err != nil {
-		pLogger.Printf(logger.LOG_LEVEL_ERROR, "Command error: %v", err.Error())
+		conn.WriteError("Panic occurred: " + err.Error())
+		exitCode = 10
 	}
-
 	return
 }
 
