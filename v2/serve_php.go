@@ -50,20 +50,14 @@ func (php *PHPProcessor) Start() error {
 }
 
 func (php *PHPProcessor) Stop() error {
-	php.Logger.Debug("php stop called ...")
-
 	if php.Process.IsRunning() {
-		php.Logger.Debug("php is running ...")
-
 		err := php.Process.Stop()
 		if err != nil {
 			return err
 		}
 	}
 
-	php.Logger.Debug("php waiting for exit ...")
 	exitStatus := php.Process.Wait()
-	php.Logger.Debug("php exited:", exitStatus, exitStatus.Error())
 	return exitStatus.Error()
 }
 

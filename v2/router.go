@@ -176,3 +176,7 @@ func (router *Router) HTTPServer(port int) *HTTPServer {
 func (router *Router) TCPServer(port int) *TCPServer {
 	return router.tcpServers[port]
 }
+
+func (router *Router) StartTime() time.Time {
+	return router.startTime
+}
