@@ -102,8 +102,8 @@ func taskList(router *server.Router) string {
 	}
 
 	for i, taskName := range taskNames {
-		process := router.TaskManager.GetProcess(taskName)
-		resp += fmt.Sprintf("\n  %d) %s: %v", i+1, taskName, process)
+		task := router.TaskManager.GetTask(taskName)
+		resp += fmt.Sprintf("\n  %d) %s: %v", i+1, taskName, task)
 	}
 	
 	return resp

@@ -180,10 +180,11 @@ func (cc ClientConn) Pipe(stdin io.Reader, stdout io.Writer, stderr io.Writer) (
 
 			if errors.Is(err, ErrExitError) {
 				exitC <- nil
+				break
 			}
 				
 			exitC <- err
-			return
+			break
 		}
 	}()
 

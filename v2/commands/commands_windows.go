@@ -137,6 +137,7 @@ func ExecuteCommands(router *server.Router, conn pipe.ServerConn, cmd string, ar
 		f, ok := customCommands[cmd]
 		if !ok {
 			conn.WriteError(commandNotFound(cmd))
+			exitCode = 1
 			return
 		}
 
