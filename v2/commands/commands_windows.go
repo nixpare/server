@@ -19,12 +19,12 @@ var customCommands = make(map[string]CustomCommandHandler)
 func ListenForCommands(pipeName string, router *server.Router) error {
 	err := router.TaskManager.NewTask(commandTaskName, func() (initF server.TaskFunc, execF server.TaskFunc, cleanupF server.TaskFunc) {
 		var p pipe.PipeServer
-		pLogger := router.Logger.Clone(nil, "pipe")
 		var running bool
 
 		initF = func(t *server.Task) error {
 			var err error
 			p, err = pipe.NewPipeServer(pipeName)
+			p.Logger().SetParent(router.Logger)
 			return err
 		}
 
@@ -38,13 +38,20 @@ func ListenForCommands(pipeName string, router *server.Router) error {
 
 			go func() {
 				if t.ListenForExit() {
-					p.Close(nil)
+					p.Close()
 				}
 			}()
 			
-			return p.Listen(func(conn pipe.ServerConn) (exitCode int, err error) {
-				return commandHandler(conn, router, pLogger)
+			p.Logger().Print(logger.LOG_LEVEL_INFO, "Pipe started listening")
+			err := p.Listen(func(conn pipe.ServerConn) (exitCode int, err error) {
+				return commandHandler(conn, router, p.Logger())
 			})
+			if err != nil {
+				p.Logger().Printf(logger.LOG_LEVEL_ERROR, "Pipe stopped listening with error: %v", err)
+			} else {
+				p.Logger().Print(logger.LOG_LEVEL_INFO, "Pipe stopped listening successfully")
+			}
+			return err
 		}
 
 		return
@@ -115,9 +122,11 @@ func commandHandler(conn pipe.ServerConn, router *server.Router, pLogger *logger
 		msg := fmt.Sprintf("Command decode error: %v", err)
 		pLogger.Print(logger.LOG_LEVEL_ERROR, msg)
 		conn.WriteError(msg)
-		exitCode = 1
+		exitCode = 10
 		return
 	}
+
+	pLogger.Printf(logger.LOG_LEVEL_INFO, "Received command <%v>", args)
 
 	err = logger.PanicToErr(func() error {
 		exitCode, err = ExecuteCommands(router, conn, args[0], args[1:]...)
@@ -125,6 +134,7 @@ func commandHandler(conn pipe.ServerConn, router *server.Router, pLogger *logger
 	})
 	if err != nil {
 		conn.WriteError("Panic occurred: " + err.Error())
+		pLogger.Printf(logger.LOG_LEVEL_ERROR, "Panic occurred on command <%v>: %v", args, err)
 		exitCode = 10
 	}
 	return

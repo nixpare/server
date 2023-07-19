@@ -5,10 +5,12 @@ import (
 	"net"
 
 	"github.com/Microsoft/go-winio"
+	"github.com/nixpare/logger"
 )
 
 type WinPipeServer struct {
 	ln       net.Listener
+	logger   *logger.Logger
 	exitC    chan error
 }
 
@@ -25,6 +27,7 @@ func NewWinPipeServer(pipeName string, config *winio.PipeConfig) (*WinPipeServer
 
 	return &WinPipeServer {
 		ln:       listener,
+		logger:   logger.DefaultLogger.Clone(nil, "pipe"),
 		exitC:    make(chan error),
 	}, nil
 }
@@ -49,12 +52,12 @@ func (srv *WinPipeServer) Listen(h ServerHandlerFunc) error {
 				sc := ServerConn{ conn: conn }
 				exitCode, err := h(sc)
 				if err != nil {
-					srv.exitC <- err
+					srv.logger.Printf(logger.LOG_LEVEL_ERROR, "Error executing server handler: %v", err)
 				}
 				
 				err = sc.CloseConnection(exitCode)
 				if err != nil {
-					srv.exitC <- err
+					srv.logger.Printf(logger.LOG_LEVEL_ERROR, "Error closing connection: %v", err)
 				}
 			}()
 		}
@@ -63,8 +66,24 @@ func (srv *WinPipeServer) Listen(h ServerHandlerFunc) error {
 	return <- srv.exitC
 }
 
-func (srv *WinPipeServer) Close(err error) {
+func (srv *WinPipeServer) Close() error {
+	return srv.ln.Close()
+}
+
+func (srv *WinPipeServer) Kill(err error) {
 	srv.exitC <- err
+}
+
+func (srv *WinPipeServer) Logger() *logger.Logger {
+	return srv.logger
+}
+
+func (srv *WinPipeServer) SetLogger(l *logger.Logger) {
+	if l == nil {
+		return
+	}
+
+	srv.logger = l
 }
 
 func connectToPipe(pipeName string, h ClientHandlerFunc) (exitCode int, err error) {

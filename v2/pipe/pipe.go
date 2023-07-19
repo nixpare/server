@@ -6,11 +6,16 @@ import (
 	"errors"
 	"io"
 	"net"
+
+	"github.com/nixpare/logger"
 )
 
 type PipeServer interface {
 	Listen(handler ServerHandlerFunc) (err error)
-	Close(err error)
+	Logger() *logger.Logger
+	SetLogger(l *logger.Logger)
+	Close() (err error)
+	Kill(err error)
 }
 
 func NewPipeServer(pipeName string) (PipeServer, error) {
