@@ -140,6 +140,7 @@ func commandHandler(conn pipe.ServerConn, router *server.Router, pLogger *logger
 	if panicErr.PanicErr() != nil {
 		conn.WriteError(fmt.Sprintf("panic: %v", panicErr))
 		err = fmt.Errorf("panic on command %v: %w", args, panicErr.Unwrap())
+		exitCode = 1
 		return
 	}
 	if panicErr.Err() != nil {
