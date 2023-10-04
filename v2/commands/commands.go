@@ -3,6 +3,7 @@ package commands
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/nixpare/logger"
@@ -130,13 +131,27 @@ func commandHandler(conn pipe.ServerConn, router *server.Router, pLogger *logger
 	panicErr := logger.CapturePanic(func() error {
 		var cmdErr error
 		exitCode, cmdErr, err = ExecuteCommands(router, conn, args[0], args[1:]...)
-		if cmdErr != nil {
-			pLogger.Printf(logger.LOG_LEVEL_ERROR, "Command %v (exit code %d) returned an error: %v", args, exitCode, cmdErr)
-		} else if err == nil {
+
+		switch {
+		case cmdErr != nil:
+			unwrapErr := errors.Unwrap(cmdErr)
+			if unwrapErr == nil {
+				unwrapErr = cmdErr
+			}
+			pLogger.Printf(logger.LOG_LEVEL_ERROR, "Command %v (exit code %d) returned an error: %v", args, exitCode, unwrapErr)
+		case exitCode != 0:
+			pLogger.Printf(logger.LOG_LEVEL_ERROR, "Command %v finished with exit code %d", args, exitCode)
+		case err == nil:
 			pLogger.Printf(logger.LOG_LEVEL_INFO, "Command %v terminated successfully", args)
 		}
+		
 		return err
 	})
+
+	if panicErr == nil {
+		return
+	}
+
 	if panicErr.PanicErr() != nil {
 		conn.WriteError(fmt.Sprintf("panic: %v", panicErr))
 		err = fmt.Errorf("panic on command %v: %w", args, panicErr.Unwrap())
@@ -154,7 +169,7 @@ func commandHandler(conn pipe.ServerConn, router *server.Router, pLogger *logger
 func ExecuteCommands(router *server.Router, conn pipe.ServerConn, cmd string, args ...string) (exitCode int, cmdErr error, err error) {
 	switch cmd {
 	case "help":
-		err = conn.WriteOutput(commandNotFound(cmd))
+		err = conn.WriteOutput(commandHelp())
 		return
 	case "ping":
 		err = conn.WriteOutput("pong")
@@ -174,7 +189,7 @@ func ExecuteCommands(router *server.Router, conn pipe.ServerConn, cmd string, ar
 	default:
 		f, ok := customCommands[cmd]
 		if !ok {
-			err = conn.WriteError(commandNotFound(cmd))
+			cmdErr = commandNotFound(cmd)
 			exitCode = 1
 			return
 		}
@@ -183,21 +198,22 @@ func ExecuteCommands(router *server.Router, conn pipe.ServerConn, cmd string, ar
 	}
 }
 
-func commandNotFound(cmd string) string {
-	var res string
-	if cmd == "help" {
-		res = "NixServer Manager: "
-	} else {
-		res = fmt.Sprintf("Unknown command \"%s\": ", cmd)
-	}
+func commandNotFound(cmd string) error {
+	return fmt.Errorf("%w: %s", fmt.Errorf("Unknown command \"%s\"", cmd), sbAvailableCommands())
+}
 
+func commandHelp() string {
+	return "NixServer Manager: " + sbAvailableCommands()
+}
+
+func sbAvailableCommands() string {
 	customCmds := "[ "
 	for c := range customCommands {
 		customCmds += c + " "
 	}
 	customCmds += "]"
 
-	return res + "available commands:\n" +
+	return "available commands:\n" +
 				 "  * built-in commands:\n" +
 				 "      - ping                    : replies just \"pong\", to test if the server can responde\n" +
 				 "      - online                  : set the server back online \n" +
