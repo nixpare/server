@@ -1,6 +1,7 @@
 package pipe
 
 import (
+	"bufio"
 	"errors"
 	"net"
 

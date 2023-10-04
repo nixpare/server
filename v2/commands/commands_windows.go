@@ -1,6 +1,9 @@
 package commands
 
-import "github.com/nixpare/server/v2"
+import (
+	"github.com/nixpare/server/v2"
+	"github.com/nixpare/server/v2/pipe"
+)
 
 func ListenForCommands(pipeName string, router *server.Router) error {
 	return listenForCommands(pipeName, router)
