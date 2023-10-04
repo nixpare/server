@@ -1,38 +1,39 @@
+// go:build !windows
 package pipe
 
 import (
+	"bufio"
 	"errors"
 	"net"
+	"os"
 
-	"github.com/Microsoft/go-winio"
 	"github.com/nixpare/logger"
 )
 
-type WinPipeServer struct {
+type UnixPipeServer struct {
 	ln       net.Listener
 	logger   *logger.Logger
 	exitC    chan error
 }
 
-func newPipeServer(pipeName string) (PipeServer, error) {
-	return NewWinPipeServer(pipeName, nil)
+func newPipeServer(pipePath string) (PipeServer, error) {
+	return NewUnixPipeServer(pipePath)
 }
 
-func NewWinPipeServer(pipeName string, config *winio.PipeConfig) (*WinPipeServer, error) {
-	pipePath := `\\.\pipe\%s` + pipeName
-	listener, err := winio.ListenPipe(pipePath, config)
+func NewUnixPipeServer(pipePath string) (*UnixPipeServer, error) {
+	listener, err := net.Listen("unix", UnixPipePath(pipePath))
 	if err != nil {
 		return nil, err
 	}
 
-	return &WinPipeServer {
-		ln:       listener,
+	return &UnixPipeServer {
+		ln: 	  listener,
 		logger:   logger.DefaultLogger.Clone(nil, "pipe"),
 		exitC:    make(chan error),
 	}, nil
 }
 
-func (srv *WinPipeServer) Listen(h ServerHandlerFunc) error {
+func (srv *UnixPipeServer) Listen(h ServerHandlerFunc) error {
 	defer srv.ln.Close()
 
 	go func() {
@@ -66,19 +67,19 @@ func (srv *WinPipeServer) Listen(h ServerHandlerFunc) error {
 	return <- srv.exitC
 }
 
-func (srv *WinPipeServer) Close() error {
+func (srv *UnixPipeServer) Close() error {
 	return srv.ln.Close()
 }
 
-func (srv *WinPipeServer) Kill(err error) {
+func (srv *UnixPipeServer) Kill(err error) {
 	srv.exitC <- err
 }
 
-func (srv *WinPipeServer) Logger() *logger.Logger {
+func (srv *UnixPipeServer) Logger() *logger.Logger {
 	return srv.logger
 }
 
-func (srv *WinPipeServer) SetLogger(l *logger.Logger) {
+func (srv *UnixPipeServer) SetLogger(l *logger.Logger) {
 	if l == nil {
 		return
 	}
@@ -86,8 +87,8 @@ func (srv *WinPipeServer) SetLogger(l *logger.Logger) {
 	srv.logger = l
 }
 
-func connectToPipe(pipeName string, h ClientHandlerFunc) (exitCode int, err error) {
-	conn, err := winio.DialPipe(`\\.\pipe\%s` + pipeName, nil)
+func connectToPipe(pipePath string, h ClientHandlerFunc) (exitCode int, err error) {
+	conn, err := net.Dial("unix", UnixPipePath(pipePath))
 	if err != nil {
 		return
 	}
@@ -96,4 +97,12 @@ func connectToPipe(pipeName string, h ClientHandlerFunc) (exitCode int, err erro
 		conn: conn,
 		rd:   bufio.NewReader(conn),
 	})
+}
+
+func UnixPipePath(pipePath string) string {
+	if pipePath == "" {
+		pipePath, _ = os.Getwd()
+		pipePath += "/cmd.sock"
+	}
+	return pipePath
 }

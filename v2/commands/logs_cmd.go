@@ -8,7 +8,7 @@ import (
 	"github.com/nixpare/server/v2/pipe"
 )
 
-func logs(router *server.Router, conn pipe.ServerConn, args ...string) (exitCode int, err error) {
+func logs(router *server.Router, conn pipe.ServerConn, args ...string) (exitCode int, cmdErr error, err error) {
 	var pretty bool
 	var logs []logger.Log
 
@@ -22,7 +22,7 @@ func logs(router *server.Router, conn pipe.ServerConn, args ...string) (exitCode
 	} else {
 		switch args[0] {
 		case "help":
-			conn.WriteOutput(logsHelp("help"))
+			err = conn.WriteOutput(logsHelp("help"))
 			return
 		case "tags":
 			logs = router.Logger.LogsMatch(args[1:]...)
@@ -32,10 +32,10 @@ func logs(router *server.Router, conn pipe.ServerConn, args ...string) (exitCode
 			levels := fromStringToLogLevel(args[1:])
 			logs = router.Logger.LogsLevelMatchAny(levels...)
 		case "list-tags":
-			conn.WriteOutput(listTags(router))
+			err = conn.WriteOutput(listTags(router))
 			return
 		default:
-			conn.WriteError(logsHelp(args[0]))
+			err = conn.WriteError(logsHelp(args[0]))
 			exitCode = 1
 			return
 		}
@@ -52,7 +52,7 @@ func logs(router *server.Router, conn pipe.ServerConn, args ...string) (exitCode
 		}
 	}
 	
-	conn.WriteOutput(resp)
+	err = conn.WriteOutput(resp)
 	return
 }
 

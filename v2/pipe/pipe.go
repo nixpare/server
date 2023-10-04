@@ -104,6 +104,7 @@ func (sc ServerConn) CloseConnection(exitCode int) error {
 
 type ClientConn struct {
 	conn   net.Conn
+	rd     *bufio.Reader
 }
 
 func (cc ClientConn) WriteMessage(msg string) error {
@@ -117,7 +118,7 @@ func (cc ClientConn) WriteMessage(msg string) error {
 }
 
 func (cc ClientConn) ListenResponse() (out string, exitCode int, err error) {
-	data, err := bufio.NewReader(cc.conn).ReadBytes('\n')
+	data, err := cc.rd.ReadBytes('\n')
 	if err != nil {
 		return
 	}

@@ -9,65 +9,65 @@ import (
 
 var taskTimers = [...]string{"10s", "1m", "10m", "30m", "1h", "inactive"}
 
-func taskCmd(router *server.Router, conn pipe.ServerConn, args ...string) (exitCode int, err error) {
+func taskCmd(router *server.Router, conn pipe.ServerConn, args ...string) (exitCode int, cmdErr error, err error) {
 	if len(args) == 0 {
-		conn.WriteError(taskHelp(""))
+		err = conn.WriteError(taskHelp(""))
 		exitCode = 1
 		return
 	}
 
 	if len(args) == 1 {
 		if args[0] == "help" {
-			conn.WriteOutput(taskHelp("help"))
+			err = conn.WriteOutput(taskHelp("help"))
 			return
 		}
 
 		if args[0] != "list" {
-			conn.WriteError(taskHelp(args[0]))
+			err = conn.WriteError(taskHelp(args[0]))
 			exitCode = 1
 			return
 		}
 
-		conn.WriteOutput(taskList(router))
+		err = conn.WriteOutput(taskList(router))
 		return 
 	}
 
 	if len(args) < 2 {
-		conn.WriteError(taskHelp(args[0]))
+		err = conn.WriteError(taskHelp(args[0]))
 		exitCode = 1
 		return
 	}
 
 	switch args[0] {
 	case "exec":
-		err = router.TaskManager.ExecTask(args[1])
-		if err != nil {
-			conn.WriteError(fmt.Sprintf("Error executing task: %v", err))
+		cmdErr = router.TaskManager.ExecTask(args[1])
+		if cmdErr != nil {
+			err = conn.WriteError(fmt.Sprintf("Error executing task: %v", cmdErr))
 			exitCode = 1
 			return
 		}
 	case "kill":
-		err = router.TaskManager.KillTask(args[1])
-		if err != nil {
-			conn.WriteError(fmt.Sprintf("Error killing task: %v", err))
+		cmdErr = router.TaskManager.KillTask(args[1])
+		if cmdErr != nil {
+			err = conn.WriteError(fmt.Sprintf("Error killing task: %v", cmdErr))
 			exitCode = 1
 			return
 		}
 	case "set-timer":
 		if len(args) < 3 {
 			if args[1] == "list" {
-				conn.WriteOutput(timerHelp(""))
+				err = conn.WriteOutput(timerHelp(""))
 				return
 			}
 
-			conn.WriteError(taskHelp(args[0]))
+			err = conn.WriteError(taskHelp(args[0]))
 			exitCode = 1
 			return
 		}
 
 		t := router.TaskManager.GetTask(args[1])
 		if t == nil {
-			conn.WriteError("Task not found")
+			err = conn.WriteError("Task not found")
 			exitCode = 1
 			return
 		}
@@ -82,13 +82,13 @@ func taskCmd(router *server.Router, conn pipe.ServerConn, args ...string) (exitC
 		}
 
 		if !found {
-			conn.WriteError(timerHelp(args[2]))
+			err = conn.WriteError(timerHelp(args[2]))
 			exitCode = 1
 			return
 		}
 	}
 
-	conn.WriteOutput("Done")
+	err = conn.WriteOutput("Done")
 	return
 }
 
