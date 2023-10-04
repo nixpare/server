@@ -88,7 +88,7 @@ func (srv *WinPipeServer) SetLogger(l *logger.Logger) {
 }
 
 func connectToPipe(pipeName string, h ClientHandlerFunc) (exitCode int, err error) {
-	conn, err := winio.DialPipe(`\\.\pipe\%s` + pipeName, nil)
+	conn, err := winio.DialPipe(`\\.\pipe\` + pipeName, nil)
 	if err != nil {
 		return
 	}

@@ -18,4 +18,4 @@ require (
 	golang.org/x/tools v0.6.0 // indirect
 )
 
-retract [v2.6.7, v2.6.14]
+retract v2.6.15
