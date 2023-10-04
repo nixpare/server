@@ -127,7 +127,7 @@ func commandHandler(conn pipe.ServerConn, router *server.Router, pLogger *logger
 
 	pLogger.Printf(logger.LOG_LEVEL_INFO, "Received command %v", args)
 
-	err = logger.PanicToErr(func() error {
+	panicErr := logger.CapturePanic(func() error {
 		var cmdErr error
 		exitCode, cmdErr, err = ExecuteCommands(router, conn, args[0], args[1:]...)
 		if cmdErr != nil {
@@ -137,8 +137,13 @@ func commandHandler(conn pipe.ServerConn, router *server.Router, pLogger *logger
 		}
 		return err
 	})
-	if err != nil {
-		err = fmt.Errorf("connection error occurred on command %v: %w", args, err)
+	if panicErr.PanicErr() != nil {
+		conn.WriteError(fmt.Sprintf("panic: %v", panicErr))
+		err = fmt.Errorf("panic on command %v: %w", args, panicErr.Unwrap())
+		return
+	}
+	if panicErr.Err() != nil {
+		err = fmt.Errorf("connection error on command %v: %w", args, err)
 		return
 	}
 
