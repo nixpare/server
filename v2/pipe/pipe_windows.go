@@ -20,7 +20,7 @@ func newPipeServer(pipeName string) (PipeServer, error) {
 }
 
 func NewWinPipeServer(pipeName string, config *winio.PipeConfig) (*WinPipeServer, error) {
-	pipePath := `\\.\pipe\%s` + pipeName
+	pipePath := `\\.\pipe\` + pipeName
 	listener, err := winio.ListenPipe(pipePath, config)
 	if err != nil {
 		return nil, err
