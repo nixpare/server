@@ -81,9 +81,8 @@ func sendCommand(pipeAddr string, args ...string) (stdout string, stderr string,
 		return
 	}
 
-	exitCode, err = pipe.ConnectToPipe(pipeAddr, func(conn pipe.ClientConn) (exitCode int, err error) {
-		exitCode, err = conn.Pipe(bytes.NewReader(data), stdoutBuf, stderrBuf)
-		return
+	err = pipe.ConnectToPipe(pipeAddr, func(conn pipe.ClientConn) error {
+		return conn.Pipe(bytes.NewReader(data), stdoutBuf, stderrBuf)
 	})
 	if err != nil {
 		return

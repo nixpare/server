@@ -1,198 +1,88 @@
 package pipe
 
 import (
-	"bufio"
-	"encoding/json"
 	"errors"
-	"io"
 	"net"
 
 	"github.com/nixpare/logger/v2"
 )
 
-type PipeServer interface {
-	Listen(handler ServerHandlerFunc) (err error)
-	Logger() logger.Logger
-	SetLogger(l logger.Logger)
-	Close() (err error)
-	Kill(err error)
+type PipeServer struct {
+	ln     net.Listener
+	logger logger.Logger
 }
 
-func NewPipeServer(pipeName string) (PipeServer, error) {
-	return newPipeServer(pipeName)
-}
-
-func ConnectToPipe(pipeName string, handler ClientHandlerFunc) error {
-	return connectToPipe(pipeName, handler)
-}
-
-type ServerHandlerFunc func(conn ServerConn) error
-type ClientHandlerFunc func(conn ClientConn) error
-
-type messageToClient struct {
-	Msg  string   `json:"msg"`
-	Type respType `json:"type"`
-	Code int      `json:"code"`
-}
-
-type messageToServer struct {
-	Msg string `json:"msg"`
-}
-
-type respType int
-
-const (
-	RESP_OUT respType = iota
-	RESP_ERR
-	resp_exit
-)
-
-var (
-	ErrInvalidRespType = errors.New("invalid response type")
-	ErrStandardError = errors.New("error received through stderr channel")
-	ErrExitError = errors.New("exit error")
-)
-
-type ServerConn struct {
-	conn net.Conn
-}
-
-func (sc ServerConn) ListenMessage() (string, error) {
-	data, err := bufio.NewReader(sc.conn).ReadBytes('\n')
+func newPipeServer(pipePath string) (*PipeServer, error) {
+	listener, err := newPipeListener(pipePath)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	var msg messageToServer
-	err = json.Unmarshal(data, &msg)
-	if err != nil {
-		return "", err
-	}
-
-	return msg.Msg, nil
+	return &PipeServer{
+		ln:     listener,
+		logger: logger.DefaultLogger.Clone(nil, "pipe"),
+	}, nil
 }
 
-func (sc ServerConn) WriteOutput(msg string) error {
-	data, err := json.Marshal(messageToClient{ Msg: msg, Type: RESP_OUT })
-	if err != nil {
-		return err
-	}
+func (srv *PipeServer) Listen(handler HandlerFunc) error {
+	for {
+		conn, err := srv.ln.Accept()
+		if err != nil {
+			if errors.Is(err, net.ErrClosed) {
+				return nil
+			} else {
+				return err
+			}
+		}
 
-	_, err = sc.conn.Write(append(data, '\n'))
-	return err
-}
-
-func (sc ServerConn) WriteError(msg string) error {
-	data, err := json.Marshal(messageToClient{ Msg: msg, Type: RESP_ERR })
-	if err != nil {
-		return err
-	}
-
-	_, err = sc.conn.Write(append(data, '\n'))
-	return err
-}
-
-func (sc ServerConn) CloseConnection(exitCode int) error {
-	data, err := json.Marshal(messageToClient{ Type: resp_exit, Code: exitCode })
-	if err != nil {
-		return err
-	}
-
-	_, err = sc.conn.Write(append(data, '\n'))
-	return err
-}
-
-type ClientConn struct {
-	conn   net.Conn
-	rd     *bufio.Reader
-}
-
-func (cc ClientConn) WriteMessage(msg string) error {
-	data, err := json.Marshal(messageToServer{ Msg: msg })
-	if err != nil {
-		return err
-	}
-
-	_, err = cc.conn.Write(append(data, '\n'))
-	return err
-}
-
-func (cc ClientConn) ListenResponse() (out string, exitCode int, err error) {
-	data, err := cc.rd.ReadBytes('\n')
-	if err != nil {
-		return
-	}
-
-	var msg messageToClient
-	err = json.Unmarshal(data, &msg)
-	if err != nil {
-		return
-	}
-
-	switch msg.Type {
-	case RESP_OUT:
-	case RESP_ERR:
-		err = ErrStandardError
-	case resp_exit:
-		err = ErrExitError
-	default:
-		err = ErrInvalidRespType
-		return
-	}
-
-	exitCode = msg.Code
-	out = msg.Msg
-	return
-}
-
-func (cc ClientConn) Pipe(stdin io.Reader, stdout io.Writer, stderr io.Writer) (int, error) {
-	var exitCode int
-	exitC := make(chan error)
-
-	go func() {
-		sc := bufio.NewScanner(stdin)
-		for sc.Scan() {
-			err := cc.WriteMessage(sc.Text())
+		go func() {
+			defer conn.Close()
+			
+			pc := newPipeConn(conn)
+			err := handler(pc)
 			if err != nil {
-				exitC <- err
-				break
+				srv.logger.Printf(logger.LOG_LEVEL_ERROR, "Error executing server handler: %v", err)
 			}
-		}
-	}()
+		}()
+	}
+}
 
+func (srv *PipeServer) Start(handler HandlerFunc) {
 	go func() {
-		for {
-			var out string
-			var err error
-			out, exitCode, err = cc.ListenResponse()
-
-			if err == nil {
-				_, err = stdout.Write([]byte(out))
-				if err != nil {
-					exitC <- err
-					return
-				}
-				continue
-			}
-
-			if errors.Is(err, ErrStandardError) {
-				_, err = stderr.Write([]byte(out))
-				if err != nil {
-					exitC <- err
-					return
-				}
-				continue
-			}
-
-			if errors.Is(err, ErrExitError) {
-				exitC <- nil
-				break
-			}
-				
-			exitC <- err
-			break
+		err := srv.Listen(handler)
+		if err != nil {
+			srv.logger.Printf(logger.LOG_LEVEL_ERROR, "Error executing server handler: %v", err)
 		}
 	}()
+}
 
-	return exitCode, <- exitC
+func (srv *PipeServer) Stop() error {
+	return srv.ln.Close()
+}
+
+func (srv *PipeServer) Logger() logger.Logger {
+	return srv.logger
+}
+
+func (srv *PipeServer) SetLogger(l logger.Logger) {
+	if l == nil {
+		return
+	}
+
+	srv.logger = l
+}
+
+func connectToPipe(pipePath string, handler HandlerFunc) error {
+	conn, err := dialPipe(pipePath)
+	if err != nil {
+		return err
+	}
+
+	pc := newPipeConn(conn)
+	defer func() {
+		conn.Close()
+		pc.wg.Wait()
+	}()
+
+	return handler(pc)
 }
