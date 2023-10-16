@@ -8,7 +8,7 @@ import (
 	"github.com/nixpare/server/v2/pipe"
 )
 
-func logs(router *server.Router, conn pipe.ServerConn, args ...string) (exitCode int, cmdErr error, err error) {
+func logs(router *server.Router, conn pipe.Conn, args ...string) (exitCode int, cmdErr error, err error) {
 	var pretty bool
 	var logs []logger.Log
 

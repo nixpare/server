@@ -74,7 +74,7 @@ func ExtendOffline(srv *server.HTTPServer, d time.Duration) error {
 	}
 }
 
-func offlineCmd(router *server.Router, conn pipe.ServerConn, args ...string) (exitCode int, cmdErr error, err error) {
+func offlineCmd(router *server.Router, conn pipe.Conn, args ...string) (exitCode int, cmdErr error, err error) {
 	if len(args) < 2 {
 		err = conn.WriteError("Invalid command: required server port and time duration in minutes")
 		exitCode = 1
@@ -113,7 +113,7 @@ func offlineCmd(router *server.Router, conn pipe.ServerConn, args ...string) (ex
 	return
 }
 
-func onlineCmd(router *server.Router, conn pipe.ServerConn, args ...string) (exitCode int, cmdErr error, err error) {
+func onlineCmd(router *server.Router, conn pipe.Conn, args ...string) (exitCode int, cmdErr error, err error) {
 	if len(args) < 1 {
 		err = conn.WriteError("Invalid command: required server port")
 		exitCode = 1
@@ -145,7 +145,7 @@ func onlineCmd(router *server.Router, conn pipe.ServerConn, args ...string) (exi
 	return
 }
 
-func extendOfflineCmd(router *server.Router, conn pipe.ServerConn, args ...string) (exitCode int, cmdErr error, err error) {
+func extendOfflineCmd(router *server.Router, conn pipe.Conn, args ...string) (exitCode int, cmdErr error, err error) {
 	if len(args) < 2 {
 		err = conn.WriteError("Invalid command: required server port and time duration in minutes")
 		exitCode = 1

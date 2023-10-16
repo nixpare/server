@@ -13,6 +13,6 @@ func SendCommand(pipeName string, args ...string) (stdout string, stderr string,
 	return sendCommand(pipeName, args...)
 }
 
-func InitCommand(pipeName string, h pipe.ClientHandlerFunc, args ...string) (exitCode int, err error) {
+func InitCommand(pipeName string, h pipe.HandlerFunc, args ...string) (exitCode int, err error) {
 	return initCommand(pipeName, h, args...)
 }

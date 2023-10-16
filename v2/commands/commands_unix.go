@@ -14,6 +14,6 @@ func SendCommand(pipePath string, args ...string) (stdout string, stderr string,
 	return sendCommand(pipe.UnixPipePath(pipePath), args...)
 }
 
-func InitCommand(pipePath string, h pipe.ClientHandlerFunc, args ...string) (exitCode int, err error) {
+func InitCommand(pipePath string, h pipe.HandlerFunc, args ...string) (exitCode int, err error) {
 	return initCommand(pipe.UnixPipePath(pipePath), h, args...)
 }

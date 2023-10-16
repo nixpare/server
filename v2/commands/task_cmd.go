@@ -9,7 +9,7 @@ import (
 
 var taskTimers = [...]string{"10s", "1m", "10m", "30m", "1h", "inactive"}
 
-func taskCmd(router *server.Router, conn pipe.ServerConn, args ...string) (exitCode int, cmdErr error, err error) {
+func taskCmd(router *server.Router, conn pipe.Conn, args ...string) (exitCode int, cmdErr error, err error) {
 	if len(args) == 0 {
 		err = conn.WriteError(taskHelp(""))
 		exitCode = 1

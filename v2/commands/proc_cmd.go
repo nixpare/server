@@ -7,7 +7,7 @@ import (
 	"github.com/nixpare/server/v2/pipe"
 )
 
-func processCmd(router *server.Router, conn pipe.ServerConn, args ...string) (exitCode int, cmdErr, err error) {
+func processCmd(router *server.Router, conn pipe.Conn, args ...string) (exitCode int, cmdErr, err error) {
 	if len(args) == 0 {
 		err = conn.WriteError(procHelp(""))
 		exitCode = 1

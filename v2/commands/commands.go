@@ -17,7 +17,7 @@ const conn_error_exit_code = 255
 
 var customCommands = make(map[string]CustomCommandHandler)
 
-type CustomCommandHandler func(router *server.Router, p pipe.ServerConn, args ...string) (exitCode int, cmderr error, err error)
+type CustomCommandHandler func(router *server.Router, p pipe.Conn, args ...string) (exitCode int, cmderr error, err error)
 
 func listenForCommands(pipeAddr string, router *server.Router) error {
 	err := router.TaskManager.NewTask(commandTaskName, func() (initF server.TaskFunc, execF server.TaskFunc, cleanupF server.TaskFunc) {
