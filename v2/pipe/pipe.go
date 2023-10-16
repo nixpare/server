@@ -9,7 +9,7 @@ import (
 
 type PipeServer struct {
 	ln     net.Listener
-	logger logger.Logger
+	Logger logger.Logger
 }
 
 func newPipeServer(pipePath string) (*PipeServer, error) {
@@ -20,7 +20,7 @@ func newPipeServer(pipePath string) (*PipeServer, error) {
 
 	return &PipeServer{
 		ln:     listener,
-		logger: logger.DefaultLogger.Clone(nil, "pipe"),
+		Logger: logger.DefaultLogger.Clone(nil, "pipe"),
 	}, nil
 }
 
@@ -41,7 +41,7 @@ func (srv *PipeServer) Listen(handler HandlerFunc) error {
 			pc := newPipeConn(conn)
 			err := handler(pc)
 			if err != nil {
-				srv.logger.Printf(logger.LOG_LEVEL_ERROR, "Error executing server handler: %v", err)
+				srv.Logger.Printf(logger.LOG_LEVEL_ERROR, "Error executing server handler: %v", err)
 			}
 		}()
 	}
@@ -51,25 +51,13 @@ func (srv *PipeServer) Start(handler HandlerFunc) {
 	go func() {
 		err := srv.Listen(handler)
 		if err != nil {
-			srv.logger.Printf(logger.LOG_LEVEL_ERROR, "Error executing server handler: %v", err)
+			srv.Logger.Printf(logger.LOG_LEVEL_ERROR, "Error executing server handler: %v", err)
 		}
 	}()
 }
 
 func (srv *PipeServer) Stop() error {
 	return srv.ln.Close()
-}
-
-func (srv *PipeServer) Logger() logger.Logger {
-	return srv.logger
-}
-
-func (srv *PipeServer) SetLogger(l logger.Logger) {
-	if l == nil {
-		return
-	}
-
-	srv.logger = l
 }
 
 func connectToPipe(pipePath string, handler HandlerFunc) error {
