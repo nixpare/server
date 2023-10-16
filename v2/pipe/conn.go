@@ -57,5 +57,5 @@ func (pc Conn) WriteMessage(message string) error {
 }
 
 func (pc Conn) Write(b []byte) (int, error) {
-	return pc.conn.Write(b)
+	return pc.conn.Write(append(b, '\n'))
 }

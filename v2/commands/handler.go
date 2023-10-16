@@ -1,29 +1,47 @@
 package commands
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 
 	"github.com/nixpare/logger/v2"
-	"github.com/nixpare/server/v2"
-	"github.com/nixpare/server/v2/pipe"
 )
 
-func commandHandler(conn pipe.Conn, router *server.Router, pLogger logger.Logger) error {
-	var cmd string
-	cmd, err := conn.ListenMessage()
-	if err != nil {
-		return fmt.Errorf("failed reading command: %w", err)
+var (
+	ErrCommandRead = errors.New("failed reading command: no data received")
+)
+
+func commandHandler(sc *ServerConn) error {
+	data, ok := sc.conn.ReadMessage()
+	if !ok {
+		return ErrCommandRead
 	}
 
 	var args []string
-	err = json.Unmarshal([]byte(cmd), &args)
+	err := json.Unmarshal(data, &args)
 	if err != nil {
-		return fmt.Errorf("command decode error: %w", err)
+		return fmt.Errorf("command arguments decode error: %w", err)
 	}
 
-	pLogger.Printf(logger.LOG_LEVEL_INFO, "Received command %v", args)
+	sc.Logger.Printf(logger.LOG_LEVEL_INFO, "Received command %v", args)
 
+	msg := messageToClient{
+		Msg: fmt.Sprintf("Riceived %v", args),
+		Type: RESP_OUT,
+		Code: 1,
+	}
+
+	data, err = json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+
+	_, err = sc.conn.Write(data)
+	return err
+}
+
+/* func commandHandler(conn pipe.Conn, router *server.Router, pLogger logger.Logger) error {
 	var exitCode int
 	var cmdErr error
 
@@ -83,27 +101,39 @@ func commandHandler(conn pipe.Conn, router *server.Router, pLogger logger.Logger
 	return nil
 }
 
-/* func sendCommand(pipeAddr string, args ...string) (stdout string, stderr string, exitCode int, err error) {
-	stdoutBuf := new(bytes.Buffer)
-	stderrBuf := new(bytes.Buffer)
-
-	data, err := json.Marshal(args)
-	if err != nil {
+func (cs *CommandServer) executeCommands(cmd string, args ...string) (exitCode int, cmdErr error, err error) {
+	switch cmd {
+	case "help":
+		err = conn.WriteOutput(commandNotFound(cmd))
 		return
-	}
-
-	err = pipe.ConnectToPipe(pipeAddr, func(conn pipe.ClientConn) error {
-		return conn.Pipe(bytes.NewReader(data), stdoutBuf, stderrBuf)
-	})
-	if err != nil {
+	case "ping":
+		err = conn.WriteOutput("pong")
 		return
+	case "offline":
+		return offlineCmd(router, conn, args...)
+	case "online":
+		return onlineCmd(router, conn, args...)
+	case "extend-offline":
+		return extendOfflineCmd(router, conn, args...)
+	case "proc":
+		return processCmd(router, conn, args...)
+	case "task":
+		return taskCmd(router, conn, args...)
+	case "log":
+		return logs(router, conn, args...)
+	default:
+		f, ok := customCommands[cmd]
+		if !ok {
+			err = conn.WriteError(commandNotFound(cmd))
+			exitCode = 1
+			return
+		}
+
+		return f(router, conn, args...)
 	}
-
-	stdout = stdoutBuf.String()
-	stderr = stderrBuf.String()
-
-	return
 } */
+
+
 
 /* func initCommand(pipeAddr string, h pipe.ClientHandlerFunc, args ...string) (exitCode int, err error) {
 	data, err := json.Marshal(args)
