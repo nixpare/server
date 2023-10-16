@@ -6,12 +6,12 @@ import (
 	"net"
 
 	"github.com/Microsoft/go-winio"
-	"github.com/nixpare/logger"
+	"github.com/nixpare/logger/v2"
 )
 
 type WinPipeServer struct {
 	ln       net.Listener
-	logger   *logger.Logger
+	logger   logger.Logger
 	exitC    chan error
 }
 
@@ -75,11 +75,11 @@ func (srv *WinPipeServer) Kill(err error) {
 	srv.exitC <- err
 }
 
-func (srv *WinPipeServer) Logger() *logger.Logger {
+func (srv *WinPipeServer) Logger() logger.Logger {
 	return srv.logger
 }
 
-func (srv *WinPipeServer) SetLogger(l *logger.Logger) {
+func (srv *WinPipeServer) SetLogger(l logger.Logger) {
 	if l == nil {
 		return
 	}

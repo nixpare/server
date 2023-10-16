@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nixpare/logger"
+	"github.com/nixpare/logger/v2"
 )
 
 // Website is used in a subdomain to serve content with
@@ -180,7 +180,7 @@ type Route struct {
 	Srv *HTTPServer
 	// Router is a reference to the router this server connection belongs to
 	Router *Router
-	Logger *logger.Logger
+	Logger logger.Logger
 	// Secure is set to tell wheather the current connection is using HTTP (false)
 	// or HTTPS(true), so you can use one Routing function for secure and unsecure
 	// websites
@@ -264,7 +264,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (route *Route) serveHTTP() {
 	err := logger.PanicToErr(func() error {
 		route.prep()
-		route.Logger.AddTags(route.DomainName, route.SubdomainName, route.Domain.Name, route.Website.Name)
+		route.Logger = route.Logger.Clone(nil, route.DomainName, route.SubdomainName, route.Domain.Name, route.Website.Name)
 		return nil
 	})
 	if err != nil {

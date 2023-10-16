@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/nixpare/logger"
+	"github.com/nixpare/logger/v2"
 	"github.com/nixpare/process"
 	"github.com/yookoala/gofast"
 )
@@ -12,7 +12,7 @@ import (
 type PHPProcessor struct {
 	connFactory gofast.ConnFactory
 	Process     *process.Process
-	Logger      *logger.Logger
+	Logger      logger.Logger
 }
 
 func NewPHPProcessor(port int, args ...string) (php *PHPProcessor, err error) {

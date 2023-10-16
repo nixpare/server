@@ -3,18 +3,21 @@ package commands
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 
-	"github.com/nixpare/logger"
+	"github.com/nixpare/logger/v2"
 	"github.com/nixpare/server/v2"
 	"github.com/nixpare/server/v2/pipe"
 )
 
-type CustomCommandHandler func(router *server.Router, p pipe.ServerConn, args ...string) (exitCode int, cmderr error, err error)
-
 const commandTaskName = "Command Pipe"
 
+const conn_error_exit_code = 255
+
 var customCommands = make(map[string]CustomCommandHandler)
+
+type CustomCommandHandler func(router *server.Router, p pipe.ServerConn, args ...string) (exitCode int, cmderr error, err error)
 
 func listenForCommands(pipeAddr string, router *server.Router) error {
 	err := router.TaskManager.NewTask(commandTaskName, func() (initF server.TaskFunc, execF server.TaskFunc, cleanupF server.TaskFunc) {
@@ -28,7 +31,7 @@ func listenForCommands(pipeAddr string, router *server.Router) error {
 				return err
 			}
 
-			p.Logger().SetParent(router.Logger)
+			p.SetLogger(router.Logger.Clone(nil, "cmd-pipe"))
 			return nil
 		}
 
@@ -47,7 +50,7 @@ func listenForCommands(pipeAddr string, router *server.Router) error {
 			}()
 			
 			p.Logger().Print(logger.LOG_LEVEL_INFO, "Pipe started listening")
-			return p.Listen(func(conn pipe.ServerConn) (exitCode int, err error) {
+			return p.Listen(func(conn pipe.ServerConn) error {
 				return commandHandler(conn, router, p.Logger())
 			})
 		}
@@ -109,46 +112,78 @@ func initCommand(pipeAddr string, h pipe.ClientHandlerFunc, args ...string) (exi
 	})
 }
 
-func commandHandler(conn pipe.ServerConn, router *server.Router, pLogger *logger.Logger) (exitCode int, err error) {
+func commandHandler(conn pipe.ServerConn, router *server.Router, pLogger logger.Logger) error {
 	var cmd string
-	cmd, err = conn.ListenMessage()
+	cmd, err := conn.ListenMessage()
 	if err != nil {
-		err = fmt.Errorf("failed reading command: %w", err)
-		return
+		return fmt.Errorf("failed reading command: %w", err)
 	}
 
 	var args []string
 	err = json.Unmarshal([]byte(cmd), &args)
-
 	if err != nil {
-		err = fmt.Errorf("command decode error: %w", err)
-		return
+		return fmt.Errorf("command decode error: %w", err)
 	}
 
 	pLogger.Printf(logger.LOG_LEVEL_INFO, "Received command %v", args)
 
-	panicErr := logger.CapturePanic(func() error {
-		var cmdErr error
-		exitCode, cmdErr, err = ExecuteCommands(router, conn, args[0], args[1:]...)
-		if cmdErr != nil {
-			pLogger.Printf(logger.LOG_LEVEL_ERROR, "Command %v (exit code %d) returned an error: %v", args, exitCode, cmdErr)
-		} else if err == nil {
-			pLogger.Printf(logger.LOG_LEVEL_INFO, "Command %v terminated successfully", args)
+	var exitCode int
+	var cmdErr error
+
+	defer func() {
+		err = conn.CloseConnection(exitCode)
+		if err != nil {
+			pLogger.Printf(logger.LOG_LEVEL_ERROR, "Error closing command conn: %v", err)
 		}
+	}()
+
+	panicErr := logger.CapturePanic(func() error {
+		var err error
+		exitCode, cmdErr, err = ExecuteCommands(router, conn, args[0], args[1:]...)
 		return err
 	})
-	if panicErr.PanicErr() != nil {
-		conn.WriteError(fmt.Sprintf("panic: %v", panicErr))
-		err = fmt.Errorf("panic on command %v: %w", args, panicErr.Unwrap())
-		exitCode = 1
-		return
-	}
-	if panicErr.Err() != nil {
-		err = fmt.Errorf("connection error on command %v: %w", args, err)
-		return
+
+	if panicErr != nil && panicErr.PanicErr() != nil {
+		exitCode = conn_error_exit_code
+
+		err = conn.WriteError(fmt.Sprintf("panic: %v", panicErr))
+		if err != nil {
+			pLogger.Printf(logger.LOG_LEVEL_ERROR, "Error writing back panic: %v", err)
+		}
+		
+		return fmt.Errorf("panic on command %v: %w", args, panicErr.Unwrap())
 	}
 
-	return
+	if cmdErr != nil {
+		unwrapErr := errors.Unwrap(cmdErr)
+		if unwrapErr == nil {
+			unwrapErr = cmdErr
+		}
+		pLogger.Printf(logger.LOG_LEVEL_ERROR, fmt.Sprintf("Command %v (exit code %d) returned an error: %v", args, exitCode, unwrapErr))
+		
+		err = conn.WriteError(fmt.Sprintf("Command %v (exit code %d) returned an error: %v", args, exitCode, cmdErr))
+		if err != nil {
+			pLogger.Printf(logger.LOG_LEVEL_ERROR, "Error writing back error: %v", err)
+		}
+	}
+
+	if panicErr != nil {
+		if exitCode == 0 {
+			exitCode = conn_error_exit_code
+		}
+
+		err = conn.WriteError(fmt.Sprintf("connection error: %v", panicErr))
+		if err != nil {
+			pLogger.Printf(logger.LOG_LEVEL_ERROR, "Error writing back conn error: %v", err)
+		}
+
+		return fmt.Errorf("connection error on command %v: %w", args, err)
+	}
+
+	if cmdErr == nil {
+		pLogger.Printf(logger.LOG_LEVEL_INFO, "Command %v terminated successfully", args)
+	}
+	return nil
 }
 
 func ExecuteCommands(router *server.Router, conn pipe.ServerConn, cmd string, args ...string) (exitCode int, cmdErr error, err error) {

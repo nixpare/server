@@ -7,13 +7,13 @@ import (
 	"io"
 	"net"
 
-	"github.com/nixpare/logger"
+	"github.com/nixpare/logger/v2"
 )
 
 type PipeServer interface {
 	Listen(handler ServerHandlerFunc) (err error)
-	Logger() *logger.Logger
-	SetLogger(l *logger.Logger)
+	Logger() logger.Logger
+	SetLogger(l logger.Logger)
 	Close() (err error)
 	Kill(err error)
 }
@@ -22,12 +22,12 @@ func NewPipeServer(pipeName string) (PipeServer, error) {
 	return newPipeServer(pipeName)
 }
 
-func ConnectToPipe(pipeName string, handler ClientHandlerFunc) (exitCode int, err error) {
+func ConnectToPipe(pipeName string, handler ClientHandlerFunc) error {
 	return connectToPipe(pipeName, handler)
 }
 
-type ServerHandlerFunc func(conn ServerConn) (exitCode int, err error)
-type ClientHandlerFunc func(conn ClientConn) (exitCode int, err error)
+type ServerHandlerFunc func(conn ServerConn) error
+type ClientHandlerFunc func(conn ClientConn) error
 
 type messageToClient struct {
 	Msg  string   `json:"msg"`

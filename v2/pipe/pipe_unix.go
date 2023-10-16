@@ -7,12 +7,12 @@ import (
 	"net"
 	"os"
 
-	"github.com/nixpare/logger"
+	"github.com/nixpare/logger/v2"
 )
 
 type UnixPipeServer struct {
 	ln       net.Listener
-	logger   *logger.Logger
+	logger   logger.Logger
 	exitC    chan error
 }
 
@@ -51,14 +51,14 @@ func (srv *UnixPipeServer) Listen(h ServerHandlerFunc) error {
 
 			go func() {
 				sc := ServerConn{ conn: conn }
-				exitCode, err := h(sc)
+				err := h(sc)
 				if err != nil {
-					srv.logger.Printf(logger.LOG_LEVEL_ERROR, "Error executing server handler: %v", err)
+					srv.logger.Printf(logger.LOG_LEVEL_ERROR, "Pipe server error: %v", err)
 				}
-				
-				err = sc.CloseConnection(exitCode)
+
+				err = conn.Close()
 				if err != nil {
-					srv.logger.Printf(logger.LOG_LEVEL_ERROR, "Error closing connection: %v", err)
+					srv.logger.Printf(logger.LOG_LEVEL_ERROR, "Pipe server close conn error: %v", err)
 				}
 			}()
 		}
@@ -75,11 +75,11 @@ func (srv *UnixPipeServer) Kill(err error) {
 	srv.exitC <- err
 }
 
-func (srv *UnixPipeServer) Logger() *logger.Logger {
+func (srv *UnixPipeServer) Logger() logger.Logger {
 	return srv.logger
 }
 
-func (srv *UnixPipeServer) SetLogger(l *logger.Logger) {
+func (srv *UnixPipeServer) SetLogger(l logger.Logger) {
 	if l == nil {
 		return
 	}
@@ -87,10 +87,10 @@ func (srv *UnixPipeServer) SetLogger(l *logger.Logger) {
 	srv.logger = l
 }
 
-func connectToPipe(pipePath string, h ClientHandlerFunc) (exitCode int, err error) {
+func connectToPipe(pipePath string, h ClientHandlerFunc) error {
 	conn, err := net.Dial("unix", UnixPipePath(pipePath))
 	if err != nil {
-		return
+		return err
 	}
 
 	return h(ClientConn{

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/nixpare/logger"
+	"github.com/nixpare/logger/v2"
 )
 
 var (
@@ -19,7 +19,7 @@ var (
 
 func (router *Router) plainPrintf(level logger.LogLevel, message string, extra string, format string, a ...any) {
 	router.Logger.AddLog(level, message, extra, false)
-	if out := router.Logger.Out; out != nil {
+	if out := router.Logger.Out(); out != nil {
 		fmt.Fprintf(out, format, a...)
 	}
 }

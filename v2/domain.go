@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/nixpare/logger"
+	"github.com/nixpare/logger/v2"
 )
 
 // Domain rapresents a website domain with all its

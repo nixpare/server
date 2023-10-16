@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nixpare/logger"
+	"github.com/nixpare/logger/v2"
 )
 
 // Router is the main element of this package and is used to manage
@@ -30,7 +30,7 @@ type Router struct {
 	IsInternalConn func(remoteAddress string) bool
 	IsLocalhost    func(host string) bool
 	TaskManager    *TaskManager
-	Logger         *logger.Logger
+	Logger         logger.Logger
 }
 
 // NewRouter returns a new Router ready to be set up. If routerPath is not provided,
@@ -78,14 +78,16 @@ func (router *Router) NewHTTPServer(address string, port int, secure bool, path 
 		path = router.Path
 	}
 
-	srv, err := newHTTPServer(address, port, secure, path, certs)
+	srv, err := newHTTPServer(
+		address, port, secure, path, certs,
+		router.Logger.Clone(nil, "server", "http", fmt.Sprint(port)),
+	)
 	if err != nil {
 		return nil, err
 	}
 
 	router.httpServers[srv.port] = srv
 	srv.Router = router
-	srv.Logger.SetParent(router.Logger)
 
 	return srv, nil
 }
@@ -98,14 +100,16 @@ func (router *Router) NewTCPServer(address string, port int, secure bool, certs 
 		return nil, fmt.Errorf("tcp server listening to port %d already registered", port)
 	}
 
-	srv, err := NewTCPServer(address, port, secure, certs...)
+	srv, err := newTCPServer(
+		address, port, secure, certs,
+		router.Logger.Clone(nil, "server", "tcp", fmt.Sprint(port)),
+	)
 	if err != nil {
 		return nil, err
 	}
 
 	router.tcpServers[srv.port] = srv
 	srv.Router = router
-	srv.Logger.SetParent(router.Logger)
 
 	return srv, nil
 }

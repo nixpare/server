@@ -3,7 +3,7 @@ package commands
 import (
 	"fmt"
 
-	"github.com/nixpare/logger"
+	"github.com/nixpare/logger/v2"
 	"github.com/nixpare/server/v2"
 	"github.com/nixpare/server/v2/pipe"
 )
@@ -18,19 +18,19 @@ func logs(router *server.Router, conn pipe.ServerConn, args ...string) (exitCode
 	}
 
 	if len(args) == 0 {
-		logs = router.Logger.Logs()
+		logs = router.Logger.GetLastNLogs(1000)
 	} else {
 		switch args[0] {
 		case "help":
 			err = conn.WriteOutput(logsHelp("help"))
 			return
 		case "tags":
-			logs = router.Logger.LogsMatch(args[1:]...)
+			logs = logger.LogsMatch(router.Logger.GetLastNLogs(router.Logger.NLogs()), args[1:]...)
 		case "tags-any":
-			logs = router.Logger.LogsMatchAny(args[1:]...)
+			logs = logger.LogsMatchAny(router.Logger.GetLastNLogs(router.Logger.NLogs()), args[1:]...)
 		case "level":
 			levels := fromStringToLogLevel(args[1:])
-			logs = router.Logger.LogsLevelMatchAny(levels...)
+			logs = logger.LogsLevelMatch(router.Logger.GetLastNLogs(router.Logger.NLogs()), levels...)
 		case "list-tags":
 			err = conn.WriteOutput(listTags(router))
 			return
@@ -58,7 +58,7 @@ func logs(router *server.Router, conn pipe.ServerConn, args ...string) (exitCode
 
 func listTags(router *server.Router) string {
 	tags := make(map[string]bool)
-	for _, l := range router.Logger.Logs() {
+	for _, l := range router.Logger.GetLastNLogs(router.Logger.NLogs()) {
 		for _, t := range l.Tags() {
 			tags[t] = true
 		}

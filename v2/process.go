@@ -3,7 +3,7 @@ package server
 import (
 	"fmt"
 
-	"github.com/nixpare/logger"
+	"github.com/nixpare/logger/v2"
 	"github.com/nixpare/process"
 )
 

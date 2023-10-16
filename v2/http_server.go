@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/gorilla/securecookie"
-	"github.com/nixpare/logger"
+	"github.com/nixpare/logger/v2"
 )
 
 // HTTPServer is a single HTTP server listening on a TCP port.
@@ -38,7 +38,7 @@ type HTTPServer struct {
 	// Router is a reference to the Router (is the server was created through it).
 	// This should not be set by hand.
 	Router  *Router
-	Logger  *logger.Logger
+	Logger  logger.Logger
 	domains map[string]*Domain
 	// ServerPath is the path provided on server creation. It is used as the log location
 	// for this specific server
@@ -80,10 +80,10 @@ func NewHTTPServer(address string, port int, secure bool, path string, certs ...
 		}
 	}
 
-	return newHTTPServer(address, port, secure, path, certs)
+	return newHTTPServer(address, port, secure, path, certs, nil)
 }
 
-func newHTTPServer(address string, port int, secure bool, path string, certs []Certificate) (*HTTPServer, error) {
+func newHTTPServer(address string, port int, secure bool, path string, certs []Certificate, l logger.Logger) (*HTTPServer, error) {
 	srv := new(HTTPServer)
 
 	srv.Server = new(http.Server)
@@ -105,8 +105,7 @@ func newHTTPServer(address string, port int, secure bool, path string, certs []C
 			return nil, err
 		}
 	}
-
-	srv.Logger = logger.DefaultLogger.Clone(nil, "server", "http", fmt.Sprint(port))
+	
 	srv.Server.ErrorLog = log.New(srv.Logger, "", 0)
 
 	srv.Server.ReadHeaderTimeout = time.Second * 10
@@ -144,6 +143,11 @@ func newHTTPServer(address string, port int, secure bool, path string, certs []C
 	if err != nil {
 		return nil, err
 	}
+
+	if l == nil {
+		l = logger.DefaultLogger.Clone(nil, "server", "http", fmt.Sprint(port))
+	}
+	srv.Logger = l
 
 	return srv, nil
 }

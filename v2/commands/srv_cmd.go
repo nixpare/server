@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/nixpare/logger"
+	"github.com/nixpare/logger/v2"
 	"github.com/nixpare/server/v2"
 	"github.com/nixpare/server/v2/pipe"
 )

@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nixpare/logger"
+	"github.com/nixpare/logger/v2"
 	"github.com/nixpare/process"
 )
 
@@ -12,7 +12,7 @@ import (
 // execution of external processes and tasks registered by the user
 type TaskManager struct {
 	Router    *Router
-	Logger    *logger.Logger
+	Logger    logger.Logger
 	state     *LifeCycle
 	processes map[string]*process.Process
 	tasks     map[string]*Task

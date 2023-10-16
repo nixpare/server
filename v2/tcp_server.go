@@ -8,7 +8,7 @@ import (
 	"net"
 	"strings"
 
-	"github.com/nixpare/logger"
+	"github.com/nixpare/logger/v2"
 )
 
 type Conn struct {
@@ -27,10 +27,14 @@ type TCPServer struct {
 	state *LifeCycle
 	ConnHandler ConnHandlerFunc
 	Router  *Router
-	Logger  *logger.Logger
+	Logger  logger.Logger
 }
 
 func NewTCPServer(address string, port int, secure bool, certs ...Certificate) (*TCPServer, error) {
+	return newTCPServer(address, port, secure, certs, nil)
+}
+
+func newTCPServer(address string, port int, secure bool, certs []Certificate, l logger.Logger) (*TCPServer, error) {
 	var listener net.Listener
 	var err error
 
@@ -53,12 +57,16 @@ func NewTCPServer(address string, port int, secure bool, certs ...Certificate) (
 		}
 	}
 
+	if l == nil {
+		l = logger.DefaultLogger.Clone(nil, "server", "tcp", fmt.Sprint(port))
+	}
+
 	return &TCPServer {
 		listener: listener,
 		address: address,
 		port: port,
 		state: NewLifeCycleState(),
-		Logger: logger.DefaultLogger.Clone(nil, "server", "tcp", fmt.Sprint(port)),
+		Logger: l,
 	}, nil
 }
 

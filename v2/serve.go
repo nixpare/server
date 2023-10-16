@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/nixpare/logger"
+	"github.com/nixpare/logger/v2"
 )
 
 // serveError serves the error in a predefines error template (if set) and only
