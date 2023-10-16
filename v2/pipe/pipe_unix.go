@@ -1,9 +1,11 @@
 //go:build !windows
+
 package pipe
 
 import (
+	"errors"
+	"io"
 	"net"
-	"os"
 )
 
 func NewPipeServer(pipePath string) (*PipeServer, error) {
@@ -15,10 +17,10 @@ func newPipeListener(pipePath string) (net.Listener, error) {
 }
 
 func NewUnixPipeListener(pipePath string) (net.Listener, error) {
-	return net.Listen("unix", UnixPipePath(pipePath))
+	return net.Listen("unix", pipePath)
 }
 
-func ConnectToPipe(pipePath string, handler ClientHandlerFunc) error {
+func ConnectToPipe(pipePath string, handler HandlerFunc) error {
 	return connectToPipe(pipePath, handler)
 }
 
@@ -31,5 +33,5 @@ func DialUnixPipe(pipePath string) (net.Conn, error) {
 }
 
 func errIsEOF(err error) bool {
-	return errors.Is(err, io.EOF)
+	return errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed)
 }
