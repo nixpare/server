@@ -94,7 +94,7 @@ func newHTTPServer(address string, port int, secure bool, path string, certs []C
 
 	srv.ServerPath = path
 
-	srv.Server.Addr = fmt.Sprintf(":%d", port)
+	srv.Server.Addr = fmt.Sprintf("%s:%d", address, port)
 	srv.setHandler()
 
 	//Setting up Redirect Server parameters
