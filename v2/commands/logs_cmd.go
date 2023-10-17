@@ -5,10 +5,9 @@ import (
 
 	"github.com/nixpare/logger/v2"
 	"github.com/nixpare/server/v2"
-	"github.com/nixpare/server/v2/pipe"
 )
 
-func logs(router *server.Router, conn pipe.Conn, args ...string) (exitCode int, cmdErr error, err error) {
+func logs(sc *ServerConn, args ...string) (int, error) {
 	var pretty bool
 	var logs []logger.Log
 
@@ -18,26 +17,31 @@ func logs(router *server.Router, conn pipe.Conn, args ...string) (exitCode int, 
 	}
 
 	if len(args) == 0 {
-		logs = router.Logger.GetLastNLogs(1000)
+		logs = sc.Router.Logger.GetLastNLogs(1000)
 	} else {
 		switch args[0] {
 		case "help":
-			err = conn.WriteOutput(logsHelp("help"))
-			return
+			return 0, sc.WriteOutput(logsHelp("help"))
 		case "tags":
-			logs = logger.LogsMatch(router.Logger.GetLastNLogs(router.Logger.NLogs()), args[1:]...)
+			logs = logger.LogsMatch(
+				sc.Router.Logger.GetLastNLogs(sc.Router.Logger.NLogs()),
+				args[1:]...
+			)
 		case "tags-any":
-			logs = logger.LogsMatchAny(router.Logger.GetLastNLogs(router.Logger.NLogs()), args[1:]...)
+			logs = logger.LogsMatchAny(
+				sc.Router.Logger.GetLastNLogs(sc.Router.Logger.NLogs()),
+				args[1:]...
+			)
 		case "level":
 			levels := fromStringToLogLevel(args[1:])
-			logs = logger.LogsLevelMatch(router.Logger.GetLastNLogs(router.Logger.NLogs()), levels...)
+			logs = logger.LogsLevelMatch(
+				sc.Router.Logger.GetLastNLogs(sc.Router.Logger.NLogs()),
+				levels...
+			)
 		case "list-tags":
-			err = conn.WriteOutput(listTags(router))
-			return
+			return 0, sc.WriteOutput(listTags(sc.Router))
 		default:
-			err = conn.WriteError(logsHelp(args[0]))
-			exitCode = 1
-			return
+			return 1, sc.WriteError(logsHelp(args[0]))
 		}
 	}
 
@@ -52,8 +56,7 @@ func logs(router *server.Router, conn pipe.Conn, args ...string) (exitCode int, 
 		}
 	}
 	
-	err = conn.WriteOutput(resp)
-	return
+	return 0, sc.WriteOutput(resp)
 }
 
 func listTags(router *server.Router) string {

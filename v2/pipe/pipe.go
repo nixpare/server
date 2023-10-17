@@ -74,3 +74,7 @@ func connectToPipe(pipePath string, handler HandlerFunc) error {
 
 	return handler(pc)
 }
+
+func ErrIsEOF(err error) bool {
+	return errIsEOF(err)
+}

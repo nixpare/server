@@ -8,6 +8,10 @@ func NewCommandServer(pipeName string, router *server.Router) (*CommandServer, e
 	return newCommandServer(pipeName, router)
 }
 
-func SendCommand(pipeName string, args ...string) (stdout string, stderr string, exitCode int, err error) {
-	return sendCommand(pipeName, args)
+func InitCommand(pipeName string, handler ClientCommandHandlerFunc, cmd string, args ...string) (exitCode int, err error) {
+	return initCommand(pipeName, handler, cmd, args)
+}
+
+func SendCommand(pipeName string, cmd string, args ...string) (stdout string, stderr string, exitCode int, err error) {
+	return sendCommand(pipeName, cmd, args)
 }

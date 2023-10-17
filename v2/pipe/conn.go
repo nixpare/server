@@ -27,7 +27,7 @@ func newPipeConn(conn net.Conn) *Conn {
 		for {
 			b, err := rd.ReadBytes('\n')
 			if err != nil {
-				if !errIsEOF(err) {
+				if !ErrIsEOF(err) {
 					logger.Printf(logger.LOG_LEVEL_ERROR, "Error reading connection: %v", err)
 				}
 				break
@@ -57,5 +57,5 @@ func (pc Conn) WriteMessage(message string) error {
 }
 
 func (pc Conn) Write(b []byte) (int, error) {
-	return pc.conn.Write(append(b, '\n'))
+	return pc.conn.Write(b)
 }

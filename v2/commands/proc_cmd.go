@@ -4,71 +4,53 @@ import (
 	"fmt"
 
 	"github.com/nixpare/server/v2"
-	"github.com/nixpare/server/v2/pipe"
 )
 
-func processCmd(router *server.Router, conn pipe.Conn, args ...string) (exitCode int, cmdErr, err error) {
+func processCmd(sc *ServerConn, args ...string) (int, error) {
 	if len(args) == 0 {
-		err = conn.WriteError(procHelp(""))
-		exitCode = 1
-		return
+		return 1, sc.WriteError(procHelp(""))
 	}
 
 	if len(args) == 1 {
 		if args[0] == "help" {
-			err = conn.WriteOutput(procHelp("help"))
-			return
+			return 0, sc.WriteOutput(procHelp("help"))
 		}
 
 		if args[0] != "list" {
-			err = conn.WriteError(procHelp(args[0]))
-			exitCode = 1
-			return
+			return 1, sc.WriteError(procHelp(args[0]))
 		}
 
-		err = conn.WriteOutput(procList(router))
-		return 
+		return 0, sc.WriteOutput(procList(sc.Router))
 	}
 
 	if len(args) < 2 {
-		err = conn.WriteError(procHelp(args[0]))
-		exitCode = 1
-		return
+		return 1, sc.WriteError(procHelp(args[0]))
 	}
 
 	switch args[0] {
 	case "start":
-		cmdErr = router.TaskManager.StartProcess(args[1])
-		if cmdErr != nil {
-			err = conn.WriteError(fmt.Sprintf("Error starting process: %v", cmdErr))
-			exitCode = 1
-			return
+		err := sc.Router.TaskManager.StartProcess(args[1])
+		if err != nil {
+			return 1, sc.WriteError(fmt.Sprintf("Error starting process: %v", err))
 		}
 	case "stop":
-		cmdErr = router.TaskManager.StopProcess(args[1])
-		if cmdErr != nil {
-			err = conn.WriteError(fmt.Sprintf("Error stopping process: %v", cmdErr))
-			exitCode = 1
-			return
+		err := sc.Router.TaskManager.StopProcess(args[1])
+		if err != nil {
+			return 1, sc.WriteError(fmt.Sprintf("Error stopping process: %v", err))
 		}
 	case "restart":
-		cmdErr = router.TaskManager.RestartProcess(args[1])
-		if cmdErr != nil {
-			err = conn.WriteError(fmt.Sprintf("Error restarting process: %v", cmdErr))
-			exitCode = 1
-			return
+		err := sc.Router.TaskManager.RestartProcess(args[1])
+		if err != nil {
+			return 1, sc.WriteError(fmt.Sprintf("Error restarting process: %v", err))
 		}
 	case "kill":
-		cmdErr = router.TaskManager.KillProcess(args[1])
-		if cmdErr != nil {
-			err = conn.WriteError(fmt.Sprintf("Error killing process: %v", cmdErr))
-			exitCode = 1
-			return
+		err := sc.Router.TaskManager.KillProcess(args[1])
+		if err != nil {
+			return 1, sc.WriteError(fmt.Sprintf("Error killing process: %v", err))
 		}
 	}
 
-	err = conn.WriteOutput("Done")
-	return
+	return 0, sc.WriteOutput("Done")
 }
 
 func procList(router *server.Router) string {

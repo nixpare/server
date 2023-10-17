@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 
 	"github.com/nixpare/logger/v2"
@@ -13,116 +14,215 @@ import (
 
 var (
 	ErrInvalidRespType = errors.New("invalid response type")
-	ErrStandardError = errors.New("error received through stderr channel")
-	ErrExitError = errors.New("exit error")
+	ErrDecodeMessage   = errors.New("message decode failed")
+	ErrExitCodeLost    = errors.New("exit code not received")
 )
 
-var EOF = errors.New("EOF")
-
 type ClientConn struct {
-	Conn   *pipe.Conn
+	Conn     *pipe.Conn
+	exitCode int
+	exited   bool
 }
 
 type respType int
+
 const (
-	RESP_OUT respType = iota
-	RESP_ERR
-	RESP_EXIT
+	resp_type_out respType = iota
+	resp_type_err
+	resp_type_exit
 )
 
-type messageToClient struct {
-	Msg  string   `json:"msg"`
-	Type respType `json:"type"`
-	Code int      `json:"code"`
+type message struct {
+	Msg      string   `json:"msg"`
+	Type     respType `json:"type"`
+	ExitCode int      `json:"code"`
 }
 
-func (cc *ClientConn) ListenMessage() (out string, exitCode int, err error) {
+type Message struct {
+	Msg      string
+	t        respType
+}
+
+func (msg Message) ToStdOut() bool {
+	return msg.t == resp_type_out
+}
+
+func (msg Message) ToStdErr() bool {
+	return msg.t == resp_type_err
+}
+
+func (msg Message) IsExit() bool {
+	return msg.t == resp_type_exit
+}
+
+func (cc *ClientConn) ListenMessage() (msg Message, err error) {
+	if cc.exited {
+		err = io.EOF
+		return
+	}
+
 	data, ok := cc.Conn.ReadMessage()
 	if !ok {
-		err = EOF
+		err = io.EOF
 		return
 	}
 
-	var msg messageToClient
-	err = json.Unmarshal(data, &msg)
+	var m message
+	err = json.Unmarshal(data, &m)
 	if err != nil {
+		err = fmt.Errorf("%w: %w", ErrDecodeMessage, err)
 		return
 	}
 
-	switch msg.Type {
-	case RESP_OUT:
-	case RESP_ERR:
-		err = ErrStandardError
-	case RESP_EXIT:
-		err = ErrExitError
-	default:
+	if m.Type != resp_type_out && m.Type != resp_type_err && m.Type != resp_type_exit {
 		err = ErrInvalidRespType
 		return
 	}
 
-	exitCode = msg.Code
-	out = msg.Msg
+	if m.Type == resp_type_exit {
+		cc.exitCode = m.ExitCode
+		cc.exited = true
+		err = io.EOF
+		return
+	}
+
+	msg.Msg = m.Msg
+	msg.t = m.Type
 	return
 }
 
 func (cc *ClientConn) WriteMessage(message string) error {
-	return cc.Conn.WriteMessage(message)
+	data, err := json.Marshal(message)
+	if err != nil {
+		return err
+	}
+
+	return cc.Conn.WriteMessage(string(data))
 }
 
-func (cc *ClientConn) Pipe(stdin io.Reader, stdout io.Writer, stderr io.Writer) (int, error) {
-	var exitCode int
+func (cc *ClientConn) Pipe(stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
 	exitC := make(chan error)
+	defer close(exitC)
 
-	go func() {
-		sc := bufio.NewScanner(stdin)
-		for sc.Scan() {
-			err := cc.WriteMessage(sc.Text())
-			if err != nil {
-				exitC <- err
-				break
+	if stdin != nil {
+		go func() {
+			sc := bufio.NewScanner(stdin)
+			for sc.Scan() {
+				err := cc.WriteMessage(sc.Text())
+				if err != nil {
+					exitC <- err
+					break
+				}
 			}
-		}
-	}()
+		}()
+	}
 
 	go func() {
 		for {
-			var out string
-			var err error
-			out, exitCode, err = cc.ListenMessage()
+			msg, err := cc.ListenMessage()
 
-			if err == nil {
-				_, err = stdout.Write(append([]byte(out), '\n'))
-				if err != nil {
-					exitC <- err
-					return
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					exitC <- nil
+					break
 				}
-				continue
-			}
 
-			if errors.Is(err, ErrStandardError) {
-				_, err = stderr.Write(append([]byte(out), '\n'))
-				if err != nil {
-					exitC <- err
-					return
-				}
-				continue
-			}
-
-			if errors.Is(err, ErrExitError) {
-				exitC <- nil
+				exitC <- err
 				break
 			}
+
+			if msg.ToStdOut() {
+				if stdout != nil {
+					_, err = stdout.Write(append([]byte(msg.Msg), '\n'))
+					if err != nil {
+						exitC <- err
+						break
+					}
+				}
 				
-			exitC <- err
+				continue
+			}
+
+			if msg.ToStdErr() {
+				if stderr != nil {
+					_, err = stderr.Write(append([]byte(msg.Msg), '\n'))
+					if err != nil {
+						exitC <- err
+						break
+					}
+				}
+				
+				continue
+			}
+
+			exitC <- nil
 			break
 		}
 	}()
 
-	return exitCode, <- exitC
+	return <-exitC
 }
 
 type ServerConn struct {
 	Router *server.Router
 	Logger logger.Logger
+	cs     *CommandServer
 	conn   *pipe.Conn
+}
+
+func (sc *ServerConn) ReadMessage() (string, error) {
+	b, ok := sc.conn.ReadMessage()
+	if !ok {
+		return "", io.EOF
+	}
+
+	var message string
+	err := json.Unmarshal(b, &message)
+	if err != nil {
+		return "", err
+	}
+
+	return message, nil
+}
+
+func (sc *ServerConn) WriteOutput(msg string) error {
+	m := message{
+		Msg: msg,
+		Type: resp_type_out,
+	}
+
+	data, err := json.Marshal(m)
+	if err != nil {
+		return err
+	}
+
+	return sc.conn.WriteMessage(string(data))
+}
+
+func (sc *ServerConn) WriteError(msg string) error {
+	m := message{
+		Msg: msg,
+		Type: resp_type_err,
+	}
+
+	data, err := json.Marshal(m)
+	if err != nil {
+		return err
+	}
+
+	return sc.conn.WriteMessage(string(data))
+}
+
+func (sc *ServerConn) exit(exitCode int) error {
+	m := message{
+		Type: resp_type_exit,
+		ExitCode: exitCode,
+	}
+
+	data, err := json.Marshal(m)
+	if err != nil {
+		return err
+	}
+
+	return sc.conn.WriteMessage(string(data))
 }

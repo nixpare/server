@@ -10,9 +10,12 @@ import (
 
 var (
 	ErrCommandRead = errors.New("failed reading command: no data received")
+	ErrCommandInit = errors.New("invalid command")
 )
 
-func commandHandler(sc *ServerConn) error {
+type ServerCommandHandler func(sc *ServerConn, args ...string) (exitCode int, err error)
+
+func (sc *ServerConn) commandHandler() error {
 	data, ok := sc.conn.ReadMessage()
 	if !ok {
 		return ErrCommandRead
@@ -26,128 +29,76 @@ func commandHandler(sc *ServerConn) error {
 
 	sc.Logger.Printf(logger.LOG_LEVEL_INFO, "Received command %v", args)
 
-	msg := messageToClient{
-		Msg: fmt.Sprintf("Riceived %v", args),
-		Type: RESP_OUT,
-		Code: 1,
-	}
-
-	data, err = json.Marshal(msg)
-	if err != nil {
-		return err
-	}
-
-	_, err = sc.conn.Write(data)
-	return err
-}
-
-/* func commandHandler(conn pipe.Conn, router *server.Router, pLogger logger.Logger) error {
 	var exitCode int
-	var cmdErr error
-
-	defer func() {
-		err = conn.CloseConnection(exitCode)
-		if err != nil {
-			pLogger.Printf(logger.LOG_LEVEL_ERROR, "Error closing command conn: %v", err)
-		}
-	}()
-
-	panicErr := logger.CapturePanic(func() error {
+	err = logger.PanicToErr(func() error {
 		var err error
-		exitCode, cmdErr, err = ExecuteCommands(router, conn, args[0], args[1:]...)
+		exitCode, err = sc.executeCommands(args[0], args[1:]...)
 		return err
 	})
-
-	if panicErr != nil && panicErr.PanicErr() != nil {
-		exitCode = conn_error_exit_code
-
-		err = conn.WriteError(fmt.Sprintf("panic: %v", panicErr))
-		if err != nil {
-			pLogger.Printf(logger.LOG_LEVEL_ERROR, "Error writing back panic: %v", err)
-		}
-
-		return fmt.Errorf("panic on command %v: %w", args, panicErr.Unwrap())
+	if err != nil {
+		sc.Logger.Printf(logger.LOG_LEVEL_INFO, "Command %v execution error: %v", args, err)
+		sc.exit(1)
+		return err
 	}
 
-	if cmdErr != nil {
-		unwrapErr := errors.Unwrap(cmdErr)
-		if unwrapErr == nil {
-			unwrapErr = cmdErr
-		}
-		pLogger.Printf(logger.LOG_LEVEL_ERROR, fmt.Sprintf("Command %v (exit code %d) returned an error: %v", args, exitCode, unwrapErr))
-
-		err = conn.WriteError(fmt.Sprintf("Command %v (exit code %d) returned an error: %v", args, exitCode, cmdErr))
-		if err != nil {
-			pLogger.Printf(logger.LOG_LEVEL_ERROR, "Error writing back error: %v", err)
-		}
-	}
-
-	if panicErr != nil {
-		if exitCode == 0 {
-			exitCode = conn_error_exit_code
-		}
-
-		err = conn.WriteError(fmt.Sprintf("connection error: %v", panicErr))
-		if err != nil {
-			pLogger.Printf(logger.LOG_LEVEL_ERROR, "Error writing back conn error: %v", err)
-		}
-
-		return fmt.Errorf("connection error on command %v: %w", args, err)
-	}
-
-	if cmdErr == nil {
-		pLogger.Printf(logger.LOG_LEVEL_INFO, "Command %v terminated successfully", args)
-	}
-	return nil
+	sc.Logger.Printf(logger.LOG_LEVEL_INFO, "Command %v execution terminated (%d)", args, exitCode)
+	return sc.exit(exitCode)
 }
 
-func (cs *CommandServer) executeCommands(cmd string, args ...string) (exitCode int, cmdErr error, err error) {
+func (sc *ServerConn) executeCommands(cmd string, args ...string) (exitCode int, err error) {
 	switch cmd {
 	case "help":
-		err = conn.WriteOutput(commandNotFound(cmd))
+		err = sc.WriteOutput(sc.commandNotFound(cmd))
 		return
 	case "ping":
-		err = conn.WriteOutput("pong")
+		err = sc.WriteOutput("pong")
 		return
 	case "offline":
-		return offlineCmd(router, conn, args...)
+		return offlineCmd(sc, args...)
 	case "online":
-		return onlineCmd(router, conn, args...)
+		return onlineCmd(sc, args...)
 	case "extend-offline":
-		return extendOfflineCmd(router, conn, args...)
+		return extendOfflineCmd(sc, args...)
 	case "proc":
-		return processCmd(router, conn, args...)
+		return processCmd(sc, args...)
 	case "task":
-		return taskCmd(router, conn, args...)
+		return taskCmd(sc, args...)
 	case "log":
-		return logs(router, conn, args...)
+		return logs(sc, args...)
 	default:
-		f, ok := customCommands[cmd]
+		f, ok := sc.cs.commands[cmd]
 		if !ok {
-			err = conn.WriteError(commandNotFound(cmd))
+			err = sc.WriteError(sc.commandNotFound(cmd))
 			exitCode = 1
 			return
 		}
 
-		return f(router, conn, args...)
+		return f(sc, args...)
 	}
-} */
+}
 
-
-
-/* func initCommand(pipeAddr string, h pipe.ClientHandlerFunc, args ...string) (exitCode int, err error) {
-	data, err := json.Marshal(args)
-	if err != nil {
-		return
+func (sc *ServerConn) commandNotFound(cmd string) string {
+	var res string
+	if cmd == "help" {
+		res = "NixServer Command Interface: "
+	} else {
+		res = fmt.Sprintf("Unknown command \"%s\": ", cmd)
 	}
-	cmd := string(data)
 
-	return pipe.ConnectToPipe(pipeAddr, func(conn pipe.ClientConn) (exitCode int, err error) {
-		err = conn.WriteMessage(cmd)
-		if err != nil {
-			return
-		}
+	customCmds := "[ "
+	for c := range sc.cs.commands {
+		customCmds += c + " "
+	}
+	customCmds += "]"
 
-		return h(conn)
-	})
-} */
+	return res + "available commands:\n" +
+				 "  * built-in commands:\n" +
+				 "      - ping                    : replies just \"pong\", to test if the server can responde\n" +
+				 "      - online                  : set the server back online \n" +
+				 "      - offile <minutes>        : set the server offline for the provided period\n" +
+				 "      - extend-offile <minutes> : extends the server offline time with the provided period\n" +
+				 "      - proc [...]              : manage processes registered in the server, see \"proc help\"\n" +
+				 "      - task [...]              : manage processes registered in the server, see \"task help\"\n" +
+				 "      - log [...]               : manage logs, see \"log help\"\n" +
+				 "  * custom commands: " + customCmds
+}

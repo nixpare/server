@@ -3,13 +3,13 @@ package commands
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"io"
 
 	"github.com/nixpare/logger/v2"
 	"github.com/nixpare/server/v2"
 	"github.com/nixpare/server/v2/pipe"
 )
-
-type ServerCommandHandler func(cc *ServerConn, args ...string) (exitCode int, err error)
 
 type CommandServer struct {
 	ps       *pipe.PipeServer
@@ -45,11 +45,13 @@ func (cs *CommandServer) RegisterCommand(cmd string, f ServerCommandHandler) {
 
 func (cs *CommandServer) Start() {
 	cs.ps.Start(func(conn *pipe.Conn) error {
-		return commandHandler(&ServerConn{
+		sc := &ServerConn{
 			Router: cs.router,
 			Logger: cs.Logger().Clone(nil, "cmd-handler"),
+			cs: cs,
 			conn: conn,
-		})
+		}
+		return sc.commandHandler()
 	})
 	cs.Logger().Print(logger.LOG_LEVEL_INFO, "Command PipeServer started")
 }
@@ -59,54 +61,66 @@ func (cs *CommandServer) Stop() error {
 	return cs.ps.Stop()
 }
 
-/* func (cs *CommandServer) commandNotFound(cmd string) string {
-	var res string
-	if cmd == "help" {
-		res = "NixServer Manager: "
-	} else {
-		res = fmt.Sprintf("Unknown command \"%s\": ", cmd)
-	}
+type ClientCommandHandlerFunc func(cc *ClientConn) error
 
-	customCmds := "[ "
-	for c := range cs.commands {
-		customCmds += c + " "
-	}
-	customCmds += "]"
+func initCommand(pipePath string, handler ClientCommandHandlerFunc, cmd string, args []string) (exitCode int, err error) {
+	err = pipe.ConnectToPipe(pipePath, func(conn *pipe.Conn) error {
+		data, err := json.Marshal(append([]string{cmd}, args...))
+		if err != nil {
+			return err
+		}
+		cmd := string(data)
 
-	return res + "available commands:\n" +
-				 "  * built-in commands:\n" +
-				 "      - ping                    : replies just \"pong\", to test if the server can responde\n" +
-				 "      - online                  : set the server back online \n" +
-				 "      - offile <minutes>        : set the server offline for the provided period\n" +
-				 "      - extend-offile <minutes> : extends the server offline time with the provided period\n" +
-				 "      - proc [...]              : manage processes registered in the server, see \"proc help\"\n" +
-				 "      - task [...]              : manage processes registered in the server, see \"task help\"\n" +
-				 "      - log [...]               : manage logs, see \"log help\"\n" +
-				 "  * custom commands: " + customCmds
-} */
+		err = conn.WriteMessage(cmd)
+		if err != nil {
+			return err
+		}
 
-type ClientCommandHandler func(cc *ClientConn) (exitCode int, err error)
+		cc := &ClientConn{ Conn: conn }
+		err = handler(cc)
+		if err != nil {
+			return err
+		}
 
-func sendCommand(pipePath string, args []string) (stdout string, stderr string, exitCode int, err error) {
+		if cc.exited {
+			exitCode = cc.exitCode
+			return nil
+		}
+
+		for {
+			_, err = cc.ListenMessage()
+			if err == nil {
+				continue
+			}
+
+			if !errors.Is(err, io.EOF) {
+				exitCode = 1
+				return err
+			}
+
+			if !cc.exited {
+				exitCode = 1
+				return ErrExitCodeLost
+			}
+
+			exitCode = cc.exitCode
+			return nil
+		}
+	})
+	return
+}
+
+func sendCommand(pipePath string, cmd string, args []string) (stdout string, stderr string, exitCode int, err error) {
 	stdoutBuf := new(bytes.Buffer)
 	stderrBuf := new(bytes.Buffer)
 
-	data, err := json.Marshal(args)
-	if err != nil {
-		return
-	}
-
-	err = pipe.ConnectToPipe(pipePath, func(conn *pipe.Conn) error {
-		cc := ClientConn{ Conn: conn }
-		exitCode, err = cc.Pipe(bytes.NewReader(data), stdoutBuf, stderrBuf)
-		return err
-	})
-	if err != nil {
-		return
-	}
+	exitCode, err = initCommand(pipePath, func(cc *ClientConn) error {
+		return cc.Pipe(nil, stdoutBuf, stderrBuf)
+	}, cmd, args)
 
 	stdout = stdoutBuf.String()
 	stderr = stderrBuf.String()
 
 	return
 }
+

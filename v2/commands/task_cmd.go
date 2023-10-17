@@ -4,72 +4,54 @@ import (
 	"fmt"
 
 	"github.com/nixpare/server/v2"
-	"github.com/nixpare/server/v2/pipe"
 )
 
 var taskTimers = [...]string{"10s", "1m", "10m", "30m", "1h", "inactive"}
 
-func taskCmd(router *server.Router, conn pipe.Conn, args ...string) (exitCode int, cmdErr error, err error) {
+func taskCmd(sc *ServerConn, args ...string) (int, error) {
 	if len(args) == 0 {
-		err = conn.WriteError(taskHelp(""))
-		exitCode = 1
-		return
+		return 1, sc.WriteError(taskHelp(""))
 	}
 
 	if len(args) == 1 {
 		if args[0] == "help" {
-			err = conn.WriteOutput(taskHelp("help"))
-			return
+			return 0, sc.WriteOutput(taskHelp("help"))
 		}
 
 		if args[0] != "list" {
-			err = conn.WriteError(taskHelp(args[0]))
-			exitCode = 1
-			return
+			return 1, sc.WriteError(taskHelp(args[0]))
 		}
 
-		err = conn.WriteOutput(taskList(router))
-		return 
+		return 0, sc.WriteOutput(taskList(sc.Router))
 	}
 
 	if len(args) < 2 {
-		err = conn.WriteError(taskHelp(args[0]))
-		exitCode = 1
-		return
+		return 1, sc.WriteError(taskHelp(args[0]))
 	}
 
 	switch args[0] {
 	case "exec":
-		cmdErr = router.TaskManager.ExecTask(args[1])
-		if cmdErr != nil {
-			err = conn.WriteError(fmt.Sprintf("Error executing task: %v", cmdErr))
-			exitCode = 1
-			return
+		err := sc.Router.TaskManager.ExecTask(args[1])
+		if err != nil {
+			return 1, sc.WriteError(fmt.Sprintf("Error executing task: %v", err))
 		}
 	case "kill":
-		cmdErr = router.TaskManager.KillTask(args[1])
-		if cmdErr != nil {
-			err = conn.WriteError(fmt.Sprintf("Error killing task: %v", cmdErr))
-			exitCode = 1
-			return
+		err := sc.Router.TaskManager.KillTask(args[1])
+		if err != nil {
+			return 1, sc.WriteError(fmt.Sprintf("Error killing task: %v", err))
 		}
 	case "set-timer":
 		if len(args) < 3 {
 			if args[1] == "list" {
-				err = conn.WriteOutput(timerHelp(""))
-				return
+				return 0, sc.WriteOutput(timerHelp(""))
 			}
 
-			err = conn.WriteError(taskHelp(args[0]))
-			exitCode = 1
-			return
+			return 1, sc.WriteError(taskHelp(args[0]))
 		}
 
-		t := router.TaskManager.GetTask(args[1])
+		t := sc.Router.TaskManager.GetTask(args[1])
 		if t == nil {
-			err = conn.WriteError("Task not found")
-			exitCode = 1
-			return
+			return 1, sc.WriteError("Task not found")
 		}
 
 		var found bool
@@ -82,14 +64,11 @@ func taskCmd(router *server.Router, conn pipe.Conn, args ...string) (exitCode in
 		}
 
 		if !found {
-			err = conn.WriteError(timerHelp(args[2]))
-			exitCode = 1
-			return
+			return 1, sc.WriteError(timerHelp(args[2]))
 		}
 	}
 
-	err = conn.WriteOutput("Done")
-	return
+	return 0, sc.WriteOutput("Done")
 }
 
 func taskList(router *server.Router) string {	
