@@ -244,6 +244,10 @@ func (srv *HTTPServer) setHandler() {
 // after the connection was handled. It even captures any possible panic that
 // will be thrown by the user code and logged with the stack trace to debug
 func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		h.srv.Logger.Debug(h.srv.port, "exit", recover())
+	}()
+
 	route := &Route{
 		Srv:            h.srv,
 		Router:         h.srv.Router,

@@ -105,11 +105,6 @@ func newHTTPServer(address string, port int, secure bool, path string, certs []C
 			return nil, err
 		}
 	}
-	
-	srv.Server.ErrorLog = log.New(srv.Logger, "", 0)
-
-	srv.Server.ReadHeaderTimeout = time.Second * 10
-	srv.Server.IdleTimeout = time.Second * 30
 
 	hashKey := securecookie.GenerateRandomKey(64)
 	if hashKey == nil {
@@ -148,6 +143,7 @@ func newHTTPServer(address string, port int, secure bool, path string, certs []C
 		l = logger.DefaultLogger.Clone(nil, "server", "http", fmt.Sprint(port))
 	}
 	srv.Logger = l
+	srv.Server.ErrorLog = log.New(srv.Logger, "", 0)
 
 	return srv, nil
 }
