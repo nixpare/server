@@ -4,10 +4,12 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"os"
 	"path"
+	"sync"
 	"time"
 )
 
@@ -24,17 +26,20 @@ func newXFile(filePath string) (b []byte, modTime time.Time, err error) {
 	modTime = info.ModTime()
 
 	sc := bufio.NewScanner(f)
-	var parts []string
+	var parts []*os.File
 	var size int64
 
 	for sc.Scan() {
 		filePartPath := fileDirPath + "/" + sc.Text()
-		info, err = os.Stat(filePartPath)
+		var part *os.File
+		part, err = os.Open(filePartPath)
+
 		if err != nil {
 			err = fmt.Errorf("error finding XFile part \"%s\" from \"%s\": %w", sc.Text(), filePath, err)
 			return
 		}
 
+		info, _ := part.Stat()
 		if info.ModTime().After(modTime) {
 			modTime = info.ModTime()
 		}
@@ -43,24 +48,18 @@ func newXFile(filePath string) (b []byte, modTime time.Time, err error) {
 			continue
 		}
 
-		parts = append(parts, filePartPath)
+		parts = append(parts, part)
 		size += info.Size()
 	}
 
 	b = make([]byte, size)
 	var lastRead int
-	for _, p := range parts {
-		var fPart *os.File
-		fPart, err = os.Open(p)
-		if err != nil {
-			err = fmt.Errorf("error opening XFile part \"%s\" from \"%s\": %w", p, filePath, err)
-			return
-		}
-
+	for i, p := range parts {
 		var n int
-		n, err = fPart.Read(b[lastRead:])
+		n, err = p.Read(b[lastRead:])
+		p.Close()
 		if err != nil {
-			err = fmt.Errorf("error reading XFile part \"%s\" from \"%s\": %w", p, filePath, err)
+			err = fmt.Errorf("error reading XFile part %d from \"%s\": %w", i, filePath, err)
 			return
 		}
 
@@ -70,30 +69,56 @@ func newXFile(filePath string) (b []byte, modTime time.Time, err error) {
 	return
 }
 
-var fileCache = make(map[string][]byte)
+type cachedFile struct {
+	b    []byte
+	info fs.FileInfo
+}
 
-func (route *Route) httpServeFileCached(filePath string, fileInfo fs.FileInfo) {
-	cf, ok := fileCache[filePath]
+type fileCache struct {
+	m     map[string]cachedFile
+	mutex *sync.RWMutex
+}
+
+var (
+	fc = fileCache{
+		m: make(map[string]cachedFile),
+		mutex: new(sync.RWMutex),
+	}
+)
+
+func (route *Route) httpServeFileCached(filePath string) bool {
+	fc.mutex.RLock()
+	cf, ok := fc.m[filePath]
+	fc.mutex.RUnlock()
 	if ok {
 		http.ServeContent(
 			route.W, route.R,
-			fileInfo.Name(), fileInfo.ModTime(),
-			bytes.NewReader(cf),
+			cf.info.Name(), cf.info.ModTime(),
+			bytes.NewReader(cf.b),
 		)
-		return
+		return true
 	}
 
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		route.Error(http.StatusInternalServerError, "Internal cache failed", "Internal cache failed on", filePath, err)
-		return
-	}
+	fc.mutex.Lock()
+	cf, ok = fc.m[filePath]
+	if !ok {
+		f, err := os.Open(filePath)
+		if err != nil {
+			fc.mutex.Unlock()
+			return route.Error(http.StatusNotFound, "Not found")
+		}
 
-	fileCache[filePath] = content
+		cf.info, _ = f.Stat()
+		cf.b, _ = io.ReadAll(f)
+
+		fc.m[filePath] = cf
+	}
+	fc.mutex.Unlock()
 
 	http.ServeContent(
 		route.W, route.R,
-		fileInfo.Name(), fileInfo.ModTime(),
-		bytes.NewReader(content),
+		cf.info.Name(), cf.info.ModTime(),
+		bytes.NewReader(cf.b),
 	)
+	return true
 }

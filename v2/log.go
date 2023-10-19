@@ -68,7 +68,7 @@ func (route *Route) getLock() string {
 //
 // The last optional list of elements can be used just for logging or
 // debugging: the elements will be saved in the logs
-func (route *Route) Error(statusCode int, message any, a ...any) {
+func (route *Route) Error(statusCode int, message any, a ...any) bool {
 	route.W.WriteHeader(statusCode)
 	
 	route.errMessage = fmt.Sprint(message)
@@ -90,6 +90,8 @@ func (route *Route) Error(statusCode int, message any, a ...any) {
 	} else {
 		route.logErrMessage = route.errMessage
 	}
+
+	return false
 }
 
 // logHTTPInfo logs http request with an exit code < 400
