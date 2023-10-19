@@ -120,7 +120,7 @@ func (route *Route) ServeFile(filePath string) {
 }
 
 func (route *Route) serveXFile(xFilePath string) {
-	content, modTime, err := NewXFile(xFilePath)
+	content, modTime, err := newXFile(xFilePath)
 	if err != nil {
 		route.Error(
 			http.StatusInternalServerError,
