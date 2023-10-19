@@ -57,10 +57,10 @@ type Website struct {
 	// virtual files. If the value in the map is an empty string, this means that the file used to
 	// create the XFile corresponds, otherwise you can map it to a completely different file. The value
 	// can be a relative path (to the Website.Dir) or an absolute path, but the key part must be the
-	// desired request uri to match for the resource without the initial "/"
+	// desired request uri to match for the resource
 	//
 	// For example: if the XFiles attribute is set to
-	//   XFiles: map[string]string{ "assets/css/index.css": "assets/css/X_INDEX.css" }
+	//   XFiles: map[string]string{ "/assets/css/index.css": "assets/css/X_INDEX.css" }
 	// and a request comes with a URI of https://<my_domain>/assets/css/index.css, the server will
 	// use the file Website.Dir + / + assets/css/X_INDEX.css to create the XFile and then serve it
 	XFiles map[string]string

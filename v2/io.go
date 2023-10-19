@@ -4,13 +4,14 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"io"
+	"io/fs"
+	"net/http"
 	"os"
 	"path"
 	"time"
 )
 
-type fileRangeType []struct{ filePath string; start int; end int }
+/* type fileRangeType []struct{ filePath string; start int; end int }
 
 // XFile is a virtual file based on a buffer that chains real files
 // as one. It implements the ReadSeekCloser interface. It's built to be
@@ -27,53 +28,72 @@ type XFile struct {
 	offset  int           // The actual offset reached by reading the buffer
 	b       *bytes.Buffer // The underlying buffer. To see the actual written bytes use the Len() method
 	ranges  fileRangeType // The list of files with their absolute offset start and stops
-}
+} */
 
 // NewXFile creates a new XFile from the file with the given path. It's expected
 // to find in the file other file paths (relative to the same file or absolutes),
 // one for each row
-func NewXFile(filePath string) (*XFile, error) {
+func NewXFile(filePath string) (b []byte, modTime time.Time, err error) {
 	f, err := os.Open(filePath)
 	if err != nil {
-		return nil, err
+		return
 	}
 	defer f.Close()
 
 	fileDirPath := path.Dir(filePath)
 
 	info, _ := f.Stat()
-	modTime := info.ModTime()
-
-	x := &XFile{
-		b:    &bytes.Buffer{},
-		ranges: make(fileRangeType, 0),
-	}
+	modTime = info.ModTime()
 
 	sc := bufio.NewScanner(f)
+	var parts []string
+	var size int64
+
 	for sc.Scan() {
-		info, err := os.Stat(fileDirPath + "/" + sc.Text())
+		filePartPath := fileDirPath + "/" + sc.Text()
+		info, err = os.Stat(filePartPath)
 		if err != nil {
-			return nil, fmt.Errorf("error finding XFile part \"%s\" from \"%s\": %w", sc.Text(), filePath, err)
+			err = fmt.Errorf("error finding XFile part \"%s\" from \"%s\": %w", sc.Text(), filePath, err)
+			return
 		}
 
 		if info.ModTime().After(modTime) {
 			modTime = info.ModTime()
 		}
 
-		size := int(info.Size()) + 1
-		x.ranges = append(x.ranges, struct{ filePath string; start int; end int }{
-			filePath: fileDirPath + "/" + sc.Text(),
-			start: x.size,
-			end: x.size + size,
-		})
-		x.size += size
+		if info.Size() == 0 {
+			continue
+		}
+
+		parts = append(parts, filePartPath)
+		size += info.Size()
+	}
+
+	b = make([]byte, size)
+	var lastRead int
+	for _, p := range parts {
+		var fPart *os.File
+		fPart, err = os.Open(p)
+		if err != nil {
+			err = fmt.Errorf("error opening XFile part \"%s\" from \"%s\": %w", p, filePath, err)
+			return
+		}
+
+		var n int
+		n, err = fPart.Read(b[lastRead:])
+		if err != nil {
+			err = fmt.Errorf("error reading XFile part \"%s\" from \"%s\": %w", p, filePath, err)
+			return
+		}
+
+		lastRead += n
 	}
 	
-	return x, nil
+	return
 }
 
 // Read is used to implement the io.Reader interface
-func (x *XFile) Read(p []byte) (n int, err error) {
+/* func (x *XFile) Read(p []byte) (n int, err error) {
 	switch {
 	case len(p) == 0:         // Reading no data
 		return 0, nil
@@ -146,7 +166,6 @@ func (x *XFile) Seek(offset int64, whence int) (int64, error) {
 		}
 
 		x.offset = int(offset)
-		x.b.Reset()
 		return offset, nil
 	case io.SeekCurrent:
 		if x.offset+int(offset) < 0 {
@@ -161,7 +180,6 @@ func (x *XFile) Seek(offset int64, whence int) (int64, error) {
 		}
 
 		x.offset = (x.size - 1) + int(offset)
-		x.b.Reset()
 		return int64(x.offset), nil
 	default:
 		return 0, fmt.Errorf("invalid operation")
@@ -185,4 +203,38 @@ func (x *XFile) Close() error {
 	x.b.Reset()
 	x.offset = 0
 	return nil
+} */
+
+var fileCache = make(map[string][]byte)
+
+/* type cacheFile struct {
+	size    int64
+	modTime time.Time
+	b       []byte
+} */
+
+func (route *Route) httpServeFileCached(filePath string, fileInfo fs.FileInfo) {
+	cf, ok := fileCache[filePath]
+	if ok {
+		http.ServeContent(
+			route.W, route.R,
+			fileInfo.Name(), fileInfo.ModTime(),
+			bytes.NewReader(cf),
+		)
+		return
+	}
+
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		route.Error(http.StatusInternalServerError, "Internal cache failed", "Internal cache failed on", filePath, err)
+		return
+	}
+
+	fileCache[filePath] = content
+
+	http.ServeContent(
+		route.W, route.R,
+		fileInfo.Name(), fileInfo.ModTime(),
+		bytes.NewReader(content),
+	)
 }

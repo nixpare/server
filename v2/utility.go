@@ -106,6 +106,7 @@ func GenerateTSLConfig(certs []Certificate) (*tls.Config, error) {
 			tls.X25519,
 		},
 		MinVersion: tls.VersionTLS12,
+		PreferServerCipherSuites: true,
 	}
 
 	for _, x := range certs {

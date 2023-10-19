@@ -10,6 +10,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -75,7 +76,7 @@ func (route *Route) Errorf(statusCode int, message string, format string, a ...a
 // absolute, it will first try to complete it with the website directory
 // (if set) or with the server path
 func (route *Route) ServeFile(filePath string) {
-	if !isAbs(filePath) {
+	if !filepath.IsAbs(filePath) {
 		filePath = route.Website.Dir + "/" + filePath
 	}
 
@@ -84,8 +85,8 @@ func (route *Route) ServeFile(filePath string) {
 		return
 	}
 
-	if value, ok := route.Website.XFiles[strings.TrimLeft(route.RequestURI, "/")]; ok {
-		if !isAbs(value) {
+	if value, ok := route.Website.XFiles[route.RequestURI]; ok {
+		if !filepath.IsAbs(value) {
 			value = route.Website.Dir + "/" + value
 		}
 		route.serveXFile(value)
@@ -95,30 +96,31 @@ func (route *Route) ServeFile(filePath string) {
 	fileInfo, err := os.Stat(filePath)
 	if err != nil {
 		filePath += ".html"
-		_, err = os.Stat(filePath)
+		fileInfo, err = os.Stat(filePath)
 		if err != nil {
 			route.Error(http.StatusNotFound, "Not found")
 			return
 		}
 
-		http.ServeFile(route.W, route.R, filePath)
+		route.httpServeFileCached(filePath, fileInfo)
+		// http.ServeFile(route.W, route.R, filePath)
 		return
 	}
 
 	if fileInfo.IsDir() {
 		filePath += ".html"
-		_, err = os.Stat(filePath)
+		fileInfo, err = os.Stat(filePath)
 		if err != nil {
 			route.Error(http.StatusNotFound, "Not found", "Can't serve directory on", route.RequestURI)
 			return
 		}
 	}
 
-	http.ServeFile(route.W, route.R, filePath)
+	route.httpServeFileCached(filePath, fileInfo)
 }
 
 func (route *Route) serveXFile(xFilePath string) {
-	x, err := NewXFile(xFilePath)
+	content, modTime, err := NewXFile(xFilePath)
 	if err != nil {
 		route.Error(
 			http.StatusInternalServerError,
@@ -128,7 +130,7 @@ func (route *Route) serveXFile(xFilePath string) {
 		return
 	}
 
-	http.ServeContent(route.W, route.R, route.RequestURI, x.ModTime(), x)
+	http.ServeContent(route.W, route.R, route.RequestURI, modTime, bytes.NewReader(content))
 }
 
 // ServeCustomFileWithTime will serve a pseudo-file saved in memory specifing the
