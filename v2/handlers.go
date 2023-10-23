@@ -264,7 +264,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (route *Route) serveHTTP() {
 	err := logger.PanicToErr(func() error {
 		route.prep()
-		route.Logger = route.Logger.Clone(nil, "route", route.Method, route.DomainName, route.SubdomainName, route.Domain.Name, route.Website.Name)
+		route.Logger = route.Logger.Clone(nil, true, "route", route.Method, route.DomainName, route.SubdomainName, route.Domain.Name, route.Website.Name)
 		return nil
 	})
 	if err != nil {

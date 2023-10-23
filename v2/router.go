@@ -83,7 +83,7 @@ func (router *Router) NewHTTPServer(address string, port int, secure bool, path 
 
 	srv, err := newHTTPServer(
 		address, port, secure, path, certs,
-		router.Logger.Clone(nil, "server", "http", fmt.Sprint(port)),
+		router.Logger.Clone(nil, true, "server", "http", fmt.Sprint(port)),
 	)
 	if err != nil {
 		return nil, err
@@ -105,7 +105,7 @@ func (router *Router) NewTCPServer(address string, port int, secure bool, certs 
 
 	srv, err := newTCPServer(
 		address, port, secure, certs,
-		router.Logger.Clone(nil, "server", "tcp", fmt.Sprint(port)),
+		router.Logger.Clone(nil, true, "server", "tcp", fmt.Sprint(port)),
 	)
 	if err != nil {
 		return nil, err

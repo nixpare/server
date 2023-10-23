@@ -192,7 +192,7 @@ func (tm *TaskManager) NewTask(name string, f TaskInitFunc, timer TaskTimer) err
 		Timer:       timer,
 		bc:          comms.NewBroadcaster[struct{}](),
 		TaskManager: tm,
-		Logger:      tm.Logger.Clone(nil, "task", name),
+		Logger:      tm.Logger.Clone(nil, true, "task", name),
 	}
 
 	tm.tasks[name] = t

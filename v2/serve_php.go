@@ -18,7 +18,7 @@ type PHPProcessor struct {
 func NewPHPProcessor(port int, args ...string) (php *PHPProcessor, err error) {
 	php = new(PHPProcessor)
 
-	php.Logger = logger.DefaultLogger.Clone(nil, "php-cgi")
+	php.Logger = logger.DefaultLogger.Clone(nil, true, "php-cgi")
 	php.Process, err = process.NewProcess(
 		"", "php-cgi",
 		append(
@@ -67,7 +67,7 @@ func (route *Route) ServePHP(php *PHPProcessor) {
 		gofast.SimpleClientFactory(php.connFactory),
 	)
 
-	phpLogger := route.Logger.Clone(nil, "php")
+	phpLogger := route.Logger.Clone(nil, true, "php")
 
 	h.SetLogger(log.New(phpLogger, "PHP", 0))
 	h.ServeHTTP(route.W, route.R)

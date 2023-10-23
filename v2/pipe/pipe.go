@@ -20,7 +20,7 @@ func newPipeServer(pipePath string) (*PipeServer, error) {
 
 	return &PipeServer{
 		ln:     listener,
-		Logger: logger.DefaultLogger.Clone(nil, "pipe"),
+		Logger: logger.DefaultLogger.Clone(nil, true, "pipe"),
 	}, nil
 }
 

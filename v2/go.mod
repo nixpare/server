@@ -17,3 +17,5 @@ require (
 	golang.org/x/sys v0.5.0 // indirect
 	golang.org/x/tools v0.6.0 // indirect
 )
+
+replace github.com/nixpare/logger/v2 v2.0.0 => D:/Coding/GitHub/logger/logger/v2

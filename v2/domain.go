@@ -287,7 +287,7 @@ func (sd *Subdomain) start(srv *HTTPServer, d *Domain) {
 	sd.state.SetState(LCS_STARTING)
 
 	if sd.initF != nil {
-		l := srv.Logger.Clone(nil, d.Name, strings.TrimRight(sd.Name, "."), sd.Website.Name)
+		l := srv.Logger.Clone(nil, true, d.Name, strings.TrimRight(sd.Name, "."), sd.Website.Name)
 		l.Printf(logger.LOG_LEVEL_INFO, "Website %s (%s) initialization started", sd.Website.Name, d.Name)
 
 		err := logger.PanicToErr(func() error {
@@ -314,7 +314,7 @@ func (sd *Subdomain) stop(srv *HTTPServer, d *Domain) {
 	sd.state.SetState(LCS_STOPPING)
 
 	if sd.closeF != nil {
-		l := srv.Logger.Clone(nil, d.Name, strings.TrimRight(sd.Name, "."), sd.Website.Name)
+		l := srv.Logger.Clone(nil, true, d.Name, strings.TrimRight(sd.Name, "."), sd.Website.Name)
 		l.Printf(logger.LOG_LEVEL_INFO, "Website %s (%s) cleanup started", sd.Website.Name, d.Name)
 
 		err := logger.PanicToErr(func() error {

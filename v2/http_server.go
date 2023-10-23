@@ -140,7 +140,7 @@ func newHTTPServer(address string, port int, secure bool, path string, certs []C
 	}
 
 	if l == nil {
-		l = logger.DefaultLogger.Clone(nil, "server", "http", fmt.Sprint(port))
+		l = logger.DefaultLogger.Clone(nil, true, "server", "http", fmt.Sprint(port))
 	}
 	srv.Logger = l
 	srv.Server.ErrorLog = log.New(srv.Logger, "", 0)

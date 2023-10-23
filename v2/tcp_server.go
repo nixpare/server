@@ -58,7 +58,7 @@ func newTCPServer(address string, port int, secure bool, certs []Certificate, l 
 	}
 
 	if l == nil {
-		l = logger.DefaultLogger.Clone(nil, "server", "tcp", fmt.Sprint(port))
+		l = logger.DefaultLogger.Clone(nil, true, "server", "tcp", fmt.Sprint(port))
 	}
 
 	return &TCPServer {

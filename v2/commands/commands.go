@@ -23,7 +23,7 @@ func newCommandServer(pipePath string, router *server.Router) (*CommandServer, e
 		return nil, err
 	}
 
-	ps.Logger = router.Logger.Clone(nil, "cmd-server")
+	ps.Logger = router.Logger.Clone(nil, true, "cmd-server")
 
 	return &CommandServer{
 		ps: ps,
@@ -47,7 +47,7 @@ func (cs *CommandServer) Start() {
 	cs.ps.Start(func(conn *pipe.Conn) error {
 		sc := &ServerConn{
 			Router: cs.router,
-			Logger: cs.Logger().Clone(nil, "cmd-handler"),
+			Logger: cs.Logger().Clone(nil, true, "cmd-handler"),
 			cs: cs,
 			conn: conn,
 		}
