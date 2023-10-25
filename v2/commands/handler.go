@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/nixpare/logger/v2"
+	"github.com/nixpare/server/v2/pipe"
 )
 
 var (
@@ -36,9 +37,13 @@ func (sc *ServerConn) commandHandler() error {
 		return err
 	})
 	if err != nil {
-		sc.Logger.Printf(logger.LOG_LEVEL_INFO, "Command %v execution error: %v", args, err)
-		sc.exit(1)
-		return err
+		if pipe.ErrIsEOF(err) {
+			sc.Logger.Printf(logger.LOG_LEVEL_WARNING, "Command %v connection lost", args)
+			return nil
+		} else {
+			sc.Logger.Printf(logger.LOG_LEVEL_ERROR, "Command %v execution error: %v", args, err)
+			return sc.exit(exitCode)
+		}
 	}
 
 	sc.Logger.Printf(logger.LOG_LEVEL_INFO, "Command %v execution terminated (%d)", args, exitCode)
