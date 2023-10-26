@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/nixpare/logger/v2"
@@ -20,15 +19,6 @@ type Router struct {
 	Path            string
 	startTime       time.Time
 	state           *LifeCycle
-	offlineClientsM *sync.RWMutex
-	offlineClients  map[string]offlineClient
-	// IsInternalConn can be used to additionally add rules used to determine whether
-	// an incoming connection must be treated as from a client in the local network or not.
-	// This is used both for the method route.IsInternalConn and for accessing other domains
-	// via the http queries from desired IPs. By default, only the connection coming from
-	// "localhost", "127.0.0.1" and "::1" are treated as local connections.
-	IsInternalConn func(remoteAddress string) bool
-	IsLocalhost    func(host string) bool
 	TaskManager    *TaskManager
 	Logger         logger.Logger
 }
@@ -58,14 +48,7 @@ func NewRouter(l logger.Logger, routerPath string) (router *Router, err error) {
 	}
 	router.Logger = l
 
-	router.offlineClientsM = new(sync.RWMutex)
-	router.offlineClients = make(map[string]offlineClient)
-
-	router.IsInternalConn = func(remoteAddress string) bool { return false }
-	router.IsLocalhost = func(host string) bool { return false }
-
 	router.newTaskManager()
-
 	return
 }
 

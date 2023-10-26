@@ -437,7 +437,7 @@ func (route *Route) IsInternalConn() bool {
 		return true
 	}
 
-	return route.Router.IsInternalConn(route.RemoteAddress)
+	return route.Srv.IsInternalConn(route.RemoteAddress)
 }
 
 func (route *Route) IsLocalhost() bool {
@@ -445,7 +445,7 @@ func (route *Route) IsLocalhost() bool {
 		return true
 	}
 
-	return route.Router.IsLocalhost(route.Host)
+	return route.Srv.IsLocalhost(route.Host)
 }
 
 var WebsocketUpgrader = websocket.Upgrader {

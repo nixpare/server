@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/gorilla/securecookie"
@@ -39,6 +40,13 @@ type HTTPServer struct {
 	// This should not be set by hand.
 	Router  *Router
 	Logger  logger.Logger
+	// IsInternalConn can be used to additionally add rules used to determine whether
+	// an incoming connection must be treated as from a client in the local network or not.
+	// This is used both for the method route.IsInternalConn and for accessing other domains
+	// via the http queries from desired IPs. By default, only the connection coming from
+	// "localhost", "127.0.0.1" and "::1" are treated as local connections.
+	IsInternalConn func(remoteAddress string) bool
+	IsLocalhost    func(host string) bool
 	domains map[string]*Domain
 	// ServerPath is the path provided on server creation. It is used as the log location
 	// for this specific server
@@ -47,6 +55,8 @@ type HTTPServer struct {
 	secureCookiePerm *securecookie.SecureCookie
 	headers          http.Header
 	errTemplate      *template.Template
+	offlineClientsM *sync.RWMutex
+	offlineClients  map[string]offlineClient
 }
 
 // Certificate rapresents a standard PEM certicate composed of a
@@ -143,7 +153,13 @@ func newHTTPServer(address string, port int, secure bool, path string, certs []C
 		l = logger.DefaultLogger.Clone(nil, true, "server", "http", fmt.Sprint(port))
 	}
 	srv.Logger = l
-	srv.Server.ErrorLog = log.New(srv.Logger, "", 0)
+	srv.Server.ErrorLog = log.New(srv.Logger.FixedLogger(logger.LOG_LEVEL_ERROR), "", 0)
+
+	srv.offlineClientsM = new(sync.RWMutex)
+	srv.offlineClients = make(map[string]offlineClient)
+
+	srv.IsInternalConn = func(remoteAddress string) bool { return false }
+	srv.IsLocalhost = func(host string) bool { return false }
 
 	return srv, nil
 }
