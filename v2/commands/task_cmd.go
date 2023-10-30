@@ -104,10 +104,11 @@ func taskHelp(cmd string) string {
 		res += fmt.Sprintf("Invalid sub-command \"%s\" sent: the valid options are:\n\n", cmd)
 	}
 
-	return res + "  - list                          : list all the processes with basic information on their status\n" +
-				 "  - exec <task name>              : executes the task with the given name\n" +
-				 "  - kill <task name>              : kills the task with the given name\n" +
-				 "  - set-timer <task name> <timer> : set the timer for the task. Use \"set-timer list\" for the available options"
+	return res + "    - list                          : list all the processes with basic information on their status\n" +
+				 "    - exec <task name>              : executes the task with the given name\n" +
+				 "    - kill <task name>              : kills the task with the given name\n" +
+				 "    - set-timer <task name> <timer> : set the timer for the task. Use \"set-timer list\" for the available options" +
+				 "    - help                          : prints out the help message\n"
 }
 
 func fromStringToTimer(timer string) server.TaskTimer {

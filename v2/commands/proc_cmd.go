@@ -6,7 +6,7 @@ import (
 	"github.com/nixpare/server/v2"
 )
 
-func processCmd(sc *ServerConn, args ...string) (int, error) {
+func procCmd(sc *ServerConn, args ...string) (int, error) {
 	if len(args) == 0 {
 		return 1, sc.WriteError(procHelp(""))
 	}
@@ -66,7 +66,7 @@ func procList(router *server.Router) string {
 		process := router.TaskManager.GetProcess(procName)
 		resp += fmt.Sprintf("\n  %d) %s: %v", i+1, procName, process)
 	}
-	
+
 	return resp
 }
 
@@ -80,8 +80,9 @@ func procHelp(cmd string) string {
 	}
 
 	return res + "    - list                    : list all the processes with basic information on their status\n" +
-				 "    - start <process name>    : starts the process with the given name\n" +
-				 "    - stop <process name>     : stops the process with the given name\n" +
-				 "    - restart <process name>  : restarts the process with the given name\n" +
-				 "    - kill <process name>     : kills the process with the given name"
+		"    - start <process name>    : starts the process with the given name\n" +
+		"    - stop <process name>     : stops the process with the given name\n" +
+		"    - restart <process name>  : restarts the process with the given name\n" +
+		"    - kill <process name>     : kills the process with the given name" +
+		"    - help                    : prints out the help message\n"
 }

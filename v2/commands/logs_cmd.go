@@ -7,7 +7,7 @@ import (
 	"github.com/nixpare/server/v2"
 )
 
-func logs(sc *ServerConn, args ...string) (int, error) {
+func logCmd(sc *ServerConn, args ...string) (int, error) {
 	var pretty bool
 	var logs []logger.Log
 
@@ -21,27 +21,41 @@ func logs(sc *ServerConn, args ...string) (int, error) {
 	} else {
 		switch args[0] {
 		case "help":
-			return 0, sc.WriteOutput(logsHelp("help"))
+			return 0, sc.WriteOutput(logHelp("help"))
+		case "all":
+			logs = sc.Router.Logger.GetLastNLogs(sc.Router.Logger.NLogs())
 		case "tags":
 			logs = logger.LogsMatch(
 				sc.Router.Logger.GetLastNLogs(sc.Router.Logger.NLogs()),
-				args[1:]...
+				args[1:]...,
 			)
 		case "tags-any":
 			logs = logger.LogsMatchAny(
 				sc.Router.Logger.GetLastNLogs(sc.Router.Logger.NLogs()),
-				args[1:]...
+				args[1:]...,
 			)
 		case "level":
 			levels := fromStringToLogLevel(args[1:])
 			logs = logger.LogsLevelMatch(
 				sc.Router.Logger.GetLastNLogs(sc.Router.Logger.NLogs()),
-				levels...
+				levels...,
 			)
+		case "range":
+			if len(args) < 2 {
+				return 1, sc.WriteError("Not enough arguments")
+			}
+
+			var start, end int
+			_, err := fmt.Sscanf(args[1], "%d:%d", &start, &end)
+			if err != nil {
+				return 1, sc.WriteError(err.Error())
+			}
+
+			logs = sc.Router.Logger.GetLogs(start, end)
 		case "list-tags":
 			return 0, sc.WriteOutput(listTags(sc.Router))
 		default:
-			return 1, sc.WriteError(logsHelp(args[0]))
+			return 1, sc.WriteError(logHelp(args[0]))
 		}
 	}
 
@@ -55,7 +69,7 @@ func logs(sc *ServerConn, args ...string) (int, error) {
 			resp += l.Full() + "\n"
 		}
 	}
-	
+
 	return 0, sc.WriteOutput(resp)
 }
 
@@ -96,16 +110,19 @@ func fromStringToLogLevel(levels []string) []logger.LogLevel {
 	return res
 }
 
-func logsHelp(cmd string) string {
+func logHelp(cmd string) string {
 	var res string
 	if cmd == "help" {
-		res = "Manage server logs. The valid options are:\n\n"
+		res = "Manage server logs. By default, it returns the last 1000 logs, if available.\nThe other valid options are:\n\n"
 	} else {
-		res = fmt.Sprintf("invalid sub-command \"%s\" sent: the valid options are:\n\n", cmd)
+		res = fmt.Sprintf("Invalid sub-command \"%s\" sent: the valid options are:\n\n", cmd)
 	}
-	return res + "    - tags [ tags ... ]       : get all the logs that matches all the tags provided\n" +
-				 "    - tags-any [ tags ... ]   : get all the logs that matches at least one tag\n" +
-				 "    - level    [ levels ... ] : get all the logs with one of the log severities provided\n" +
-				 "    - list-tags               : list of tags currently used by logs\n\n" +
-				 "If --pretty is used as the first argument, the result will be colourful"
+	return res + "    - all                     : get all the logs available\n" +
+		"    - tags [ tags ... ]       : get all the logs that matches all the tags provided\n" +
+		"    - tags-any [ tags ... ]   : get all the logs that matches at least one tag\n" +
+		"    - level    [ levels ... ] : get all the logs with one of the log severities provided\n" +
+		"    - range    <start>:<end>  : get all the logs with the index <start> <= i < <end>\n" +
+		"    - list-tags               : list of tags currently used by logs\n\n" +
+		"    - help                    : prints out the help message\n" +
+		"If --pretty is used as the first argument, the result will be colourful"
 }

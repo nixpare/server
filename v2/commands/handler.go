@@ -65,11 +65,13 @@ func (sc *ServerConn) executeCommands(cmd string, args ...string) (exitCode int,
 	case "extend-offline":
 		return extendOfflineCmd(sc, args...)
 	case "proc":
-		return processCmd(sc, args...)
+		return procCmd(sc, args...)
 	case "task":
 		return taskCmd(sc, args...)
 	case "log":
-		return logs(sc, args...)
+		return logCmd(sc, args...)
+	case "watch":
+		return watchCmd(sc, args...)
 	default:
 		f, ok := sc.cs.commands[cmd]
 		if !ok {
@@ -97,13 +99,14 @@ func (sc *ServerConn) commandNotFound(cmd string) string {
 	customCmds += "]"
 
 	return res + "available commands:\n" +
-				 "  * built-in commands:\n" +
-				 "      - ping                    : replies just \"pong\", to test if the server can responde\n" +
-				 "      - online                  : set the server back online \n" +
-				 "      - offile <minutes>        : set the server offline for the provided period\n" +
-				 "      - extend-offile <minutes> : extends the server offline time with the provided period\n" +
-				 "      - proc [...]              : manage processes registered in the server, see \"proc help\"\n" +
-				 "      - task [...]              : manage processes registered in the server, see \"task help\"\n" +
-				 "      - log [...]               : manage logs, see \"log help\"\n" +
-				 "  * custom commands: " + customCmds
+		"  * built-in commands:\n" +
+		"      - ping                    : replies just \"pong\", to test if the server can responde\n" +
+		"      - online                  : set the server back online \n" +
+		"      - offile <minutes>        : set the server offline for the provided period\n" +
+		"      - extend-offile <minutes> : extends the server offline time with the provided period\n" +
+		"      - proc [...]              : manage processes registered in the server, see \"proc help\"\n" +
+		"      - task [...]              : manage processes registered in the server, see \"task help\"\n" +
+		"      - log [...]               : manage logs, see \"log help\"\n" +
+		"      - watch [...]             : watches the logs, see \"watch help\"\n" +
+		"  * custom commands: " + customCmds
 }
