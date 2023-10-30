@@ -10,8 +10,8 @@ github.com/gorilla/websocket v1.5.0/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/ad
 github.com/jtolds/gls v4.20.0+incompatible/go.mod h1:QJZ7F/aHp+rZTRtaJ1ow/lLfFfVYBRgL+9YlvaHOwJU=
 github.com/nixpare/comms v1.1.0 h1:FM125OBc4UG/p5Hx36G25ZBVG22gBioLc4imWByxxtM=
 github.com/nixpare/comms v1.1.0/go.mod h1:ZtGVUJ7o60At8pXHFxvpNZyDfD0DbShEV+AWnycwJek=
-github.com/nixpare/logger/v2 v2.0.0 h1:Sb5CzSELJmLEbn/O1pQmZF8Fy+VD/2SCV223nv1qbHs=
-github.com/nixpare/logger/v2 v2.0.0/go.mod h1:ePkkjEgD+MKQQWhG7SSk1YL1gx6VLLfvzIGUVdWyt9Y=
+github.com/nixpare/logger/v2 v2.1.0 h1:Dqm7NlodpHSY6G25+gG9rfws9KjkdHU+RjgxJaDPAxk=
+github.com/nixpare/logger/v2 v2.1.0/go.mod h1:jkuUH1td14GkI55YuhaxDpdTijsBVxjT8u4678WWkEA=
 github.com/nixpare/process v1.4.2 h1:KBeda05yKwgEVIfY15ihITwDGpr0KnN1trwIl0bEsgk=
 github.com/nixpare/process v1.4.2/go.mod h1:51jiywzy7io0bXWHJmSYG4zNUyMeEGQHeyRf0SrVGIc=
 github.com/smartystreets/assertions v0.0.0-20180927180507-b2de0cb4f26d/go.mod h1:OnSkiWE9lh6wB0YB77sQom3nweQdgAjqCqsofrRNTgc=
