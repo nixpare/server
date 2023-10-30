@@ -17,3 +17,5 @@ require (
 	golang.org/x/sys v0.5.0 // indirect
 	golang.org/x/tools v0.6.0 // indirect
 )
+
+retract v2.8.1

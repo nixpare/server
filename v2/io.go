@@ -11,6 +11,8 @@ import (
 	"path"
 	"sync"
 	"time"
+
+	"github.com/nixpare/comms"
 )
 
 func newXFile(filePath string) (b []byte, modTime time.Time, err error) {
@@ -84,8 +86,13 @@ var (
 		m: make(map[string]cachedFile),
 		mutex: new(sync.RWMutex),
 	}
-	FileCacheUpdateInterval time.Duration = time.Minute * 15
+	fileCacheUpdateInterval time.Duration = time.Minute * 15
+	fcChangeBC = comms.NewBroadcaster[time.Duration]()
 )
+
+func SetFileCacheUpdateInterval(d time.Duration) {
+	fcChangeBC.Send(d)
+}
 
 func getCachedFile(filePath string) (cf cachedFile, found bool) {
 	f, err := os.Open(filePath)
@@ -123,8 +130,14 @@ func UpdateFileCache() {
 
 func init() {
 	go func() {
-		for {
-			time.Sleep(FileCacheUpdateInterval)
+		ticker := time.NewTicker(fileCacheUpdateInterval)
+		go func() {
+			for {
+				d := fcChangeBC.Get()
+				ticker.Reset(d)
+			}
+		}()
+		for range ticker.C {
 			UpdateFileCache()
 		}
 	}()
