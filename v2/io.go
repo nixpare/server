@@ -123,8 +123,10 @@ func UpdateFileCache() {
 
 func init() {
 	go func() {
-		time.Sleep(FileCacheUpdateInterval)
-		UpdateFileCache()
+		for {
+			time.Sleep(FileCacheUpdateInterval)
+			UpdateFileCache()
+		}
 	}()
 }
 
