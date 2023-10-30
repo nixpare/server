@@ -84,7 +84,49 @@ var (
 		m: make(map[string]cachedFile),
 		mutex: new(sync.RWMutex),
 	}
+	FileCacheUpdateInterval time.Duration = time.Minute * 15
 )
+
+func getCachedFile(filePath string) (cf cachedFile, found bool) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		fc.mutex.Unlock()
+		return
+	}
+	defer f.Close()
+	found = true
+
+	cf.info, _ = f.Stat()
+	cf.b, _ = io.ReadAll(f)
+	return
+}
+
+func UpdateFileCache() {
+	for filePath, cf := range fc.m {
+		newInfo, err := os.Stat(filePath)
+		if err != nil || newInfo.IsDir() {
+			delete(fc.m, filePath)
+		}
+
+		if !newInfo.ModTime().After(cf.info.ModTime()) {
+			continue
+		}
+
+		cf, found := getCachedFile(filePath)
+		if !found {
+			delete(fc.m, filePath)
+		} else {
+			fc.m[filePath] = cf
+		}
+	}
+}
+
+func init() {
+	go func() {
+		time.Sleep(FileCacheUpdateInterval)
+		UpdateFileCache()
+	}()
+}
 
 func (route *Route) httpServeFileCached(filePath string) bool {
 	fc.mutex.RLock()
@@ -102,14 +144,11 @@ func (route *Route) httpServeFileCached(filePath string) bool {
 	fc.mutex.Lock()
 	cf, ok = fc.m[filePath]
 	if !ok {
-		f, err := os.Open(filePath)
-		if err != nil {
-			fc.mutex.Unlock()
-			return route.Error(http.StatusNotFound, "Not found")
+		cf, ok = getCachedFile(filePath)
+		if !ok {
+			route.Error(http.StatusNotFound, "Not Found")
+			return false
 		}
-
-		cf.info, _ = f.Stat()
-		cf.b, _ = io.ReadAll(f)
 
 		fc.m[filePath] = cf
 	}
