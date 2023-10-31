@@ -10,50 +10,36 @@ import (
 )
 
 func serverCmd(sc *ServerConn, args ...string) (exitCode int, err error) {
-	if len(args) == 0 {
+	switch len(args) {
+	case 0:
 		return 1, sc.WriteError(serverHelp(""))
+	case 1:
+		switch args[0] {
+		case "help":
+			return 0, sc.WriteOutput(serverHelp(args[0]))
+		default:
+			return 1, sc.WriteError(serverHelp(args[0]))
+		}
+	case 2:
+		switch args[0] {
+		case "online":
+			return onlineCmd(sc, args[1])
+		default:
+			return 1, sc.WriteError(serverHelp(args[0]))
+		}
+
+	case 3:
+		switch args[0] {
+		case "offline":
+			return offlineCmd(sc, args[1], args[2])
+		case "extend-offline":
+			return extendOfflineCmd(sc, args[1], args[2])
+		default:
+			return 1, sc.WriteError(serverHelp(args[0]))
+		}
+	default:
+		return 1, sc.WriteError(serverHelp(args[0]))
 	}
-
-	switch args[0] {
-	case "exec":
-		err := sc.Router.TaskManager.ExecTask(args[1])
-		if err != nil {
-			return 1, sc.WriteError(fmt.Sprintf("Error executing task: %v", err))
-		}
-	case "kill":
-		err := sc.Router.TaskManager.KillTask(args[1])
-		if err != nil {
-			return 1, sc.WriteError(fmt.Sprintf("Error killing task: %v", err))
-		}
-	case "set-timer":
-		if len(args) < 3 {
-			if args[1] == "list" {
-				return 0, sc.WriteOutput(timerHelp(""))
-			}
-
-			return 1, sc.WriteError(taskHelp(args[0]))
-		}
-
-		t := sc.Router.TaskManager.GetTask(args[1])
-		if t == nil {
-			return 1, sc.WriteError("Task not found")
-		}
-
-		var found bool
-		for _, x := range taskTimers {
-			if args[2] == x {
-				t.Timer = fromStringToTimer(args[2])
-				found = true
-				break
-			}
-		}
-
-		if !found {
-			return 1, sc.WriteError(timerHelp(args[2]))
-		}
-	}
-
-	return 0, sc.WriteOutput("Done")
 }
 
 func GoOfflineFor(srv *server.HTTPServer, d time.Duration) error {
@@ -120,80 +106,68 @@ func ExtendOffline(srv *server.HTTPServer, d time.Duration) error {
 	}
 }
 
-func offlineCmd(sc *ServerConn, args ...string) (int, error) {
-	if len(args) < 2 {
-		return 1, sc.WriteError("Invalid command: required server port and time duration in minutes")
+func onlineCmd(sc *ServerConn, port string) (int, error) {
+	p, err := strconv.Atoi(port)
+	if err != nil {
+		return 1, sc.WriteError(fmt.Sprintf("error parsing port number: %v", err))
 	}
 
-	port, err := strconv.Atoi(args[0])
+	srv := sc.Router.HTTPServer(p)
+	if srv == nil {
+		return 1, sc.WriteError(fmt.Sprintf("server with port %d not found", p))
+	}
+
+	err = GoOnline(srv)
+	if err != nil {
+		return 1, sc.WriteError(fmt.Sprintf("Error sending the server %d online: %v", p, err))
+	}
+
+	return 0, sc.WriteOutput("Server online")
+}
+
+func offlineCmd(sc *ServerConn, port, minutes string) (int, error) {
+	p, err := strconv.Atoi(port)
 	if err != nil {
 		return 1, sc.WriteError(fmt.Sprintf("Error parsing port number: %v", err))
 	}
 
-	srv := sc.Router.HTTPServer(port)
+	srv := sc.Router.HTTPServer(p)
 	if srv == nil {
-		return 1, sc.WriteError(fmt.Sprintf("Server with port %d not found", port))
+		return 1, sc.WriteError(fmt.Sprintf("Server with port %d not found", p))
 	}
 
-	duration, err := strconv.Atoi(args[1])
+	duration, err := strconv.Atoi(minutes)
 	if err != nil {
 		return 1, sc.WriteError(fmt.Sprintf("Error parsing time duration: %v", err))
 	}
 
 	err = GoOfflineFor(srv, time.Duration(int(time.Minute) * duration))
 	if err != nil {
-		return 1, sc.WriteError(fmt.Sprintf("Error sending the server %d offline: %v", port, err))
+		return 1, sc.WriteError(fmt.Sprintf("Error sending the server %d offline: %v", p, err))
 	}
 
 	return 0, sc.WriteOutput(fmt.Sprintf("Server offline for %d minutes", duration))
 }
 
-func onlineCmd(sc *ServerConn, args ...string) (int, error) {
-	if len(args) < 1 {
-		return 1, sc.WriteError("Invalid command: required server port")
-	}
-
-	port, err := strconv.Atoi(args[0])
+func extendOfflineCmd(sc *ServerConn, port, minutes string) (int, error) {
+	p, err := strconv.Atoi(port)
 	if err != nil {
 		return 1, sc.WriteError(fmt.Sprintf("error parsing port number: %v", err))
 	}
 
-	srv := sc.Router.HTTPServer(port)
+	srv := sc.Router.HTTPServer(p)
 	if srv == nil {
-		return 1, sc.WriteError(fmt.Sprintf("server with port %d not found", port))
+		return 1, sc.WriteError(fmt.Sprintf("server with port %d not found", p))
 	}
 
-	err = GoOnline(srv)
-	if err != nil {
-		return 1, sc.WriteError(fmt.Sprintf("Error sending the server %d online: %v", port, err))
-	}
-
-	return 0, sc.WriteOutput("Server online")
-}
-
-func extendOfflineCmd(sc *ServerConn, args ...string) (int, error) {
-	if len(args) < 2 {
-		return 1, sc.WriteError("Invalid command: required server port and time duration in minutes")
-	}
-
-	port, err := strconv.Atoi(args[0])
-	if err != nil {
-		return 1, sc.WriteError(fmt.Sprintf("error parsing port number: %v", err))
-	}
-
-	srv := sc.Router.HTTPServer(port)
-	if srv == nil {
-		return 1, sc.WriteError(fmt.Sprintf("server with port %d not found", port))
-	}
-
-	duration, err := strconv.Atoi(args[1])
+	duration, err := strconv.Atoi(minutes)
 	if err != nil {
 		return 1, sc.WriteError(fmt.Sprintf("error parsing time duration: %v", err))
 	}
 
 	err = ExtendOffline(srv, time.Duration(int(time.Minute) * duration))
 	if err == nil {
-		return 1, sc.WriteError(fmt.Sprintf("Error extending server %d offline period: %v", port, err))
+		return 1, sc.WriteError(fmt.Sprintf("Error extending server %d offline period: %v", p, err))
 	}
 
 	return 0, sc.WriteOutput(fmt.Sprintf("Server offline period extended by %d minutes", duration))
@@ -202,10 +176,12 @@ func extendOfflineCmd(sc *ServerConn, args ...string) (int, error) {
 func serverHelp(cmd string) string {
 	var res string
 	if cmd == "help" {
-		res = "Attach the standard output and error to the server Logger. End the execution with a CTRL-C or by sending a \"Q\".\nThe other valid options are:\n\n"
+		res = "Manage the HTTP servers registered.\nThe other valid options are:\n\n"
 	} else {
 		res = fmt.Sprintf("Invalid sub-command \"%s\" sent: the valid options are:\n\n", cmd)
 	}
-	return res + "    - help : prints out the help message\n" +
-		"If --pretty is used as the first argument, the result will be colourful"
+	return res + "    - online        <port>           : set the server back online\n" +
+				 "    - offile        <port> <minutes> : set the server offline for the provided period\n" +
+				 "    - extend-offile <port> <minutes> : extends the server offline time with the provided period\n" +
+				 "    - help                           : prints out the help message\n"
 }

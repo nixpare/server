@@ -1,7 +1,10 @@
 //go:build !windows
+
 package commands
 
 import (
+	"io"
+
 	"github.com/nixpare/server/v2"
 )
 
@@ -13,6 +16,10 @@ func InitCommand(pipePath string, handler ClientCommandHandlerFunc, cmd string, 
 	return initCommand(pipePath, handler, cmd, args)
 }
 
-func SendCommand(pipePath string, cmd string, args ...string) (stdout string, stderr string, exitCode int, err error) {
+func SendCommand(pipePath string, cmd string, args ...string) (exitCode int, err error) {
 	return sendCommand(pipePath, cmd, args)
+}
+
+func CaptureCommand(stdin io.Reader, pipePath string, cmd string, args ...string) (stdout string, stderr string, exitCode int, err error) {
+	return captureCommand(stdin, pipePath, cmd, args)
 }

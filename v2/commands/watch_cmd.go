@@ -8,6 +8,17 @@ import (
 )
 
 func watchCmd(sc *ServerConn, args ...string) (exitCode int, err error) {
+	printLog := func(l logger.Log) error {
+		return sc.WriteOutput(l.Full())
+	}
+	
+	if len(args) > 0 && args[len(args)-1] == "--pretty" {
+		args = args[:len(args)-1]
+		printLog = func(l logger.Log) error {
+			return sc.WriteOutput(l.FullColored())
+		}
+	}
+	
 	if len(args) > 0 {
 		if args[0] == "help" {
 			exitCode = 0
@@ -16,16 +27,6 @@ func watchCmd(sc *ServerConn, args ...string) (exitCode int, err error) {
 		}
 		err = sc.WriteOutput(watchHelp(args[0]))
 		return
-	}
-
-	printLog := func(l logger.Log) error {
-		return sc.WriteOutput(l.Full())
-	}
-
-	if len(args) > 0 && args[0] == "--pretty" {
-		printLog = func(l logger.Log) error {
-			return sc.WriteOutput(l.FullColored())
-		}
 	}
 
 	lastSent := sc.Router.Logger.NLogs()
@@ -94,6 +95,6 @@ func watchHelp(cmd string) string {
 	} else {
 		res = fmt.Sprintf("Invalid sub-command \"%s\" sent: the valid options are:\n\n", cmd)
 	}
-	return res + "    - help : prints out the help message\n" +
-		"If --pretty is used as the first argument, the result will be colourful"
+	return res + "    - help : prints out the help message\n\n" +
+		"If --pretty is used as the first argument, the result will be colourful\n"
 }

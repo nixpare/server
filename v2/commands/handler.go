@@ -58,12 +58,8 @@ func (sc *ServerConn) executeCommands(cmd string, args ...string) (exitCode int,
 	case "ping":
 		err = sc.WriteOutput("pong")
 		return
-	case "offline":
-		return offlineCmd(sc, args...)
-	case "online":
-		return onlineCmd(sc, args...)
-	case "extend-offline":
-		return extendOfflineCmd(sc, args...)
+	case "server":
+		return serverCmd(sc, args...)
 	case "proc":
 		return procCmd(sc, args...)
 	case "task":
@@ -98,15 +94,14 @@ func (sc *ServerConn) commandNotFound(cmd string) string {
 	}
 	customCmds += "]"
 
-	return res + "available commands:\n" +
+	return res + "available commands:\n\n" +
 		"  * built-in commands:\n" +
-		"      - ping                    : replies just \"pong\", to test if the server can responde\n" +
-		"      - online                  : set the server back online \n" +
-		"      - offile <minutes>        : set the server offline for the provided period\n" +
-		"      - extend-offile <minutes> : extends the server offline time with the provided period\n" +
-		"      - proc [...]              : manage processes registered in the server, see \"proc help\"\n" +
-		"      - task [...]              : manage processes registered in the server, see \"task help\"\n" +
-		"      - log [...]               : manage logs, see \"log help\"\n" +
-		"      - watch [...]             : watches the logs, see \"watch help\"\n" +
-		"  * custom commands: " + customCmds
+		"      - ping           : replies just \"pong\", to test if the server can responde\n" +
+		"      - server [...]   : manage servers, see \"server help\"\n" +
+		"      - proc   [...]   : manage processes registered in the server, see \"proc help\"\n" +
+		"      - task   [...]   : manage processes registered in the server, see \"task help\"\n" +
+		"      - log    [...]   : manage logs, see \"log help\"\n" +
+		"      - watch  [...]   : watches the logs, see \"watch help\"\n" +
+		"      - help           : prints out the help message\n"+
+		"  * custom commands: " + customCmds + "\n"
 }

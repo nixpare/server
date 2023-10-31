@@ -11,9 +11,9 @@ func logCmd(sc *ServerConn, args ...string) (int, error) {
 	var pretty bool
 	var logs []logger.Log
 
-	if len(args) != 0 && args[0] == "--pretty" {
+	if len(args) > 0 && args[len(args)-1] == "--pretty" {
 		pretty = true
-		args = args[1:]
+		args = args[:len(args)-1]
 	}
 
 	if len(args) == 0 {
@@ -113,16 +113,16 @@ func fromStringToLogLevel(levels []string) []logger.LogLevel {
 func logHelp(cmd string) string {
 	var res string
 	if cmd == "help" {
-		res = "Manage server logs. By default, it returns the last 1000 logs, if available.\nThe other valid options are:\n\n"
+		res = "Gather server logs. By default, it returns the last 1000 logs, if available.\nThe other valid options are:\n\n"
 	} else {
 		res = fmt.Sprintf("Invalid sub-command \"%s\" sent: the valid options are:\n\n", cmd)
 	}
 	return res + "    - all                     : get all the logs available\n" +
-		"    - tags [ tags ... ]       : get all the logs that matches all the tags provided\n" +
-		"    - tags-any [ tags ... ]   : get all the logs that matches at least one tag\n" +
-		"    - level    [ levels ... ] : get all the logs with one of the log severities provided\n" +
-		"    - range    <start>:<end>  : get all the logs with the index <start> <= i < <end>\n" +
-		"    - list-tags               : list of tags currently used by logs\n\n" +
-		"    - help                    : prints out the help message\n" +
-		"If --pretty is used as the first argument, the result will be colourful"
+				 "    - tags     [ tags ... ]   : get all the logs that matches all the tags provided\n" +
+				 "    - tags-any [ tags ... ]   : get all the logs that matches at least one tag\n" +
+				 "    - level    [ levels ... ] : get all the logs with one of the log severities provided\n" +
+				 "    - range    <start>:<end>  : get all the logs with the index <start> <= i < <end>\n" +
+				 "    - list-tags               : list of tags currently used by logs\n\n" +
+				 "    - help                    : prints out the help message\n\n" +
+				 "If --pretty is used as the last argument, the result will be colourful\n"
 }

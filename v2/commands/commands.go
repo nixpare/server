@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
 
 	"github.com/nixpare/logger/v2"
 	"github.com/nixpare/server/v2"
@@ -110,12 +111,18 @@ func initCommand(pipePath string, handler ClientCommandHandlerFunc, cmd string, 
 	return
 }
 
-func sendCommand(pipePath string, cmd string, args []string) (stdout string, stderr string, exitCode int, err error) {
+func sendCommand(pipePath string, cmd string, args []string) (exitCode int, err error) {
+	return initCommand(pipePath, func(cc *ClientConn) error {
+		return cc.Pipe(os.Stdin, os.Stdout, os.Stderr)
+	}, cmd, args)
+}
+
+func captureCommand(stdin io.Reader, pipePath string, cmd string, args []string) (stdout string, stderr string, exitCode int, err error) {
 	stdoutBuf := new(bytes.Buffer)
 	stderrBuf := new(bytes.Buffer)
 
 	exitCode, err = initCommand(pipePath, func(cc *ClientConn) error {
-		return cc.Pipe(nil, stdoutBuf, stderrBuf)
+		return cc.Pipe(stdin, stdoutBuf, stderrBuf)
 	}, cmd, args)
 
 	stdout = stdoutBuf.String()

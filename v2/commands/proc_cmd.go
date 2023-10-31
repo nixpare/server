@@ -79,10 +79,10 @@ func procHelp(cmd string) string {
 		res += fmt.Sprintf("Invalid sub-command \"%s\" sent: the valid options are:\n\n", cmd)
 	}
 
-	return res + "    - list                    : list all the processes with basic information on their status\n" +
-		"    - start <process name>    : starts the process with the given name\n" +
-		"    - stop <process name>     : stops the process with the given name\n" +
-		"    - restart <process name>  : restarts the process with the given name\n" +
-		"    - kill <process name>     : kills the process with the given name" +
-		"    - help                    : prints out the help message\n"
+	return res + "    - list                   : list all the processes with basic information on their status\n" +
+				 "    - start   <process_name> : starts the process with the given name\n" +
+				 "    - stop    <process_name> : stops the process with the given name\n" +
+				 "    - restart <process_name> : restarts the process with the given name\n" +
+				 "    - kill    <process_name> : kills the process with the given name" +
+				 "    - help                   : prints out the help message\n"
 }
