@@ -11,8 +11,6 @@ import (
 	"path"
 	"sync"
 	"time"
-
-	"github.com/nixpare/comms"
 )
 
 func newXFile(filePath string) (b []byte, modTime time.Time, err error) {
@@ -86,15 +84,31 @@ var (
 		m: make(map[string]cachedFile),
 		mutex: new(sync.RWMutex),
 	}
+
+	ticker *time.Ticker
 	fileCacheUpdateInterval time.Duration = time.Minute * 15
-	fcChangeBC = comms.NewBroadcaster[time.Duration]()
+	cacheEnabled = true
 )
 
 func SetFileCacheUpdateInterval(d time.Duration) {
-	fcChangeBC.Send(d)
+	fileCacheUpdateInterval = d
+	ticker.Reset(fileCacheUpdateInterval)
 }
 
-func getCachedFile(filePath string) (cf cachedFile, found bool) {
+func EnableFileCache() {
+	cacheEnabled = true
+	ticker.Reset(fileCacheUpdateInterval)
+}
+
+func DisableFileCache() {
+	cacheEnabled = false
+	ticker.Stop()
+	for key := range fc.m {
+		delete(fc.m, key)
+	}
+}
+
+func getFile(filePath string) (content []byte, info fs.FileInfo, found bool) {
 	f, err := os.Open(filePath)
 	if err != nil {
 		fc.mutex.Unlock()
@@ -103,8 +117,8 @@ func getCachedFile(filePath string) (cf cachedFile, found bool) {
 	defer f.Close()
 	found = true
 
-	cf.info, _ = f.Stat()
-	cf.b, _ = io.ReadAll(f)
+	info, _ = f.Stat()
+	content, _ = io.ReadAll(f)
 	return
 }
 
@@ -119,24 +133,22 @@ func UpdateFileCache() {
 			continue
 		}
 
-		cf, found := getCachedFile(filePath)
+		content, info, found := getFile(filePath)
 		if !found {
 			delete(fc.m, filePath)
 		} else {
-			fc.m[filePath] = cf
+			fc.m[filePath] = cachedFile{
+				b: content,
+				info: info,
+			}
 		}
 	}
 }
 
 func init() {
 	go func() {
-		ticker := time.NewTicker(fileCacheUpdateInterval)
-		go func() {
-			for {
-				d := fcChangeBC.Get()
-				ticker.Reset(d)
-			}
-		}()
+		ticker = time.NewTicker(fileCacheUpdateInterval)
+		
 		for range ticker.C {
 			UpdateFileCache()
 		}
@@ -144,6 +156,10 @@ func init() {
 }
 
 func (route *Route) httpServeFileCached(filePath string) bool {
+	if !cacheEnabled {
+		return route.httpServeFile(filePath)
+	}
+
 	fc.mutex.RLock()
 	cf, ok := fc.m[filePath]
 	fc.mutex.RUnlock()
@@ -159,12 +175,16 @@ func (route *Route) httpServeFileCached(filePath string) bool {
 	fc.mutex.Lock()
 	cf, ok = fc.m[filePath]
 	if !ok {
-		cf, ok = getCachedFile(filePath)
-		if !ok {
+		content, info, found := getFile(filePath)
+		if !found {
 			route.Error(http.StatusNotFound, "Not Found")
 			return false
 		}
 
+		cf = cachedFile{
+			b: content,
+			info: info,
+		}
 		fc.m[filePath] = cf
 	}
 	fc.mutex.Unlock()
@@ -173,6 +193,21 @@ func (route *Route) httpServeFileCached(filePath string) bool {
 		route.W, route.R,
 		cf.info.Name(), cf.info.ModTime(),
 		bytes.NewReader(cf.b),
+	)
+	return true
+}
+
+func (route *Route) httpServeFile(filePath string) bool {
+	content, info, found := getFile(filePath)
+	if !found {
+		route.Error(http.StatusNotFound, "Not Found")
+		return false
+	}
+
+	http.ServeContent(
+		route.W, route.R,
+		info.Name(), info.ModTime(),
+		bytes.NewReader(content),
 	)
 	return true
 }

@@ -18,20 +18,46 @@ func watchCmd(sc *ServerConn, args ...string) (exitCode int, err error) {
 			return sc.WriteOutput(l.FullColored())
 		}
 	}
-	
-	if len(args) > 0 {
-		if args[0] == "help" {
-			exitCode = 0
-		} else {
-			exitCode = 1
-		}
-		err = sc.WriteOutput(watchHelp(args[0]))
-		return
+
+	logSelector := func(l logger.Log) bool {
+		return true
 	}
 
+	if len(args) == 0 {
+		return watchLoop(sc, printLog, logSelector)
+	}
+
+	switch args[0] {
+	case "tags":
+		logSelector = func(l logger.Log) bool {
+			return l.Match(args[1:]...)
+		}
+	case "tags-any":
+		logSelector = func(l logger.Log) bool {
+			return l.MatchAny(args[1:]...)
+		}
+	case "level":
+		levels := fromStringToLogLevel(args[1:])
+		logSelector = func(l logger.Log) bool {
+			return l.LevelMatchAny(levels...)
+		}
+	case "help":
+		return 0, sc.WriteOutput(watchHelp(args[0]))
+	default:
+		return 1, sc.WriteError(serverHelp(args[0]))
+	}
+
+	return watchLoop(sc, printLog, logSelector)
+}
+
+func watchLoop(sc *ServerConn, printLog func(l logger.Log) error, logSelector func(l logger.Log) bool) (int, error) {
 	lastSent := sc.Router.Logger.NLogs()
 	for _, l := range sc.Router.Logger.GetLogs(0, lastSent) {
-		err = printLog(l)
+		if !logSelector(l) {
+			continue
+		}
+
+		err := printLog(l)
 		if err != nil {
 			return 1, err
 		}
@@ -56,7 +82,11 @@ func watchCmd(sc *ServerConn, args ...string) (exitCode int, err error) {
 				lastSent += len(logs)
 
 				for _, l := range logs {
-					err = printLog(l)
+					if !logSelector(l) {
+						continue
+					}
+
+					err := printLog(l)
 					if err != nil {
 						exitC <- exitRes{1, err}
 					}
@@ -91,10 +121,13 @@ func watchCmd(sc *ServerConn, args ...string) (exitCode int, err error) {
 func watchHelp(cmd string) string {
 	var res string
 	if cmd == "help" {
-		res = "Attach the standard output and error to the server Logger. End the execution with a CTRL-C or by sending a \"Q\".\nThe other valid options are:\n\n"
+		res = "Attach the standard output and error to the server Logger. End the execution with a CTRL-C or by sending a \"q\".\nThe other valid options are:\n\n"
 	} else {
 		res = fmt.Sprintf("Invalid sub-command \"%s\" sent: the valid options are:\n\n", cmd)
 	}
-	return res + "    - help : prints out the help message\n\n" +
-		"If --pretty is used as the first argument, the result will be colourful\n"
+	return res + "    - tags     [ tags ... ]   : outputs only the logs that matches all the tags provided\n" +
+				 "    - tags-any [ tags ... ]   : outputs only the logs that matches at least one tag\n" +
+				 "    - level    [ levels ... ] : outputs only the logs with one of the log severities provided\n" +
+				 "    - help                    : prints out the help message\n\n" +
+		"If --pretty is used as the last argument, the result will be colourful\n"
 }
