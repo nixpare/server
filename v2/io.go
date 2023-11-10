@@ -111,7 +111,6 @@ func DisableFileCache() {
 func getFile(filePath string) (content []byte, info fs.FileInfo, found bool) {
 	f, err := os.Open(filePath)
 	if err != nil {
-		fc.mutex.Unlock()
 		return
 	}
 	defer f.Close()
@@ -177,6 +176,7 @@ func (route *Route) httpServeFileCached(filePath string) bool {
 	if !ok {
 		content, info, found := getFile(filePath)
 		if !found {
+			fc.mutex.Unlock()
 			route.Error(http.StatusNotFound, "Not Found")
 			return false
 		}
