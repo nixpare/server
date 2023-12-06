@@ -164,10 +164,10 @@ func (route *Route) httpServeFileCached(filePath string) bool {
 	cf, ok := fc.m[filePath]
 	fc.mutex.RUnlock()
 	if ok {
-		http.ServeContent(
-			route.W, route.R,
+		route.ServeCompressedContent(
 			cf.info.Name(), cf.info.ModTime(),
 			bytes.NewReader(cf.b),
+			gzip.DefaultCompression,
 		)
 		return true
 	}
