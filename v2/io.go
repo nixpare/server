@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"bytes"
+	"compress/gzip"
 	"fmt"
 	"io"
 	"io/fs"
@@ -189,10 +190,10 @@ func (route *Route) httpServeFileCached(filePath string) bool {
 	}
 	fc.mutex.Unlock()
 
-	http.ServeContent(
-		route.W, route.R,
+	route.ServeCompressedContent(
 		cf.info.Name(), cf.info.ModTime(),
 		bytes.NewReader(cf.b),
+		gzip.DefaultCompression,
 	)
 	return true
 }
@@ -204,10 +205,10 @@ func (route *Route) httpServeFile(filePath string) bool {
 		return false
 	}
 
-	http.ServeContent(
-		route.W, route.R,
+	route.ServeCompressedContent(
 		info.Name(), info.ModTime(),
 		bytes.NewReader(content),
+		gzip.DefaultCompression,
 	)
 	return true
 }

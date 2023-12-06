@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gorilla/handlers"
 	"github.com/gorilla/websocket"
 	"github.com/nixpare/logger/v2"
 )
@@ -127,7 +129,7 @@ func (route *Route) serveXFile(xFilePath string) bool {
 		)
 	}
 
-	http.ServeContent(route.W, route.R, route.RequestURI, modTime, bytes.NewReader(content))
+	route.ServeCompressedContent(route.RequestURI, modTime, bytes.NewReader(content), gzip.DefaultCompression)
 	return true
 }
 
@@ -153,6 +155,16 @@ func (route *Route) ServeData(data []byte) bool {
 // ServeText serves a string (as raw bytes) to the client
 func (route *Route) ServeText(text string) bool {
 	return route.ServeData([]byte(text))
+}
+
+func (route *Route) CompressedServe(serveF http.HandlerFunc, compressLevel int) {
+	handlers.CompressHandlerLevel(serveF, compressLevel).ServeHTTP(route.W, route.R)
+}
+
+func (route *Route) ServeCompressedContent(name string, modtime time.Time, content io.ReadSeeker, compressLevel int) {
+	route.CompressedServe(func(w http.ResponseWriter, r *http.Request) {
+		http.ServeContent(w, r, name, modtime, content)
+	}, compressLevel)
 }
 
 // StaticServe tries to serve a file for every connection done via
