@@ -15,6 +15,7 @@ import (
 
 	"github.com/gorilla/securecookie"
 	"github.com/nixpare/logger/v2"
+	"github.com/quic-go/quic-go/http3"
 	"golang.org/x/net/http2"
 )
 
@@ -36,6 +37,8 @@ type HTTPServer struct {
 	OnlineTime  time.Time
 	// Server is the underlying HTTP server from the standard library
 	Server *http.Server
+	// HTTP3Server is the QUIC Server, if is nil if the Server is not secure
+	HTTP3Server *http3.Server
 	port   int
 	// Router is a reference to the Router (is the server was created through it).
 	// This should not be set by hand.
@@ -105,7 +108,8 @@ func newHTTPServer(address string, port int, secure bool, path string, certs []C
 
 	srv.ServerPath = path
 
-	srv.Server.Addr = fmt.Sprintf("%s:%d", address, port)
+	serverAddress := fmt.Sprintf("%s:%d", address, port)
+	srv.Server.Addr = serverAddress
 	srv.setHandler()
 
 	//Setting up Redirect Server parameters
@@ -119,6 +123,12 @@ func newHTTPServer(address string, port int, secure bool, path string, certs []C
 		err = http2.ConfigureServer(srv.Server, nil)
 		if err != nil {
 			return nil, err
+		}
+
+		srv.HTTP3Server = &http3.Server{
+			Addr: serverAddress,
+			TLSConfig: srv.Server.TLSConfig,
+			Handler: srv.Server.Handler,
 		}
 	}
 
