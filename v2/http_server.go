@@ -15,6 +15,7 @@ import (
 
 	"github.com/gorilla/securecookie"
 	"github.com/nixpare/logger/v2"
+	"golang.org/x/net/http2"
 )
 
 // HTTPServer is a single HTTP server listening on a TCP port.
@@ -111,6 +112,11 @@ func newHTTPServer(address string, port int, secure bool, path string, certs []C
 	if secure {
 		var err error
 		srv.Server.TLSConfig, err = GenerateTSLConfig(certs)
+		if err != nil {
+			return nil, err
+		}
+
+		err = http2.ConfigureServer(srv.Server, nil)
 		if err != nil {
 			return nil, err
 		}
