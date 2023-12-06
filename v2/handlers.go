@@ -185,6 +185,8 @@ type Route struct {
 	// or HTTPS(true), so you can use one Routing function for secure and unsecure
 	// websites
 	Secure bool
+	// Secure is set to tell wheather the current connection is using HTTP/3
+	IsHTTP3 bool
 	// Host contains the address used by the client, so it could be an IP address
 	// or a domain name. This is generated from the R field
 	Host string
@@ -230,13 +232,26 @@ type Route struct {
 // it is serving a secure connection or not, and then at connection time is
 // the responsible for creating the Route that will handle the connection
 type handler struct {
-	secure bool
-	srv    *HTTPServer
+	srv     *HTTPServer
+	secure  bool
+	isHTTP3 bool
 }
 
 // setHandler sets the http.Handler to the http.Server
 func (srv *HTTPServer) setHandler() {
-	srv.Server.Handler = handler{srv.Secure, srv}
+	srv.Server.Handler = handler{
+		srv: srv,
+		secure: srv.Secure,
+		isHTTP3: false,
+	}
+
+	if srv.HTTP3Server != nil {
+		srv.HTTP3Server.Handler = handler{
+			srv: srv,
+			secure: srv.Secure,
+			isHTTP3: true,
+		}
+	}
 }
 
 // ServeHTTP is the first function called by the http.Server at any connection
@@ -249,6 +264,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Router:         h.srv.Router,
 		Logger:         h.srv.Logger,
 		Secure:         h.secure,
+		IsHTTP3:        h.isHTTP3,
 		RemoteAddress:  r.RemoteAddr,
 		RequestURI:     r.RequestURI,
 		Host:           r.Host,
@@ -272,6 +288,13 @@ func (route *Route) serveHTTP() {
 		route.serveError()
 		route.Logger.Printf(logger.LOG_LEVEL_FATAL, "error preparing request: %v\n%v", err, route)
 		return
+	}
+
+	if route.Srv.HTTP3Server != nil {
+		err = route.Srv.HTTP3Server.SetQuicHeaders(route.W.Header())
+		if err != nil {
+			route.Logger.Printf(logger.LOG_LEVEL_ERROR, "Error setting Alt-Svc header: %v", err)
+		}
 	}
 
 	panicErr := logger.CapturePanic(func() error {
@@ -337,10 +360,18 @@ func (route *Route) serveHTTP() {
 // each function, then will handle the errors and finally the serve
 // function of the subdomain
 func (route *Route) serve() {
-	if route.Website.PageHeaders != nil {
-		if value, ok := route.Website.PageHeaders[route.RequestURI]; ok {
-			for _, h := range value {
-				route.W.Header().Set(h[0], h[1])
+	route.W.Header().Set("Server", "NixPare")
+	
+	for key, values := range route.Srv.headers {
+		for _, value := range values {
+			route.W.Header().Set(key, value)
+		}
+	}
+
+	if route.Domain != nil {
+		for key, values := range route.Domain.headers {
+			for _, value := range values {
+				route.W.Header().Set(key, value)
 			}
 		}
 	}
@@ -353,21 +384,13 @@ func (route *Route) serve() {
 		}
 	}
 
-	if route.Domain != nil {
-		for key, values := range route.Domain.headers {
-			for _, value := range values {
-				route.W.Header().Set(key, value)
+	if route.Website.PageHeaders != nil {
+		if value, ok := route.Website.PageHeaders[route.RequestURI]; ok {
+			for _, h := range value {
+				route.W.Header().Set(h[0], h[1])
 			}
 		}
 	}
-
-	for key, values := range route.Srv.headers {
-		for _, value := range values {
-			route.W.Header().Set(key, value)
-		}
-	}
-
-	route.W.Header().Set("Server", "NixPare")
 
 	route.errTemplate = route.Srv.errTemplate
 	if route.Domain != nil {

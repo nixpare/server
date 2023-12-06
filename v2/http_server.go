@@ -110,7 +110,6 @@ func newHTTPServer(address string, port int, secure bool, path string, certs []C
 
 	serverAddress := fmt.Sprintf("%s:%d", address, port)
 	srv.Server.Addr = serverAddress
-	srv.setHandler()
 
 	//Setting up Redirect Server parameters
 	if secure {
@@ -125,12 +124,15 @@ func newHTTPServer(address string, port int, secure bool, path string, certs []C
 			return nil, err
 		}
 
+		srv.Server.TLSConfig.NextProtos = append([]string{http3.NextProtoH3}, srv.Server.TLSConfig.NextProtos...)
+
 		srv.HTTP3Server = &http3.Server{
 			Addr: serverAddress,
-			TLSConfig: srv.Server.TLSConfig,
-			Handler: srv.Server.Handler,
+			TLSConfig: http3.ConfigureTLSConfig(srv.Server.TLSConfig),
 		}
 	}
+
+	srv.setHandler()
 
 	hashKey := securecookie.GenerateRandomKey(64)
 	if hashKey == nil {
@@ -258,6 +260,15 @@ func (srv *HTTPServer) Start() {
 		}
 	}()
 
+	if srv.HTTP3Server != nil {
+		go func() {
+			if err := srv.HTTP3Server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				srv.Logger.Printf(logger.LOG_LEVEL_FATAL, "Server (HTTP/3) %d error: %v", srv.port, err)
+				srv.Stop()
+			}
+		}()
+	}
+
 	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "Server %d startup completed", srv.port)
 	srv.state.SetState(LCS_STARTED)
 }
@@ -275,9 +286,12 @@ func (srv *HTTPServer) Stop() {
 	srv.Online = false
 	srv.Server.SetKeepAlivesEnabled(false)
 
-	for _, d := range srv.domains {
-		for _, sd := range d.subdomains {
-			sd.stop(srv, d)
+	if srv.HTTP3Server != nil {
+		if err := srv.HTTP3Server.CloseGracefully(10 * time.Second); err != nil {
+			srv.Logger.Printf(logger.LOG_LEVEL_FATAL,
+				"Server (HTTP/3) %d shutdown crashed due to: %v",
+				srv.port, err.Error(),
+			)
 		}
 	}
 
@@ -286,6 +300,12 @@ func (srv *HTTPServer) Stop() {
 			"Server %d shutdown crashed due to: %v",
 			srv.port, err.Error(),
 		)
+	}
+
+	for _, d := range srv.domains {
+		for _, sd := range d.subdomains {
+			sd.stop(srv, d)
+		}
 	}
 
 	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "Server %d shutdown finished", srv.port)

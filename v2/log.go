@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/nixpare/logger/v2"
@@ -49,11 +50,25 @@ const (
 )
 
 func (route *Route) getLock() string {
-	lock := "\U0001F513" + logger.DARK_RED_COLOR + "U" + logger.DEFAULT_COLOR
+	var lock string
 	if route.Secure {
-		lock = "\U0001F512"  + logger.BRIGHT_GREEN_COLOR + "S" + logger.DEFAULT_COLOR
+		lock = "\U0001F512"  + logger.BRIGHT_GREEN_COLOR + "S"
+	} else {
+		lock = "\U0001F513" + logger.DARK_RED_COLOR + "U"
 	}
-	return lock
+
+	switch {
+	case strings.Contains(route.R.Proto, "HTTP/3"):
+		lock += "/3"
+	case strings.Contains(route.R.Proto, "HTTP/2"):
+		lock += "/2"
+	case strings.Contains(route.R.Proto, "HTTP/1.1"):
+		lock += "/1"
+	default:
+		lock += "/0"
+	}
+
+	return lock + logger.DEFAULT_COLOR
 }
 
 // Error is used to manually report an HTTP error to send to the
