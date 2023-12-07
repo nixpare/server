@@ -9,7 +9,15 @@ import (
 
 func logCmd(sc *ServerConn, args ...string) (int, error) {
 	var pretty bool
+
 	var logs []logger.Log
+	var logsChan <-chan []logger.Log
+
+	hl, loggerIsHuge := sc.Router.Logger.(*logger.HugeLogger)
+
+	filter := func(log logger.Log) bool {
+		return true
+	}
 
 	if len(args) > 0 && args[len(args)-1] == "--pretty" {
 		pretty = true
@@ -17,29 +25,51 @@ func logCmd(sc *ServerConn, args ...string) (int, error) {
 	}
 
 	if len(args) == 0 {
-		logs = sc.Router.Logger.GetLastNLogs(1000)
+		if !loggerIsHuge {
+			logs = sc.Router.Logger.GetLastNLogs(1000)
+		} else {
+			logsChan = hl.GetLastNLogsBuffered(1000)
+		}
 	} else {
 		switch args[0] {
 		case "help":
 			return 0, sc.WriteOutput(logHelp("help"))
 		case "all":
-			logs = sc.Router.Logger.GetLastNLogs(sc.Router.Logger.NLogs())
+			if !loggerIsHuge {
+				logs = sc.Router.Logger.GetLastNLogs(sc.Router.Logger.NLogs())
+			} else {
+				logsChan = hl.GetLastNLogsBuffered(sc.Router.Logger.NLogs())
+			}
 		case "tags":
-			logs = logger.LogsMatch(
-				sc.Router.Logger.GetLastNLogs(sc.Router.Logger.NLogs()),
-				args[1:]...,
-			)
+			filter = func(log logger.Log) bool {
+				return log.Match(args[1:]...)
+			}
+
+			if !loggerIsHuge {
+				logs = sc.Router.Logger.GetLastNLogs(sc.Router.Logger.NLogs())
+			} else {
+				logsChan = hl.GetLastNLogsBuffered(sc.Router.Logger.NLogs())
+			}
 		case "tags-any":
-			logs = logger.LogsMatchAny(
-				sc.Router.Logger.GetLastNLogs(sc.Router.Logger.NLogs()),
-				args[1:]...,
-			)
+			filter = func(log logger.Log) bool {
+				return log.MatchAny(args[1:]...)
+			}
+
+			if !loggerIsHuge {
+				logs = sc.Router.Logger.GetLastNLogs(sc.Router.Logger.NLogs())
+			} else {
+				logsChan = hl.GetLastNLogsBuffered(sc.Router.Logger.NLogs())
+			}
 		case "level":
-			levels := fromStringToLogLevel(args[1:])
-			logs = logger.LogsLevelMatch(
-				sc.Router.Logger.GetLastNLogs(sc.Router.Logger.NLogs()),
-				levels...,
-			)
+			filter = func(log logger.Log) bool {
+				return log.LevelMatchAny(fromStringToLogLevel(args[1:])...)
+			}
+
+			if !loggerIsHuge {
+				logs = sc.Router.Logger.GetLastNLogs(sc.Router.Logger.NLogs())
+			} else {
+				logsChan = hl.GetLastNLogsBuffered(sc.Router.Logger.NLogs())
+			}
 		case "range":
 			if len(args) < 2 {
 				return 1, sc.WriteError("Not enough arguments")
@@ -51,7 +81,11 @@ func logCmd(sc *ServerConn, args ...string) (int, error) {
 				return 1, sc.WriteError(err.Error())
 			}
 
-			logs = sc.Router.Logger.GetLogs(start, end)
+			if !loggerIsHuge {
+				logs = sc.Router.Logger.GetLogs(start, end)
+			} else {
+				logsChan = hl.GetLogsBuffered(start, end)
+			}
 		case "list-tags":
 			return 0, sc.WriteOutput(listTags(sc.Router))
 		default:
@@ -59,18 +93,47 @@ func logCmd(sc *ServerConn, args ...string) (int, error) {
 		}
 	}
 
-	resp := "\n"
+	var logOutput func(log logger.Log) string
 	if pretty {
-		for _, l := range logs {
-			resp += l.FullColored() + "\n"
+		logOutput = func(log logger.Log) string {
+			return log.FullColored()
 		}
 	} else {
-		for _, l := range logs {
-			resp += l.Full() + "\n"
+		logOutput = func(log logger.Log) string {
+			return log.Full()
 		}
 	}
 
-	return 0, sc.WriteOutput(resp)
+	sc.WriteOutput("\n")
+
+	if !loggerIsHuge {
+		for _, l := range logs {
+			if !filter(l) {
+				continue
+			}
+
+			err := sc.WriteOutput(logOutput(l))
+			if err != nil {
+				return 1, err
+			}
+		}
+	} else {
+		for logChunk := range logsChan {
+			for _, l := range logChunk {
+				if !filter(l) {
+					continue
+				}
+				
+				err := sc.WriteOutput(logOutput(l))
+				if err != nil {
+					return 1, err
+				}
+			}
+		}
+	}
+
+	sc.WriteOutput("\n")
+	return 0, nil
 }
 
 func listTags(router *server.Router) string {
