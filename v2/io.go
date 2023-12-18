@@ -86,9 +86,9 @@ var (
 		mutex: new(sync.RWMutex),
 	}
 
-	ticker *time.Ticker
 	fileCacheUpdateInterval time.Duration = time.Minute * 15
 	cacheEnabled = true
+	ticker *time.Ticker = time.NewTicker(fileCacheUpdateInterval)
 )
 
 func SetFileCacheUpdateInterval(d time.Duration) {
@@ -146,9 +146,7 @@ func UpdateFileCache() {
 }
 
 func init() {
-	go func() {
-		ticker = time.NewTicker(fileCacheUpdateInterval)
-		
+	go func() {		
 		for range ticker.C {
 			UpdateFileCache()
 		}
