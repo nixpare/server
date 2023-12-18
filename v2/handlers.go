@@ -145,7 +145,7 @@ func (w *ResponseWriter) Write(data []byte) (int, error) {
 // WriteHeader is the equivalent of the http.ResponseWriter method
 // but handles multiple calls, using only the first one used
 func (w *ResponseWriter) WriteHeader(statusCode int) {
-	if w.code != 0 {
+	if w.code != 0 || w.written != 0 {
 		return
 	}
 
