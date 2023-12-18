@@ -87,7 +87,7 @@ var (
 	}
 
 	fileCacheUpdateInterval time.Duration = time.Minute * 15
-	cacheEnabled = true
+	cacheEnabled = false
 	ticker *time.Ticker = time.NewTicker(fileCacheUpdateInterval)
 )
 
