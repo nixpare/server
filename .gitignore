@@ -16,4 +16,4 @@
 .DS_Store
 
 # every hidden folders (e.g. IDE folders)
-.*/
+.idea
