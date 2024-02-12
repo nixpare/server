@@ -114,9 +114,12 @@ func (h *Handler) ChangeSubdomainName(subdomain string) {
 }
 
 func (h *Handler) serveAppWithMiddlewares(w http.ResponseWriter, r *http.Request, appH http.Handler, mws []func(next http.Handler) http.Handler) {
-	var mw http.Handler = api{
-		handler: h,
-		app:     appH,
+	mw := appH
+	if mw != h {
+		mw = api{
+			handler: h,
+			app:     mw,
+		}
 	}
 
 	for i := len(mws) - 1; i >= 0; i-- {
@@ -187,7 +190,7 @@ func (h *Handler) serveApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.subdomain.Handler.ServeHTTP(w, r)
+	h.serveAppWithMiddlewares(w, r, h.subdomain.Handler, nil)
 }
 
 // serveError serves the error in a predefines error template (if set) and only
