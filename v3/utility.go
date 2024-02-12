@@ -7,9 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"os"
-	"path/filepath"
-	"strings"
 )
 
 // CharSet groups the possible output of the function RandStr. For the possible values
@@ -73,17 +70,6 @@ func RandStr(length int, randType CharSet) string {
 // GenerateHashString generate a hash with sha256 from data
 func GenerateHashString(data []byte) string {
 	return fmt.Sprintf("%x", sha256.Sum256(data))
-}
-
-func isAbs(path string) bool {
-	if strings.HasPrefix(path, "~") {
-		home, err := os.UserHomeDir()
-		if err == nil {
-			path = strings.Replace(path, "~", home, 1)
-		}
-	}
-
-	return filepath.IsAbs(path)
 }
 
 func GenerateTSLConfig(certs []Certificate) (*tls.Config, error) {

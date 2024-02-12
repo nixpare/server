@@ -4,9 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"net"
 	"net/http"
+	"strings"
 
 	"github.com/nixpare/logger/v2"
+	"github.com/nixpare/server/v3/life"
 )
 
 // Domain rapresents a website domain with all its
@@ -20,12 +23,8 @@ type Domain struct {
 	name        string
 	srv         *HTTPServer
 	subdomains  map[string]*Subdomain
-	Headers     http.Header
 	errTemplate *template.Template
-	// BeforeServeF sets a function that will be executed before every connection.
-	// If this function returns true, the serve function of the subdomain will not be
-	// executed
-	middlewares []MiddleWareFunc
+	middlewares []func(http.Handler, *Handler) http.Handler
 }
 
 type InitCloseFunc func(srv *HTTPServer, d *Domain, sd *Subdomain) error
@@ -45,10 +44,10 @@ type Subdomain struct {
 	Handler     http.HandlerFunc
 	InitF       InitCloseFunc
 	CloseF      InitCloseFunc
-	Headers     http.Header
 	errTemplate *template.Template
 	online      bool
-	state       *LifeCycle
+	state       *life.LifeCycle
+	middlewares []func(http.Handler, *Handler) http.Handler
 }
 
 // RegisterDomain registers a domain in the server. It's asked to specify a
@@ -57,16 +56,20 @@ type Subdomain struct {
 // it will be treated as the default domain (see srv.RegisterDefaultDomain)
 func (srv *HTTPServer) RegisterDomain(domain string) (*Domain, error) {
 	if _, ok := srv.domains[domain]; ok {
-		return nil, fmt.Errorf("domain: %w", ErrAlreadyRegistered)
+		return nil, fmt.Errorf("domain %s: %w", domain, ErrAlreadyRegistered)
 	}
-	
+
 	d := &Domain{
-		name: domain,
-		srv: srv,
+		name:       domain,
+		srv:        srv,
 		subdomains: make(map[string]*Subdomain),
-		Headers:    make(http.Header),
 	}
-	d.RegisterSubdomain("*.", nil)
+	d.RegisterSubdomain("*.", func(w http.ResponseWriter, r *http.Request) {
+		h := w.(API).Handler()
+		host, _, _ := net.SplitHostPort(r.Host)
+
+		h.Error(http.StatusNotFound, fmt.Sprintf("Host %s not served by this server", host))
+	})
 
 	srv.domains[domain] = d
 	return d, nil
@@ -77,7 +80,7 @@ func (srv *HTTPServer) Domain(domain string) *Domain {
 	return srv.domains[domain]
 }
 
-// DefaultDomain returns the default domain, if set
+// DefaultDomain returns the default domain
 func (srv *HTTPServer) DefaultDomain() *Domain {
 	return srv.domains["*"]
 }
@@ -92,19 +95,22 @@ func (srv *HTTPServer) SetDefaultRoute(handler http.HandlerFunc) {
 // instead if it's not absolute it will be relative to the srv.Path
 func (d *Domain) RegisterSubdomain(subdomain string, handler http.HandlerFunc) (*Subdomain, error) {
 	subdomain = prepSubdomainName(subdomain)
+	return d.registerSubdomain(subdomain, handler)
+}
+
+func (d *Domain) registerSubdomain(subdomain string, handler http.HandlerFunc) (*Subdomain, error) {
 	if _, ok := d.subdomains[subdomain]; ok {
 		return nil, fmt.Errorf("subdomain: %w", ErrAlreadyRegistered)
 	}
 
 	sd := &Subdomain{
-		name: subdomain,
+		name:    subdomain,
 		Handler: handler,
-		Headers: make(http.Header),
-		state:   NewLifeCycleState(),
+		state:   life.NewLifeCycleState(),
 	}
 	d.subdomains[subdomain] = sd
 
-	if d.srv.state.GetState() == LCS_STARTED {
+	if d.srv.state.GetState() == life.LCS_STARTED {
 		sd.start(d.srv, d)
 	}
 
@@ -118,14 +124,48 @@ func (d *Domain) Subdomain(name string) *Subdomain {
 
 // DefaultSubdomain returns the default subdomain, if set
 func (d *Domain) DefaultSubdomain() *Subdomain {
-	return d.subdomains["*"]
+	return d.subdomains["*."]
+}
+
+func (d *Domain) Name() string {
+	return d.name
+}
+
+func (d *Domain) AddMiddleware(mw func(next http.Handler, h *Handler) http.Handler) {
+	d.middlewares = append(d.middlewares, mw)
+}
+
+func (d *Domain) AddMiddlewareFunc(mw func(h *Handler, w http.ResponseWriter, r *http.Request)) {
+	d.middlewares = append(d.middlewares, func(next http.Handler, h *Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			mw(h, w, r)
+			next.ServeHTTP(w, r)
+		})
+	})
+}
+
+func (sd *Subdomain) Name() string {
+	return sd.name
+}
+
+func (sd *Subdomain) AddMiddleware(mw func(next http.Handler, h *Handler) http.Handler) {
+	sd.middlewares = append(sd.middlewares, mw)
+}
+
+func (sd *Subdomain) AddMiddlewareFunc(mw func(h *Handler, w http.ResponseWriter, r *http.Request)) {
+	sd.middlewares = append(sd.middlewares, func(next http.Handler, h *Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			mw(h, w, r)
+			next.ServeHTTP(w, r)
+		})
+	})
 }
 
 func (sd *Subdomain) start(srv *HTTPServer, d *Domain) {
 	if sd.state.AlreadyStarted() {
 		return
 	}
-	sd.state.SetState(LCS_STARTING)
+	sd.state.SetState(life.LCS_STARTING)
 
 	if sd.InitF != nil {
 		l := srv.Logger.Clone(nil, true, d.name, sd.name)
@@ -136,7 +176,7 @@ func (sd *Subdomain) start(srv *HTTPServer, d *Domain) {
 		})
 		if err != nil {
 			l.Printf(logger.LOG_LEVEL_FATAL, "Website %s%s initialization failed: %v", sd.name, d.name, err)
-			sd.state.SetState(LCS_STOPPED)
+			sd.state.SetState(life.LCS_STOPPED)
 			sd.Disable()
 			return
 		}
@@ -144,7 +184,7 @@ func (sd *Subdomain) start(srv *HTTPServer, d *Domain) {
 		l.Printf(logger.LOG_LEVEL_INFO, "Website %s%s initialization successful", sd.name, d.name)
 	}
 
-	sd.state.SetState(LCS_STARTED)
+	sd.state.SetState(life.LCS_STARTED)
 	sd.Enable()
 }
 
@@ -152,7 +192,7 @@ func (sd *Subdomain) stop(srv *HTTPServer, d *Domain) {
 	if sd.state.AlreadyStopped() {
 		return
 	}
-	sd.state.SetState(LCS_STOPPING)
+	sd.state.SetState(life.LCS_STOPPING)
 
 	if sd.CloseF != nil {
 		l := srv.Logger.Clone(nil, true, d.name, sd.name)
@@ -163,7 +203,7 @@ func (sd *Subdomain) stop(srv *HTTPServer, d *Domain) {
 		})
 		if err != nil {
 			l.Printf(logger.LOG_LEVEL_FATAL, "Website %s%s cleanup failed: %v", sd.name, d.name, err)
-			sd.state.SetState(LCS_STOPPED)
+			sd.state.SetState(life.LCS_STOPPED)
 			sd.Disable()
 			return
 		}
@@ -172,12 +212,12 @@ func (sd *Subdomain) stop(srv *HTTPServer, d *Domain) {
 	}
 
 	sd.Disable()
-	sd.state.SetState(LCS_STOPPED)
+	sd.state.SetState(life.LCS_STOPPED)
 }
 
 // Enable sets the subdomain to online state
 func (sd *Subdomain) Enable() error {
-	if sd.state.GetState() == LCS_STARTED {
+	if sd.state.GetState() == life.LCS_STARTED {
 		sd.online = true
 		return nil
 	}
@@ -236,4 +276,13 @@ func (sd *Subdomain) SetErrorTemplate(content string) error {
 
 	sd.errTemplate = t
 	return nil
+}
+
+// prepSubdomainName sanitizes the subdomain name
+func prepSubdomainName(name string) string {
+	if name != "" && name != "*" && !strings.HasSuffix(name, ".") {
+		name += "."
+	}
+
+	return name
 }

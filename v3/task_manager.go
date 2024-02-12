@@ -6,6 +6,7 @@ import (
 
 	"github.com/nixpare/logger/v2"
 	"github.com/nixpare/process"
+	"github.com/nixpare/server/v3/life"
 )
 
 // TaskManager is a component of the Router that controls the
@@ -13,7 +14,7 @@ import (
 type TaskManager struct {
 	Router    *Router
 	Logger    logger.Logger
-	state     *LifeCycle
+	state     *life.LifeCycle
 	processes map[string]*process.Process
 	tasks     map[string]*Task
 	ticker10s *time.Ticker
@@ -27,7 +28,7 @@ func (router *Router) newTaskManager() {
 	router.TaskManager = &TaskManager{
 		Router:    router,
 		Logger:    router.Logger.Clone(nil, true, "task-manager"),
-		state:     NewLifeCycleState(),
+		state:     life.NewLifeCycleState(),
 		processes: make(map[string]*process.Process), tasks: make(map[string]*Task),
 		ticker10s: time.NewTicker(time.Second * 10), ticker1m: time.NewTicker(time.Minute),
 		ticker10m: time.NewTicker(time.Minute * 10), ticker30m: time.NewTicker(time.Minute * 30),
@@ -39,7 +40,7 @@ func (tm *TaskManager) start() {
 	if tm.state.AlreadyStarted() {
 		return
 	}
-	tm.state.SetState(LCS_STARTING)
+	tm.state.SetState(life.LCS_STARTING)
 
 	tm.Logger.Print(logger.LOG_LEVEL_INFO, "Tasks initialization started")
 	for _, t := range tm.tasks {
@@ -48,7 +49,7 @@ func (tm *TaskManager) start() {
 	tm.Logger.Print(logger.LOG_LEVEL_INFO, "Tasks initialization completed")
 
 	go func() {
-		for tm.state.GetState() == LCS_STARTED {
+		for tm.state.GetState() == life.LCS_STARTED {
 			select {
 			case <-tm.ticker10s.C:
 				tm.runTasksWithTimer(TASK_TIMER_10_SECONDS)
@@ -64,19 +65,19 @@ func (tm *TaskManager) start() {
 		}
 	}()
 
-	tm.state.SetState(LCS_STARTED)
+	tm.state.SetState(life.LCS_STARTED)
 }
 
 func (tm *TaskManager) stop() {
 	if tm.state.AlreadyStopped() {
 		return
 	}
-	tm.state.SetState(LCS_STOPPING)
+	tm.state.SetState(life.LCS_STOPPING)
 
 	tm.stopAllTasks()
 	tm.stopAllProcesses()
 
-	tm.state.SetState(LCS_STOPPED)
+	tm.state.SetState(life.LCS_STOPPED)
 }
 
 func (tm *TaskManager) stopAllTasks() {

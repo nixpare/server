@@ -3,10 +3,11 @@ package server
 import (
 	"fmt"
 	"os"
-	"strings"
+	"path/filepath"
 	"time"
 
 	"github.com/nixpare/logger/v2"
+	"github.com/nixpare/server/v3/life"
 )
 
 // Router is the main element of this package and is used to manage
@@ -14,11 +15,8 @@ import (
 type Router struct {
 	httpServers map[int]*HTTPServer
 	tcpServers  map[int]*TCPServer
-	// The Path provided when creating the Router or the working directory
-	// if not provided. This defines the path for every server registered
-	Path            string
 	startTime       time.Time
-	state           *LifeCycle
+	state           *life.LifeCycle
 	TaskManager    *TaskManager
 	Logger         logger.Logger
 }
@@ -26,25 +24,16 @@ type Router struct {
 // NewRouter returns a new Router ready to be set up. If routerPath is not provided,
 // the router will try to get the working directory; if logger is nil, the standard
 // logger.DefaultLogger will be used
-func NewRouter(l logger.Logger, routerPath string) (router *Router, err error) {
+func NewRouter(l logger.Logger) (router *Router, err error) {
 	router = new(Router)
 
 	router.httpServers = make(map[int]*HTTPServer)
 	router.tcpServers = make(map[int]*TCPServer)
 
-	if routerPath == "" {
-		routerPath, err = os.Getwd()
-		if err != nil {
-			return nil, fmt.Errorf("serverPath error: %w", err)
-		}
-	}
-	routerPath = strings.ReplaceAll(routerPath, "\\", "/")
-	router.Path = routerPath
-
-	router.state = NewLifeCycleState()
+	router.state = life.NewLifeCycleState()
 
 	if l == nil {
-		l = logger.DefaultLogger
+		l = logger.DefaultLogger.Clone(nil, true, "router")
 	}
 	router.Logger = l
 
@@ -54,19 +43,15 @@ func NewRouter(l logger.Logger, routerPath string) (router *Router, err error) {
 
 // NewServer creates a new HTTP/HTTPS Server linked to the Router. See NewServer function
 // for more information
-func (router *Router) NewHTTPServer(address string, port int, secure bool, path string, certs ...Certificate) (*HTTPServer, error) {
+func (router *Router) NewHTTPServer(address string, port int, secure bool, certs ...Certificate) (*HTTPServer, error) {
 	_, ok := router.httpServers[port]
 	if ok {
 		return nil, fmt.Errorf("http server listening to port %d already registered", port)
 	}
 
-	if path == "" {
-		path = router.Path
-	}
-
 	srv, err := newHTTPServer(
-		address, port, secure, path, certs,
-		router.Logger.Clone(nil, true, "server", "http", fmt.Sprint(port)),
+		address, port, secure, certs,
+		createServerLogger(router.Logger, "http", port),
 	)
 	if err != nil {
 		return nil, err
@@ -88,7 +73,7 @@ func (router *Router) NewTCPServer(address string, port int, secure bool, certs 
 
 	srv, err := newTCPServer(
 		address, port, secure, certs,
-		router.Logger.Clone(nil, true, "server", "tcp", fmt.Sprint(port)),
+		createServerLogger(router.Logger, "tcp", port),
 	)
 	if err != nil {
 		return nil, err
@@ -100,29 +85,37 @@ func (router *Router) NewTCPServer(address string, port int, secure bool, certs 
 	return srv, nil
 }
 
+func getPIDPath() string {
+	pidPath, err := os.Executable()
+	if err != nil {
+		pidPath = "."
+	}
+	return filepath.Dir(pidPath) + "/PID.txt"
+}
+
 // Start starts all the registered servers and the background task manager
 func (router *Router) Start() {
 	if router.state.AlreadyStarted() {
 		return
 	}
-	router.state.SetState(LCS_STARTING)
+	router.state.SetState(life.LCS_STARTING)
 
-	pid, _ := os.OpenFile(router.Path+"/PID.txt", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
+	pid, _ := os.OpenFile(getPIDPath(), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
 	fmt.Fprintln(pid, os.Getpid())
 	pid.Close()
 
 	router.startTime = time.Now()
 	router.writeLogStart(router.startTime)
 
-	for _, srv := range router.httpServers {
+	for _, srv := range router.tcpServers {
 		srv.Start()
 	}
-	for _, srv := range router.tcpServers {
+	for _, srv := range router.httpServers {
 		srv.Start()
 	}
 	router.TaskManager.start()
 
-	router.state.SetState(LCS_STARTED)
+	router.state.SetState(life.LCS_STARTED)
 }
 
 // Stop starts the shutdown procedure of the entire router with all
@@ -132,7 +125,7 @@ func (router *Router) Stop() {
 	if router.state.AlreadyStopped() {
 		return
 	}
-	router.state.SetState(LCS_STOPPING)
+	router.state.SetState(life.LCS_STOPPING)
 
 	router.Logger.Print(logger.LOG_LEVEL_INFO, "Router shutdown procedure started")
 
@@ -144,17 +137,19 @@ func (router *Router) Stop() {
 		srv.Stop()
 	}
 
-	err := os.Remove(router.Path + "/PID.txt")
+	err := os.Remove(getPIDPath())
 	if err != nil {
 		router.Logger.Printf(logger.LOG_LEVEL_ERROR, "error deleting PID file: %v", err)
 	}
 
+	router.Logger.Print(logger.LOG_LEVEL_INFO, "Router shutdown procedure finished")
+	
 	router.writeLogClosure(time.Now())
-	router.state.SetState(LCS_STOPPED)
+	router.state.SetState(life.LCS_STOPPED)
 }
 
 func (router *Router) IsRunning() bool {
-	return router.state.GetState() == LCS_STARTED
+	return router.state.GetState() == life.LCS_STARTED
 }
 
 // Server returns the HTTP server running on the given port
@@ -169,4 +164,8 @@ func (router *Router) TCPServer(port int) *TCPServer {
 
 func (router *Router) StartTime() time.Time {
 	return router.startTime
+}
+
+func createServerLogger(l logger.Logger, srvType string, port int) logger.Logger {
+	return l.Clone(nil, true, "server", srvType, fmt.Sprintf("port:%d", port))
 }

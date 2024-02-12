@@ -17,12 +17,6 @@ func serverCmd(sc *ServerConn, args ...string) (exitCode int, err error) {
 		switch args[0] {
 		case "help":
 			return 0, sc.WriteOutput(serverHelp(args[0]))
-		case "enable-cache":
-			return enableCache(sc)
-		case "disable-cache":
-			return disableCache(sc)
-		case "update-cache":
-			return updateCache(sc)
 		default:
 			return 1, sc.WriteError(serverHelp(args[0]))
 		}
@@ -30,8 +24,6 @@ func serverCmd(sc *ServerConn, args ...string) (exitCode int, err error) {
 		switch args[0] {
 		case "online":
 			return onlineCmd(sc, args[1])
-		case "cache-update-interval":
-			return setCacheUpdateInterval(sc, args[1])
 		default:
 			return 1, sc.WriteError(serverHelp(args[0]))
 		}
@@ -181,31 +173,6 @@ func extendOfflineCmd(sc *ServerConn, port, minutes string) (int, error) {
 	return 0, sc.WriteOutput(fmt.Sprintf("Server offline period extended by %d minutes", duration))
 }
 
-func updateCache(sc *ServerConn) (int, error) {
-	server.UpdateFileCache()
-	return 0, sc.WriteOutput("Cache updated!")
-}
-
-func enableCache(sc *ServerConn) (int, error) {
-	server.EnableFileCache()
-	return 0, sc.WriteOutput("Cache enabled!")
-}
-
-func disableCache(sc *ServerConn) (int, error) {
-	server.DisableFileCache()
-	return 0, sc.WriteOutput("Cache disabled!")
-}
-
-func setCacheUpdateInterval(sc *ServerConn, minutes string) (int, error) {
-	m, err := strconv.Atoi(minutes)
-	if err != nil {
-		return 1, sc.WriteError(fmt.Sprintf("error parsing minutes: %v", err))
-	}
-
-	server.SetFileCacheUpdateInterval(time.Duration(m) * time.Minute)
-	return 0, sc.WriteOutput("Cache update interval updated!")
-}
-
 func serverHelp(cmd string) string {
 	var res string
 	if cmd == "help" {
@@ -216,9 +183,5 @@ func serverHelp(cmd string) string {
 	return res + "    - online        <port>            : set the server back online\n" +
 				 "    - offile        <port> <minutes>  : set the server offline for the provided period\n" +
 				 "    - extend-offile <port> <minutes>  : extends the server offline time with the provided period\n" +
-				 "    - enable-cache                    : enables the server file cache\n" +
-				 "    - disable-cache                   : disables the server file cache, resetting it\n" +
-				 "    - update-cache                    : forces the server file cache to update instantly\n" +
-				 "    - cache-update-interval <minutes> : changes the server file cache update interval\n" +
 				 "    - help                            : prints out the help message\n"
 }

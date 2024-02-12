@@ -3,7 +3,7 @@ package commands
 import (
 	"io"
 
-	"github.com/nixpare/server/v2"
+	"github.com/nixpare/server/v3"
 )
 
 func NewCommandServer(pipeName string, router *server.Router) (*CommandServer, error) {

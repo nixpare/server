@@ -2,19 +2,19 @@ package server
 
 import (
 	"context"
-	"crypto/sha256"
 	"embed"
 	"errors"
 	"fmt"
 	"html/template"
 	"log"
+	"net"
 	"net/http"
-	"os"
-	"sync"
+	"strconv"
+	"strings"
 	"time"
 
-	"github.com/gorilla/securecookie"
 	"github.com/nixpare/logger/v2"
+	"github.com/nixpare/server/v3/life"
 	"github.com/quic-go/quic-go/http3"
 	"golang.org/x/net/http2"
 )
@@ -26,11 +26,11 @@ import (
 // Before creating any server you should change the HashKeyString and
 // BlockKeyString global variables: see Route.SetCookiePerm method
 type HTTPServer struct {
-	// Secure is set to indicate whether the server is using
+	// secure is set to indicate whether the server is using
 	// the HTTP or HTTPS protocol
-	Secure bool
+	secure bool
 	// state tells in which state the server is
-	state *LifeCycle
+	state *life.LifeCycle
 	// Online tells wheter the server is responding to external requests
 	Online bool
 	// OnlineTime reports the last time the server was activated or resumed
@@ -42,25 +42,11 @@ type HTTPServer struct {
 	port        int
 	// Router is a reference to the Router (is the server was created through it).
 	// This should not be set by hand.
-	Router *Router
-	Logger logger.Logger
-	// IsInternalConn can be used to additionally add rules used to determine whether
-	// an incoming connection must be treated as from a client in the local network or not.
-	// This is used both for the method route.IsInternalConn and for accessing other domains
-	// via the http queries from desired IPs. By default, only the connection coming from
-	// "localhost", "127.0.0.1" and "::1" are treated as local connections.
-	IsInternalConn func(remoteAddress string) bool
-	IsLocalhost    func(host string) bool
-	domains        map[string]*Domain
-	// ServerPath is the path provided on server creation. It is used as the log location
-	// for this specific server
-	ServerPath       string
-	secureCookie     *securecookie.SecureCookie
-	secureCookiePerm *securecookie.SecureCookie
-	Headers          http.Header
-	errTemplate      *template.Template
-	offlineClientsM  *sync.RWMutex
-	offlineClients   map[string]offlineClient
+	Router      *Router
+	Logger      logger.Logger
+	middlewares []func(http.Handler, *Handler) http.Handler
+	domains     map[string]*Domain
+	errTemplate *template.Template
 }
 
 // Certificate rapresents a standard PEM certicate composed of a
@@ -71,42 +57,24 @@ type Certificate struct {
 	KeyPemPath  string // KeyPemPath is the path to the private key
 }
 
-type offlineClient struct {
-	domain    string
-	subdomain string
-}
-
-var (
-	HashKeyString  = "NixPare Server"
-	BlockKeyString = "github.com/nixpare/server"
-)
-
 //go:embed static
 var staticFS embed.FS
 
 // NewServer creates a new server
-func NewHTTPServer(address string, port int, secure bool, path string, certs ...Certificate) (*HTTPServer, error) {
-	if path == "" {
-		var err error
-		path, err = os.Getwd()
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return newHTTPServer(address, port, secure, path, certs, nil)
+func NewHTTPServer(address string, port int, secure bool, certs ...Certificate) (*HTTPServer, error) {
+	return newHTTPServer(address, port, secure, certs, nil)
 }
 
-func newHTTPServer(address string, port int, secure bool, path string, certs []Certificate, l logger.Logger) (*HTTPServer, error) {
+func newHTTPServer(address string, port int, secure bool, certs []Certificate, l logger.Logger) (*HTTPServer, error) {
 	srv := new(HTTPServer)
 
 	srv.Server = new(http.Server)
-	srv.Secure = secure
+	srv.secure = secure
 	srv.port = port
 
-	srv.state = NewLifeCycleState()
+	srv.Server.Handler = srv
 
-	srv.ServerPath = path
+	srv.state = life.NewLifeCycleState()
 
 	serverAddress := fmt.Sprintf("%s:%d", address, port)
 	srv.Server.Addr = serverAddress
@@ -128,32 +96,16 @@ func newHTTPServer(address string, port int, secure bool, path string, certs []C
 
 		srv.HTTP3Server = &http3.Server{
 			Addr:      serverAddress,
+			Handler:   srv,
 			TLSConfig: http3.ConfigureTLSConfig(srv.Server.TLSConfig),
 		}
 	}
 
-	hashKey := securecookie.GenerateRandomKey(64)
-	if hashKey == nil {
-		return nil, fmt.Errorf("error creating hashKey")
-	}
-	blockKey := securecookie.GenerateRandomKey(32)
-	if blockKey == nil {
-		return nil, fmt.Errorf("error creating blockKey")
-	}
-	srv.secureCookie = securecookie.New(hashKey, blockKey).MaxAge(0)
-
-	hashKeyPerm := make([]byte, 0, 32)
-	for _, b := range sha256.Sum256([]byte(HashKeyString)) {
-		hashKeyPerm = append(hashKeyPerm, b)
-	}
-	blockKeyPerm := make([]byte, 0, 32)
-	for _, b := range sha256.Sum256([]byte(BlockKeyString)) {
-		blockKeyPerm = append(blockKeyPerm, b)
-	}
-	srv.secureCookiePerm = securecookie.New(hashKeyPerm, blockKeyPerm).MaxAge(0)
-
 	srv.domains = make(map[string]*Domain)
-	srv.Headers = make(http.Header)
+	_, err := srv.RegisterDomain("*")
+	if err != nil {
+		return nil, err
+	}
 
 	errorHTMLContent, err := staticFS.ReadFile("static/error.html")
 	if err != nil {
@@ -166,16 +118,10 @@ func newHTTPServer(address string, port int, secure bool, path string, certs []C
 	}
 
 	if l == nil {
-		l = logger.DefaultLogger.Clone(nil, true, "server", "http", fmt.Sprint(port))
+		l = createServerLogger(logger.DefaultLogger, "http", port)
 	}
 	srv.Logger = l
 	srv.Server.ErrorLog = log.New(srv.Logger.FixedLogger(logger.LOG_LEVEL_ERROR), "", 0)
-
-	srv.offlineClientsM = new(sync.RWMutex)
-	srv.offlineClients = make(map[string]offlineClient)
-
-	srv.IsInternalConn = func(remoteAddress string) bool { return false }
-	srv.IsLocalhost = func(host string) bool { return false }
 
 	return srv, nil
 }
@@ -187,7 +133,24 @@ func (srv *HTTPServer) Port() int {
 
 // IsRunning tells whether the server is running or not
 func (srv *HTTPServer) IsRunning() bool {
-	return srv.state.GetState() == LCS_STARTED
+	return srv.state.GetState() == life.LCS_STARTED
+}
+
+func (srv *HTTPServer) Secure() bool {
+	return srv.secure
+}
+
+func (srv *HTTPServer) AddMiddleware(mw func(next http.Handler, h *Handler) http.Handler) {
+	srv.middlewares = append(srv.middlewares, mw)
+}
+
+func (srv *HTTPServer) AddMiddlewareFunc(mw func(h *Handler, w http.ResponseWriter, r *http.Request)) {
+	srv.middlewares = append(srv.middlewares, func(next http.Handler, h *Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			mw(h, w, r)
+			next.ServeHTTP(w, r)
+		})
+	})
 }
 
 // Start prepares every domain and subdomain and starts listening
@@ -197,7 +160,7 @@ func (srv *HTTPServer) Start() {
 		return
 	}
 
-	srv.state.SetState(LCS_STARTING)
+	srv.state.SetState(life.LCS_STARTING)
 	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "Server %d startup started", srv.port)
 
 	srv.Online = true
@@ -210,7 +173,7 @@ func (srv *HTTPServer) Start() {
 	}
 
 	go func() {
-		if srv.Secure {
+		if srv.secure {
 			if err := srv.Server.ListenAndServeTLS("", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				srv.Logger.Printf(logger.LOG_LEVEL_FATAL, "Server %d error: %v", srv.port, err)
 				srv.Stop()
@@ -233,7 +196,7 @@ func (srv *HTTPServer) Start() {
 	}
 
 	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "Server %d startup completed", srv.port)
-	srv.state.SetState(LCS_STARTED)
+	srv.state.SetState(life.LCS_STARTED)
 }
 
 // Stop cleans up every domain and subdomain and stops listening
@@ -243,7 +206,7 @@ func (srv *HTTPServer) Stop() {
 		return
 	}
 
-	srv.state.SetState(LCS_STOPPING)
+	srv.state.SetState(life.LCS_STOPPING)
 	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "Server %d shutdown started", srv.port)
 
 	srv.Online = false
@@ -272,5 +235,101 @@ func (srv *HTTPServer) Stop() {
 	}
 
 	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "Server %d shutdown finished", srv.port)
-	srv.state.SetState(LCS_STOPPED)
+	srv.state.SetState(life.LCS_STOPPED)
+}
+
+func (srv *HTTPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if srv.HTTP3Server != nil {
+		err := srv.HTTP3Server.SetQuicHeaders(w.Header())
+		if err != nil {
+			srv.Logger.Printf(logger.LOG_LEVEL_ERROR, "Error setting Alt-Svc header: %v", err)
+		}
+	}
+
+	w.Header().Add("Server", "NixPare")
+
+	h := &Handler{
+		w:            w,
+		r:            r,
+		srv:          srv,
+		router:       srv.Router,
+		Logger:       srv.Logger,
+		errTemplate:  srv.errTemplate,
+		connTime:     time.Now(),
+		caputedError: make([]byte, 0),
+	}
+
+	h.host, _, _ = net.SplitHostPort(r.Host)
+	h.remoteAddr, _, _ = net.SplitHostPort(r.RemoteAddr)
+	h.requestQuery = r.URL.Query()
+
+	split := strings.Split(h.host, ".")
+	splitL := len(split)
+
+	if splitL == 1 {
+		h.domainName = h.host
+	} else {
+		if _, err := strconv.Atoi(split[splitL-1]); err == nil {
+			h.domainName = h.host
+		} else if strings.HasSuffix(h.host, "localhost") {
+			h.domainName = "localhost"
+			h.subdomainName = strings.Join(split[:splitL-1], ".") + "."
+		} else {
+			h.domainName = split[splitL-2] + "." + split[splitL-1]
+			h.subdomainName = strings.Join(split[:splitL-2], ".") + "."
+		}
+	}
+
+	panicErr := logger.CapturePanic(func() error {
+		h.serveAppWithMiddlewares(h, r, h, srv.middlewares)
+		return nil
+	})
+
+	if panicErr != nil {
+		if h.code == 0 {
+			h.Error(http.StatusInternalServerError, "Internal server error", panicErr)
+			if !h.hasWrote {
+				h.serveError()
+			}
+		} else {
+			if !h.hasWrote {
+				h.serveError()
+			}
+
+			if h.logErrMessage == "" {
+				h.logErrMessage = fmt.Sprintf("panic after response: %v", panicErr)
+			} else {
+				h.logErrMessage = fmt.Sprintf(
+					"panic after response: %v -> response error: %s\n%s",
+					panicErr.Unwrap(),
+					h.logErrMessage,
+					panicErr.Stack(),
+				)
+			}
+		}
+
+		h.logHTTPPanic(h.getMetrics())
+		return
+	}
+
+	h.WriteHeader(200)
+
+	if h.code >= 400 {
+		h.serveError()
+	}
+
+	if h.AvoidLogging {
+		return
+	}
+
+	metrics := h.getMetrics()
+
+	switch {
+	case metrics.Code < 400:
+		h.logHTTPInfo(metrics)
+	case metrics.Code >= 400 && metrics.Code < 500:
+		h.logHTTPWarning(metrics)
+	default:
+		h.logHTTPError(metrics)
+	}
 }

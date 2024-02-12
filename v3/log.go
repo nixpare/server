@@ -3,7 +3,6 @@ package server
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/nixpare/logger/v2"
@@ -14,7 +13,7 @@ var (
 )
 
 var (
-	ErrNotFound = errors.New("not found")
+	ErrNotFound          = errors.New("not found")
 	ErrAlreadyRegistered = errors.New("already registered")
 )
 
@@ -41,177 +40,88 @@ func (router *Router) writeLogClosure(t time.Time) {
 	)
 }
 
-// remoteAddress + Secure/Unsecure (Lock) + Code + Method + requestURI + Written + Duration + Website Name + Domain Name + HostAddr (+ LogError)
+// remoteAddress + code + method + requestURI + written + duration + subdomain.domain + proto (+ error)
 const (
-	http_info_format    = "%s%-15s%s - %s %s%d %-4s %-50s%s - %s%10.3f MB - (%6d ms)%s \u279C %s%s (%s)%s via %s%s%s"
-	http_warning_format = "%s%-15s%s - %s %s%d %-4s %-50s%s - %s%10.3f MB - (%6d ms)%s \u279C %s%s (%s)%s via %s%s%s \u279C %s%s%s"
-	http_error_format   = "%s%-15s%s - %s %s%d %-4s %-50s%s - %s%10.3f MB - (%6d ms)%s \u279C %s%s (%s)%s via %s%s%s \u279C %s%s%s"
-	http_panic_format   = "%s%-15s%s - %s %s%-3s %-4s %-50s%s - %s%10.3f MB - (%6d ms)%s \u279C %s%s (%s)%s via %s%s%s \u279C panic: %s%s%s"
+	http_info_format    = "%s%-15s%s - %s%d %s%-4s %-50s%s - %s%10.3f MB (%6d ms)%s \u279C %s%s %s(%s)%s"
+	http_warning_format = "%s%-15s%s - %s%d %s%-4s %-50s%s - %s%10.3f MB (%6d ms)%s \u279C %s%s %s(%s)%s \u279C %s%s%s"
+	http_error_format   = "%s%-15s%s - %s%d %s%-4s %-50s%s - %s%10.3f MB (%6d ms)%s \u279C %s%s %s(%s)%s \u279C %s%s%s"
+	http_panic_format   = "%s%-15s%s - %s%d %s%-4s %-50s%s - %s%10.3f MB (%6d ms)%s \u279C %s%s %s(%s)%s \u279C %spanic: %s%s"
 )
 
-func (route *Route) getLock() string {
-	var lock string
-	if route.Secure {
-		lock = "\U0001F512"  + logger.BRIGHT_GREEN_COLOR + "S"
-	} else {
-		lock = "\U0001F513" + logger.DARK_RED_COLOR + "U"
-	}
-
-	switch {
-	case strings.Contains(route.R.Proto, "HTTP/3"):
-		lock += "/3"
-	case strings.Contains(route.R.Proto, "HTTP/2"):
-		lock += "/2"
-	case strings.Contains(route.R.Proto, "HTTP/1.1"):
-		lock += "/1"
-	default:
-		lock += "/0"
-	}
-
-	return lock + logger.DEFAULT_COLOR
-}
-
-// Error is used to manually report an HTTP error to send to the
-// client.
-//
-// It sets the http status code (so it should not be set
-// before) and if the connection is done via a GET request, it will
-// try to serve the html error template with the status code and
-// error message in it, otherwise if the error template does not exist
-// or the request is done via another method (like POST), the error
-// message will be sent as a plain text.
-//
-// The last optional list of elements can be used just for logging or
-// debugging: the elements will be saved in the logs
-func (route *Route) Error(statusCode int, message any, a ...any) bool {
-	route.W.WriteHeader(statusCode)
-	
-	route.errMessage = fmt.Sprint(message)
-	if message == "" {
-		route.errMessage = "Undefined error"
-	}
-
-	if len(a) > 0 {
-		first := true
-		for _, x := range a {
-			if first {
-				first = false
-			} else {
-				route.logErrMessage += " "
-			}
-
-			route.logErrMessage += fmt.Sprint(x)
-		}
-	} else {
-		route.logErrMessage = route.errMessage
-	}
-
-	return false
-}
-
 // logHTTPInfo logs http request with an exit code < 400
-func (route *Route) logHTTPInfo(m metrics) {
-	route.Logger.Printf(logger.LOG_LEVEL_INFO, http_info_format,
-		logger.BRIGHT_BLUE_COLOR, route.RemoteAddress, logger.DEFAULT_COLOR,
-		route.getLock(),
+func (h *Handler) logHTTPInfo(m metrics) {
+	h.Logger.Printf(logger.LOG_LEVEL_INFO, http_info_format,
+		logger.BRIGHT_BLUE_COLOR, h.remoteAddr, logger.DEFAULT_COLOR,
 		logger.BRIGHT_GREEN_COLOR, m.Code,
-		route.R.Method,
-		route.logRequestURI, logger.DEFAULT_COLOR,
+		logger.DARK_GREEN_COLOR, h.r.Method,
+		h.r.RequestURI, logger.DEFAULT_COLOR,
 		logger.BRIGHT_BLACK_COLOR, float64(m.Written)/1000000.,
 		m.Duration.Milliseconds(), logger.DEFAULT_COLOR,
-		logger.BRIGHT_GREEN_COLOR, route.Website.Name,
-		route.Domain.Name, logger.DEFAULT_COLOR,
-		logger.BRIGHT_BLUE_COLOR, route.Host, logger.DEFAULT_COLOR,
+		logger.DARK_CYAN_COLOR, h.logHost(),
+		logger.BRIGHT_BLACK_COLOR, h.r.Proto, logger.DEFAULT_COLOR,
 	)
 }
 
 // logHTTPWarning logs http request with an exit code >= 400 and < 500
-func (route *Route) logHTTPWarning(m metrics) {
-	if route.logErrMessage == "" {
-		route.logErrMessage = "Unknown error"
+func (h *Handler) logHTTPWarning(m metrics) {
+	if h.logErrMessage == "" {
+		h.logErrMessage = "Unknown error"
 	}
 
-	route.Logger.Printf(logger.LOG_LEVEL_WARNING, http_warning_format,
-		logger.BRIGHT_BLUE_COLOR, route.RemoteAddress, logger.DEFAULT_COLOR,
-		route.getLock(),
+	h.Logger.Printf(logger.LOG_LEVEL_WARNING, http_warning_format,
+		logger.BRIGHT_BLUE_COLOR, h.remoteAddr, logger.DEFAULT_COLOR,
 		logger.DARK_YELLOW_COLOR, m.Code,
-		route.R.Method,
-		route.logRequestURI, logger.DEFAULT_COLOR,
+		logger.DARK_GREEN_COLOR, h.r.Method,
+		h.r.RequestURI, logger.DEFAULT_COLOR,
 		logger.BRIGHT_BLACK_COLOR, float64(m.Written)/1000000.,
 		m.Duration.Milliseconds(), logger.DEFAULT_COLOR,
-		logger.DARK_YELLOW_COLOR, route.Website.Name,
-		route.Domain.Name, logger.DEFAULT_COLOR,
-		logger.BRIGHT_BLUE_COLOR, route.Host, logger.DEFAULT_COLOR,
-		logger.DARK_YELLOW_COLOR, route.logErrMessage, logger.DEFAULT_COLOR,
+		logger.DARK_CYAN_COLOR, h.logHost(),
+		logger.BRIGHT_BLACK_COLOR, h.r.Proto, logger.DEFAULT_COLOR,
+		logger.DARK_YELLOW_COLOR, h.logErrMessage, logger.DEFAULT_COLOR,
 	)
 }
 
 // logHTTPError logs http request with an exit code >= 500
-func (route *Route) logHTTPError(m metrics) {
-	if route.logErrMessage == "" {
-		route.logErrMessage = "Unknown error"
+func (h *Handler) logHTTPError(m metrics) {
+	if h.logErrMessage == "" {
+		h.logErrMessage = "Unknown error"
 	}
 
-	route.Logger.Printf(logger.LOG_LEVEL_ERROR, http_error_format,
-		logger.BRIGHT_BLUE_COLOR, route.RemoteAddress, logger.DEFAULT_COLOR,
-		route.getLock(),
+	h.Logger.Printf(logger.LOG_LEVEL_ERROR, http_error_format,
+		logger.BRIGHT_BLUE_COLOR, h.remoteAddr, logger.DEFAULT_COLOR,
 		logger.DARK_RED_COLOR, m.Code,
-		route.R.Method,
-		route.logRequestURI, logger.DEFAULT_COLOR,
+		logger.DARK_GREEN_COLOR, h.r.Method,
+		h.r.RequestURI, logger.DEFAULT_COLOR,
 		logger.BRIGHT_BLACK_COLOR, float64(m.Written)/1000000.,
 		m.Duration.Milliseconds(), logger.DEFAULT_COLOR,
-		logger.DARK_RED_COLOR, route.Website.Name,
-		route.Domain.Name, logger.DEFAULT_COLOR,
-		logger.BRIGHT_BLUE_COLOR, route.Host, logger.DEFAULT_COLOR,
-		logger.DARK_RED_COLOR, route.logErrMessage, logger.DEFAULT_COLOR,
+		logger.DARK_CYAN_COLOR, h.logHost(),
+		logger.BRIGHT_BLACK_COLOR, h.r.Proto, logger.DEFAULT_COLOR,
+		logger.DARK_RED_COLOR, h.logErrMessage, logger.DEFAULT_COLOR,
 	)
 }
 
-func (route *Route) logHTTPPanic(m metrics) {
-	if route.logErrMessage == "" {
-		route.logErrMessage = "Unknown error"
+func (h *Handler) logHTTPPanic(m metrics) {
+	if h.logErrMessage == "" {
+		h.logErrMessage = "Unknown error"
 	}
 
-	code := " - "
-	if m.Code != 0 {
-		code = fmt.Sprint(m.Code)
-	}
-
-	route.Logger.Printf(logger.LOG_LEVEL_FATAL, http_panic_format,
-		logger.BRIGHT_BLUE_COLOR, route.RemoteAddress, logger.DEFAULT_COLOR,
-		route.getLock(),
-		logger.DARK_RED_COLOR, code,
-		route.R.Method,
-		route.logRequestURI, logger.DEFAULT_COLOR,
+	h.Logger.Printf(logger.LOG_LEVEL_FATAL, http_panic_format,
+		logger.BRIGHT_BLUE_COLOR, h.remoteAddr, logger.DEFAULT_COLOR,
+		logger.DARK_RED_COLOR, m.Code,
+		logger.DARK_GREEN_COLOR, h.r.Method,
+		h.r.RequestURI, logger.DEFAULT_COLOR,
 		logger.BRIGHT_BLACK_COLOR, float64(m.Written)/1000000.,
 		m.Duration.Milliseconds(), logger.DEFAULT_COLOR,
-		logger.DARK_RED_COLOR, route.Website.Name,
-		route.Domain.Name, logger.DEFAULT_COLOR,
-		logger.BRIGHT_BLUE_COLOR, route.Host, logger.DEFAULT_COLOR,
-		logger.DARK_RED_COLOR, route.logErrMessage, logger.DEFAULT_COLOR,
+		logger.DARK_CYAN_COLOR, h.logHost(),
+		logger.BRIGHT_BLACK_COLOR, h.r.Proto, logger.DEFAULT_COLOR,
+		logger.DARK_RED_COLOR, h.logErrMessage, logger.DEFAULT_COLOR,
 	)
 }
 
-// Log creates a Log with the given severity and message; any data after message will be used
-// to populate the extra field of the Log automatically using the built-in function
-// fmt.Sprint(extra...)
+func (h *Handler) logHost() string {
+	if !h.redirected {
+		return h.r.Host
+	}
 
-// Logf creates a Log with the given severity; the rest of the arguments is used as
-// the built-in function fmt.Sprintf(format, a...), however if the resulting string
-// contains a line feed, everything after that will be used to populate the extra field
-// of the Log
-
-// Print is a shorthand for Log(LOG_LEVE_DEBUG, a...) used for debugging
-
-// Printf is a shorthand for Logf(LOG_LEVE_DEBUG, format, a...) used for debugging
-
-// Log creates a Log with the given severity and message; any data after message will be used
-// to populate the extra field of the Log automatically using the built-in function
-// fmt.Sprint(extra...)
-
-// Logf creates a Log with the given severity; the rest of the arguments is used as
-// the built-in function fmt.Sprintf(format, a...), however if the resulting string
-// contains a line feed, everything after that will be used to populate the extra field
-// of the Log
-
-// Print is a shorthand for Log(LOG_LEVE_DEBUG, a...) used for debugging
+	return fmt.Sprintf("%s (%s%s)", h.r.Host, h.subdomain.name, h.domain.name)
+}

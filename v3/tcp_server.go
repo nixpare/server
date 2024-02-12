@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/nixpare/logger/v2"
+	"github.com/nixpare/server/v3/life"
 )
 
 type Conn struct {
@@ -24,7 +25,7 @@ type TCPServer struct {
 	port int
 	secure bool
 	Online bool
-	state *LifeCycle
+	state *life.LifeCycle
 	ConnHandler ConnHandlerFunc
 	Router  *Router
 	Logger  logger.Logger
@@ -58,14 +59,14 @@ func newTCPServer(address string, port int, secure bool, certs []Certificate, l 
 	}
 
 	if l == nil {
-		l = logger.DefaultLogger.Clone(nil, true, "server", "tcp", fmt.Sprint(port))
+		l = logger.DefaultLogger.Clone(nil, true, "server", "tcp", fmt.Sprintf("port:%d", port))
 	}
 
 	return &TCPServer {
 		listener: listener,
 		address: address,
 		port: port,
-		state: NewLifeCycleState(),
+		state: life.NewLifeCycleState(),
 		Logger: l,
 	}, nil
 }
@@ -76,10 +77,10 @@ func (srv *TCPServer) Start() {
 	}
 
 	srv.Online = true
-	srv.state.SetState(LCS_STARTED)
+	srv.state.SetState(life.LCS_STARTED)
 
 	go func() {
-		for srv.state.GetState() == LCS_STARTED {
+		for srv.state.GetState() == life.LCS_STARTED {
 			conn, err := srv.listener.Accept()
 			if err != nil {
 				if !errors.Is(err, net.ErrClosed) {
@@ -107,10 +108,10 @@ func (srv *TCPServer) Start() {
 }
 
 func (srv *TCPServer) Stop() error {
-	srv.state.SetState(LCS_STOPPING)
+	srv.state.SetState(life.LCS_STOPPING)
 	srv.Online = false
 
-	defer srv.state.SetState(LCS_STOPPED)
+	defer srv.state.SetState(life.LCS_STOPPED)
 	return srv.listener.Close()
 }
 
