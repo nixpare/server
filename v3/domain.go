@@ -64,7 +64,7 @@ func (srv *HTTPServer) RegisterDomain(domain string) (*Domain, error) {
 		srv:        srv,
 		subdomains: make(map[string]*Subdomain),
 	}
-	d.RegisterSubdomain("*.", HandlerFunc(func (api API, w http.ResponseWriter, r *http.Request) {
+	d.RegisterSubdomain("*.", HandlerFunc(func (api *API, w http.ResponseWriter, r *http.Request) {
 		host, _, _ := net.SplitHostPort(r.Host)
 		api.Handler().Error(w, http.StatusNotFound, fmt.Sprintf("Host %s not served by this server", host))
 	}))

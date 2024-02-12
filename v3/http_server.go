@@ -242,7 +242,6 @@ func (srv *HTTPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	h := &Handler{
 		w:            w,
-		r:            r,
 		srv:          srv,
 		router:       srv.Router,
 		Logger:       srv.Logger,
@@ -257,6 +256,9 @@ func (srv *HTTPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.Logger.Printf(logger.LOG_LEVEL_ERROR, "error writing response: %v", err)
 		}
 	}()
+
+	r = r.WithContext(context.WithValue(r.Context(), API_CTX_KEY, &API{ h: h }))
+	h.r = r
 
 	host, _, _ := net.SplitHostPort(r.Host)
 

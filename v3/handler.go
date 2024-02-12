@@ -115,18 +115,9 @@ func (h *Handler) ChangeSubdomainName(subdomain string) {
 
 func (h *Handler) serveAppWithMiddlewares(w http.ResponseWriter, r *http.Request, appH http.Handler, mws []func(next http.Handler) http.Handler) {
 	mw := appH
-	if mw != h {
-		mw = api{
-			handler: h,
-			app:     mw,
-		}
-	}
 
 	for i := len(mws) - 1; i >= 0; i-- {
-		mw = api{
-			handler: h,
-			app:     mws[i](mw),
-		}
+		mw = mws[i](mw)
 	}
 
 	mw.ServeHTTP(w, r)

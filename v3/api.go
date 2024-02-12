@@ -6,67 +6,45 @@ import (
 	"github.com/nixpare/logger/v2"
 )
 
-type API interface {
-	Header() http.Header
-	Write(b []byte) (int, error)
-	Router() *Router
-	Server() *HTTPServer
-	Handler() *Handler
-	Domain() *Domain
-	Subdomain() *Subdomain
-	Logger() logger.Logger
+type APICtxKeyT string
+
+const API_CTX_KEY APICtxKeyT = "nix-handler"
+
+type API struct {
+	h *Handler
 }
 
-func HandlerFunc(h func(api API, w http.ResponseWriter, r *http.Request)) http.Handler {
+func HandlerFunc(h func(api *API, w http.ResponseWriter, r *http.Request)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		api := w.(API)
+		api := GetAPIFromReq(r)
 		h(api, w, r)
 	})
 }
 
-type api struct {
-	handler *Handler
-	app     http.Handler
-	w       http.ResponseWriter
+func GetAPIFromReq(r *http.Request) *API {
+	return r.Context().Value(API_CTX_KEY).(*API)
 }
 
-func (ah api) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	ah.w = w
-	ah.app.ServeHTTP(ah, r)
+func (ah *API) Router() *Router {
+	return ah.h.router
 }
 
-func (ah api) Header() http.Header {
-	return ah.w.Header()
+func (ah *API) Server() *HTTPServer {
+	return ah.h.srv
 }
 
-func (ah api) Write(b []byte) (int, error) {
-	return ah.w.Write(b)
+func (ah *API) Handler() *Handler {
+	return ah.h
 }
 
-func (ah api) WriteHeader(statusCode int) {
-	ah.w.WriteHeader(statusCode)
+func (ah *API) Domain() *Domain {
+	return ah.h.domain
 }
 
-func (ah api) Router() *Router {
-	return ah.handler.router
+func (ah *API) Subdomain() *Subdomain {
+	return ah.h.subdomain
 }
 
-func (ah api) Server() *HTTPServer {
-	return ah.handler.srv
-}
-
-func (ah api) Handler() *Handler {
-	return ah.handler
-}
-
-func (ah api) Domain() *Domain {
-	return ah.handler.domain
-}
-
-func (ah api) Subdomain() *Subdomain {
-	return ah.handler.subdomain
-}
-
-func (ah api) Logger() logger.Logger {
-	return ah.handler.Logger
+func (ah *API) Logger() logger.Logger {
+	return ah.h.Logger
 }

@@ -18,8 +18,12 @@ func RedirectIfLocal(srv *server.HTTPServer, isLocal func(remoteAddr string) boo
 		clients: make(map[string]offlineClient),
 	}
 
+	if isLocal == nil {
+		isLocal = func(remoteAddr string) bool { return false }
+	}
+
 	srv.AddMiddleware(func(next http.Handler) http.Handler {
-		return server.HandlerFunc(func(api server.API, w http.ResponseWriter, r *http.Request) {
+		return server.HandlerFunc(func(api *server.API, w http.ResponseWriter, r *http.Request) {
 			remoteAddr, _, _ := net.SplitHostPort(r.RemoteAddr)
 			if isLocal(remoteAddr) || isLocalDefault(remoteAddr) {
 				lcm.handlerLocalQuery(api.Handler(), r)

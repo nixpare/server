@@ -8,9 +8,13 @@ import (
 	"github.com/nixpare/server/v3"
 )
 
-func EchoHandlerFunc(f func(api server.API, c echo.Context) error) echo.HandlerFunc {
+func GetAPIFromEchoCtx(c echo.Context) *server.API {
+	return server.GetAPIFromReq(c.Request())
+}
+
+func EchoHandlerFunc(f func(api *server.API, c echo.Context) error) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		api := c.Response().Writer.(server.API)
+		api := GetAPIFromEchoCtx(c)
 		return f(api, c)
 	}
 }
@@ -38,7 +42,7 @@ func EchoError(statusCode int, message string, a ...any) server.Error {
 func EchoHandleError() echo.HTTPErrorHandler {
 	return func(err error, c echo.Context) {
 		w := c.Response().Writer
-		api := w.(server.API)
+		api := GetAPIFromEchoCtx(c)
 
 		switch err := err.(type) {
 		case *echo.HTTPError:
