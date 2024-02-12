@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -22,7 +21,7 @@ const (
 
 type Handler struct {
 	stage servingStage
-	
+
 	w http.ResponseWriter
 
 	r *http.Request
@@ -43,34 +42,20 @@ type Handler struct {
 
 	redirected bool
 
-	host string
-
-	remoteAddr string
-
-	requestQuery url.Values
-
 	errTemplate *template.Template
 
 	// connTime is the timestamp that refers to the request arrival
 	connTime time.Time
 
-	// errMessage contains the error message to insert into the connection reply
-	errMessage string
-
-	// logErrMessage contains the error message to be used in the logs
-	logErrMessage string
-
 	AvoidLogging bool
 
-	disableErrorCapture bool
+	DisableErrorCapture bool
 
-	caputedError []byte
-
-	hasWrote bool
+	caputedError Error
 
 	code int
 
-	written int64
+	respBuf *bytes.Buffer
 }
 
 // Header is the equivalent of the http.ResponseWriter method
@@ -80,18 +65,12 @@ func (h *Handler) Header() http.Header {
 
 // Write is the equivalent of the http.ResponseWriter method
 func (h *Handler) Write(data []byte) (int, error) {
-	if h.code >= 400 && !h.disableErrorCapture {
-		h.caputedError = append(h.caputedError, data...)
+	if h.code >= 400 && !h.DisableErrorCapture {
+		h.caputedError.Message += string(data)
 		return len(data), nil
 	}
 
-	n, err := h.w.Write(data)
-	h.written += int64(n)
-	if n > 0 {
-		h.hasWrote = true
-	}
-
-	return n, err
+	return h.respBuf.Write(data)
 }
 
 // WriteHeader is the equivalent of the http.ResponseWriter method
@@ -100,12 +79,12 @@ func (h *Handler) WriteHeader(statusCode int) {
 	if h.code != 0 {
 		return
 	}
+
 	h.code = statusCode
 
-	if h.written != 0 {
-		return
+	if h.code >= 400 && !h.DisableErrorCapture {
+		h.caputedError.Code = h.code
 	}
-	h.w.WriteHeader(statusCode)
 }
 
 func (h *Handler) DomainName() string {
@@ -134,68 +113,32 @@ func (h *Handler) ChangeSubdomainName(subdomain string) {
 	}
 }
 
-type API struct {
-	handler   *Handler
-	app       http.Handler
-	w         http.ResponseWriter
-}
-
-func (ah API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	ah.w = w
-	ah.app.ServeHTTP(ah, r)
-}
-
-func (ah API) Header() http.Header {
-	return ah.w.Header()
-}
-
-func (ah API) Write(b []byte) (int, error) {
-	return ah.w.Write(b)
-}
-
-func (ah API) WriteHeader(statusCode int) {
-	ah.w.WriteHeader(statusCode)
-}
-
-func (ah API) Router() *Router {
-	return ah.handler.router
-}
-
-func (ah API) Server() *HTTPServer {
-	return ah.handler.srv
-}
-
-func (ah API) Handler() *Handler {
-	return ah.handler
-}
-
-func (ah API) Domain() *Domain {
-	return ah.handler.domain
-}
-
-func (ah API) Subdomain() *Subdomain {
-	return ah.handler.subdomain
-}
-
-func (ah API) Logger() logger.Logger {
-	return ah.handler.Logger
-}
-
-func (h *Handler) serveAppWithMiddlewares(w http.ResponseWriter, r *http.Request, appH http.Handler, mws []func(http.Handler, *Handler) http.Handler) {
-	var mw http.Handler = API{
-		handler:   h,
-		app:       appH,
+func (h *Handler) serveAppWithMiddlewares(w http.ResponseWriter, r *http.Request, appH http.Handler, mws []func(next http.Handler) http.Handler) {
+	var mw http.Handler = api{
+		handler: h,
+		app:     appH,
 	}
 
 	for i := len(mws) - 1; i >= 0; i-- {
-		mw = mws[i](mw, h)
+		mw = api{
+			handler: h,
+			app:     mws[i](mw),
+		}
 	}
 
 	mw.ServeHTTP(w, r)
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	h.stage ++
+	if !h.srv.Online {
+		t := h.srv.OnlineTime.Add(time.Minute)
+		h.w.Header().Set("Retry-After", t.Format(time.RFC1123))
+		h.Error(w, http.StatusServiceUnavailable, "Server temporarly offline, retry in "+time.Until(t).Truncate(time.Second).String())
+
+		return
+	}
+	
+	h.stage++
 
 	switch h.stage {
 	case serve_domain:
@@ -203,7 +146,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case serve_subdomain:
 		h.serveSubdomain(w, r)
 	case serve_app:
-		h.subdomain.Handler(w, r)
+		h.serveApp(w, r)
 	}
 }
 
@@ -231,8 +174,20 @@ func (h *Handler) serveSubdomain(w http.ResponseWriter, r *http.Request) {
 	if h.subdomain.errTemplate != nil {
 		h.errTemplate = h.subdomain.errTemplate
 	}
-	
+
 	h.serveAppWithMiddlewares(w, r, h, h.subdomain.middlewares)
+}
+
+func (h *Handler) serveApp(w http.ResponseWriter, r *http.Request) {
+	if !h.subdomain.online {
+		t := h.srv.OnlineTime.Add(time.Minute * 30)
+		w.Header().Set("Retry-After", t.Format(time.RFC1123))
+		h.Error(w, http.StatusServiceUnavailable, "Website temporarly offline")
+		
+		return
+	}
+
+	h.subdomain.Handler.ServeHTTP(w, r)
 }
 
 // serveError serves the error in a predefines error template (if set) and only
@@ -240,45 +195,50 @@ func (h *Handler) serveSubdomain(w http.ResponseWriter, r *http.Request) {
 // error template or if the connection method is different from GET or HEAD, the
 // error message is sent as a plain text
 func (h *Handler) serveError() {
-	h.disableErrorCapture = true
+	h.DisableErrorCapture = true
 
-	if len(h.caputedError) != 0 {
-		if strings.Contains(http.DetectContentType(h.caputedError), "text/html") {
-			h.w.Write(h.caputedError)
-		} else {
-			h.errMessage = string(h.caputedError)
-		}
+	if len(h.caputedError.Message) == 0 {
+		return
 	}
 
-	if h.errMessage == "" {
+	if ctype := h.Header().Get("content-type"); ctype != "" && !strings.HasPrefix(ctype, "text/plain") {
+		h.Write(h.caputedError.Bytes())
 		return
 	}
 
 	if h.errTemplate == nil {
-		h.Write([]byte(h.errMessage))
+		h.Write(h.caputedError.Bytes())
 		return
 	}
 
-	if h.r.Method == "GET" || h.r.Method == "HEAD" {
-		data := struct {
-			Code    int
-			Message string
-		}{
-			Code:    h.code,
-			Message: h.errMessage,
-		}
-
-		var buf bytes.Buffer
-		if err := h.errTemplate.Execute(&buf, data); err != nil {
-			h.Logger.Printf(logger.LOG_LEVEL_ERROR, "Error serving template file: %v", err)
-			return
-		}
-
-		h.Write(buf.Bytes())
+	if h.r.Method != "GET" && h.r.Method != "HEAD" {
+		h.Write(h.caputedError.Bytes())
 		return
 	}
 
-	h.Write([]byte(h.errMessage))
+	b := bytes.NewBuffer(nil)
+	if err := h.errTemplate.Execute(b, h.caputedError); err != nil {
+		h.Logger.Printf(logger.LOG_LEVEL_ERROR, "Error serving template file: %v", err)
+		h.Write(h.caputedError.Bytes())
+		return
+	}
+
+	h.Header().Set("content-type", http.DetectContentType(b.Bytes()))
+	h.Write(b.Bytes())
+}
+
+type Error struct {
+	Code     int
+	Message  string
+	Internal string
+}
+
+func (err Error) Error() string {
+	return fmt.Sprintf(`{"code": %d, "message": "%s", "internal": "%s"}`, err.Code, err.Message, err.Internal)
+}
+
+func (err Error) Bytes() []byte {
+	return []byte(err.Message)
 }
 
 // Error is used to manually report an HTTP Error to send to the
@@ -293,52 +253,23 @@ func (h *Handler) serveError() {
 //
 // The last optional list of elements can be used just for logging or
 // debugging: the elements will be saved in the logs
-func (h *Handler) Error(statusCode int, message any, a ...any) bool {
-	h.WriteHeader(statusCode)
+func (h *Handler) Error(w http.ResponseWriter, statusCode int, message string, a ...any) {
+	w.WriteHeader(statusCode)
 
-	h.errMessage = fmt.Sprint(message)
 	if message == "" {
-		h.errMessage = "Undefined error"
+		message = "Unknown error"
 	}
 
-	if len(a) > 0 {
-		first := true
-		for _, x := range a {
-			if first {
-				first = false
-			} else {
-				h.logErrMessage += " "
-			}
+	w.Write([]byte(message))
 
-			h.logErrMessage += fmt.Sprint(x)
+	first := true
+	for _, x := range a {
+		if first {
+			first = false
+		} else {
+			h.caputedError.Internal += " "
 		}
-	} else {
-		h.logErrMessage = h.errMessage
-	}
 
-	return false
-}
-
-// Errorf is like the method Route.Error but you can format the output
-// to the Log. Like the Route.Logf, everything that is after the first
-// line feed will be used to populate the extra field of the Log
-func (h *Handler) Errorf(statusCode int, message string, format string, a ...any) {
-	h.Error(statusCode, message, fmt.Sprintf(format, a...))
-}
-
-// metrics is a collection of parameters to log taken from an HTTP
-// connection
-type metrics struct {
-	Code     int
-	Duration time.Duration
-	Written  int64
-}
-
-// getMetrics returns a view of the h captured connection metrics
-func (h *Handler) getMetrics() metrics {
-	return metrics{
-		Code:     h.code,
-		Duration: time.Since(h.connTime),
-		Written:  h.written,
+		h.caputedError.Internal += fmt.Sprint(x)
 	}
 }

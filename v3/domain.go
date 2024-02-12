@@ -24,7 +24,7 @@ type Domain struct {
 	srv         *HTTPServer
 	subdomains  map[string]*Subdomain
 	errTemplate *template.Template
-	middlewares []func(http.Handler, *Handler) http.Handler
+	middlewares []func(next http.Handler) http.Handler
 }
 
 type InitCloseFunc func(srv *HTTPServer, d *Domain, sd *Subdomain) error
@@ -41,13 +41,13 @@ type InitCloseFunc func(srv *HTTPServer, d *Domain, sd *Subdomain) error
 //   - a cleanup function, called when the server is shutting down
 type Subdomain struct {
 	name        string
-	Handler     http.HandlerFunc
+	Handler     http.Handler
 	InitF       InitCloseFunc
 	CloseF      InitCloseFunc
 	errTemplate *template.Template
 	online      bool
 	state       *life.LifeCycle
-	middlewares []func(http.Handler, *Handler) http.Handler
+	middlewares []func(next http.Handler) http.Handler
 }
 
 // RegisterDomain registers a domain in the server. It's asked to specify a
@@ -64,12 +64,10 @@ func (srv *HTTPServer) RegisterDomain(domain string) (*Domain, error) {
 		srv:        srv,
 		subdomains: make(map[string]*Subdomain),
 	}
-	d.RegisterSubdomain("*.", func(w http.ResponseWriter, r *http.Request) {
-		h := w.(API).Handler()
+	d.RegisterSubdomain("*.", HandlerFunc(func (api API, w http.ResponseWriter, r *http.Request) {
 		host, _, _ := net.SplitHostPort(r.Host)
-
-		h.Error(http.StatusNotFound, fmt.Sprintf("Host %s not served by this server", host))
-	})
+		api.Handler().Error(w, http.StatusNotFound, fmt.Sprintf("Host %s not served by this server", host))
+	}))
 
 	srv.domains[domain] = d
 	return d, nil
@@ -85,7 +83,7 @@ func (srv *HTTPServer) DefaultDomain() *Domain {
 	return srv.domains["*"]
 }
 
-func (srv *HTTPServer) SetDefaultRoute(handler http.HandlerFunc) {
+func (srv *HTTPServer) RegisterDefault(handler http.Handler) {
 	srv.DefaultDomain().DefaultSubdomain().Handler = handler
 }
 
@@ -93,12 +91,12 @@ func (srv *HTTPServer) SetDefaultRoute(handler http.HandlerFunc) {
 // subdomain name (with or without trailing dot) and its configuration. It the Website
 // Dir field is empty it will be used the default value of "<srv.Path>/public",
 // instead if it's not absolute it will be relative to the srv.Path
-func (d *Domain) RegisterSubdomain(subdomain string, handler http.HandlerFunc) (*Subdomain, error) {
+func (d *Domain) RegisterSubdomain(subdomain string, handler http.Handler) (*Subdomain, error) {
 	subdomain = prepSubdomainName(subdomain)
 	return d.registerSubdomain(subdomain, handler)
 }
 
-func (d *Domain) registerSubdomain(subdomain string, handler http.HandlerFunc) (*Subdomain, error) {
+func (d *Domain) registerSubdomain(subdomain string, handler http.Handler) (*Subdomain, error) {
 	if _, ok := d.subdomains[subdomain]; ok {
 		return nil, fmt.Errorf("subdomain: %w", ErrAlreadyRegistered)
 	}
@@ -131,34 +129,16 @@ func (d *Domain) Name() string {
 	return d.name
 }
 
-func (d *Domain) AddMiddleware(mw func(next http.Handler, h *Handler) http.Handler) {
+func (d *Domain) AddMiddleware(mw func(next http.Handler) http.Handler) {
 	d.middlewares = append(d.middlewares, mw)
-}
-
-func (d *Domain) AddMiddlewareFunc(mw func(h *Handler, w http.ResponseWriter, r *http.Request)) {
-	d.middlewares = append(d.middlewares, func(next http.Handler, h *Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			mw(h, w, r)
-			next.ServeHTTP(w, r)
-		})
-	})
 }
 
 func (sd *Subdomain) Name() string {
 	return sd.name
 }
 
-func (sd *Subdomain) AddMiddleware(mw func(next http.Handler, h *Handler) http.Handler) {
+func (sd *Subdomain) AddMiddleware(mw func(next http.Handler) http.Handler) {
 	sd.middlewares = append(sd.middlewares, mw)
-}
-
-func (sd *Subdomain) AddMiddlewareFunc(mw func(h *Handler, w http.ResponseWriter, r *http.Request)) {
-	sd.middlewares = append(sd.middlewares, func(next http.Handler, h *Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			mw(h, w, r)
-			next.ServeHTTP(w, r)
-		})
-	})
 }
 
 func (sd *Subdomain) start(srv *HTTPServer, d *Domain) {
@@ -228,6 +208,10 @@ func (sd *Subdomain) Enable() error {
 // Disable sets the subdomain to offline state
 func (sd *Subdomain) Disable() {
 	sd.online = false
+}
+
+func (sd *Subdomain) Online() bool {
+	return sd.online
 }
 
 // SetErrorTemplate sets the error template used server-wise. It's

@@ -40,6 +40,25 @@ func (router *Router) writeLogClosure(t time.Time) {
 	)
 }
 
+// metrics is a collection of parameters to log taken from an HTTP
+// connection
+type metrics struct {
+	Code       int
+	Duration   time.Duration
+	Written    int64
+	RemoteAddr string
+}
+
+// getMetrics returns a view of the h captured connection metrics
+func (h *Handler) getMetrics() metrics {
+	return metrics{
+		Code:     h.code,
+		Duration: time.Since(h.connTime),
+		Written:  int64(h.respBuf.Len()),
+		RemoteAddr: h.r.RemoteAddr,
+	}
+}
+
 // remoteAddress + code + method + requestURI + written + duration + subdomain.domain + proto (+ error)
 const (
 	http_info_format    = "%s%-15s%s - %s%d %s%-4s %-50s%s - %s%10.3f MB (%6d ms)%s \u279C %s%s %s(%s)%s"
@@ -51,7 +70,7 @@ const (
 // logHTTPInfo logs http request with an exit code < 400
 func (h *Handler) logHTTPInfo(m metrics) {
 	h.Logger.Printf(logger.LOG_LEVEL_INFO, http_info_format,
-		logger.BRIGHT_BLUE_COLOR, h.remoteAddr, logger.DEFAULT_COLOR,
+		logger.BRIGHT_BLUE_COLOR, m.RemoteAddr, logger.DEFAULT_COLOR,
 		logger.BRIGHT_GREEN_COLOR, m.Code,
 		logger.DARK_GREEN_COLOR, h.r.Method,
 		h.r.RequestURI, logger.DEFAULT_COLOR,
@@ -64,12 +83,12 @@ func (h *Handler) logHTTPInfo(m metrics) {
 
 // logHTTPWarning logs http request with an exit code >= 400 and < 500
 func (h *Handler) logHTTPWarning(m metrics) {
-	if h.logErrMessage == "" {
-		h.logErrMessage = "Unknown error"
+	if h.caputedError.Internal == "" {
+		h.caputedError.Internal = h.caputedError.Message
 	}
 
 	h.Logger.Printf(logger.LOG_LEVEL_WARNING, http_warning_format,
-		logger.BRIGHT_BLUE_COLOR, h.remoteAddr, logger.DEFAULT_COLOR,
+		logger.BRIGHT_BLUE_COLOR, m.RemoteAddr, logger.DEFAULT_COLOR,
 		logger.DARK_YELLOW_COLOR, m.Code,
 		logger.DARK_GREEN_COLOR, h.r.Method,
 		h.r.RequestURI, logger.DEFAULT_COLOR,
@@ -77,18 +96,18 @@ func (h *Handler) logHTTPWarning(m metrics) {
 		m.Duration.Milliseconds(), logger.DEFAULT_COLOR,
 		logger.DARK_CYAN_COLOR, h.logHost(),
 		logger.BRIGHT_BLACK_COLOR, h.r.Proto, logger.DEFAULT_COLOR,
-		logger.DARK_YELLOW_COLOR, h.logErrMessage, logger.DEFAULT_COLOR,
+		logger.DARK_YELLOW_COLOR, h.caputedError.Internal, logger.DEFAULT_COLOR,
 	)
 }
 
 // logHTTPError logs http request with an exit code >= 500
 func (h *Handler) logHTTPError(m metrics) {
-	if h.logErrMessage == "" {
-		h.logErrMessage = "Unknown error"
+	if h.caputedError.Internal == "" {
+		h.caputedError.Internal = h.caputedError.Message
 	}
 
 	h.Logger.Printf(logger.LOG_LEVEL_ERROR, http_error_format,
-		logger.BRIGHT_BLUE_COLOR, h.remoteAddr, logger.DEFAULT_COLOR,
+		logger.BRIGHT_BLUE_COLOR, m.RemoteAddr, logger.DEFAULT_COLOR,
 		logger.DARK_RED_COLOR, m.Code,
 		logger.DARK_GREEN_COLOR, h.r.Method,
 		h.r.RequestURI, logger.DEFAULT_COLOR,
@@ -96,17 +115,17 @@ func (h *Handler) logHTTPError(m metrics) {
 		m.Duration.Milliseconds(), logger.DEFAULT_COLOR,
 		logger.DARK_CYAN_COLOR, h.logHost(),
 		logger.BRIGHT_BLACK_COLOR, h.r.Proto, logger.DEFAULT_COLOR,
-		logger.DARK_RED_COLOR, h.logErrMessage, logger.DEFAULT_COLOR,
+		logger.DARK_RED_COLOR, h.caputedError.Internal, logger.DEFAULT_COLOR,
 	)
 }
 
 func (h *Handler) logHTTPPanic(m metrics) {
-	if h.logErrMessage == "" {
-		h.logErrMessage = "Unknown error"
+	if h.caputedError.Internal == "" {
+		h.caputedError.Internal = h.caputedError.Message
 	}
 
 	h.Logger.Printf(logger.LOG_LEVEL_FATAL, http_panic_format,
-		logger.BRIGHT_BLUE_COLOR, h.remoteAddr, logger.DEFAULT_COLOR,
+		logger.BRIGHT_BLUE_COLOR, m.RemoteAddr, logger.DEFAULT_COLOR,
 		logger.DARK_RED_COLOR, m.Code,
 		logger.DARK_GREEN_COLOR, h.r.Method,
 		h.r.RequestURI, logger.DEFAULT_COLOR,
@@ -114,7 +133,7 @@ func (h *Handler) logHTTPPanic(m metrics) {
 		m.Duration.Milliseconds(), logger.DEFAULT_COLOR,
 		logger.DARK_CYAN_COLOR, h.logHost(),
 		logger.BRIGHT_BLACK_COLOR, h.r.Proto, logger.DEFAULT_COLOR,
-		logger.DARK_RED_COLOR, h.logErrMessage, logger.DEFAULT_COLOR,
+		logger.DARK_RED_COLOR, h.caputedError.Internal, logger.DEFAULT_COLOR,
 	)
 }
 

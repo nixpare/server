@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"embed"
 	"errors"
@@ -44,7 +45,7 @@ type HTTPServer struct {
 	// This should not be set by hand.
 	Router      *Router
 	Logger      logger.Logger
-	middlewares []func(http.Handler, *Handler) http.Handler
+	middlewares []func(next http.Handler) http.Handler
 	domains     map[string]*Domain
 	errTemplate *template.Template
 }
@@ -140,17 +141,8 @@ func (srv *HTTPServer) Secure() bool {
 	return srv.secure
 }
 
-func (srv *HTTPServer) AddMiddleware(mw func(next http.Handler, h *Handler) http.Handler) {
+func (srv *HTTPServer) AddMiddleware(mw func(next http.Handler) http.Handler) {
 	srv.middlewares = append(srv.middlewares, mw)
-}
-
-func (srv *HTTPServer) AddMiddlewareFunc(mw func(h *Handler, w http.ResponseWriter, r *http.Request)) {
-	srv.middlewares = append(srv.middlewares, func(next http.Handler, h *Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			mw(h, w, r)
-			next.ServeHTTP(w, r)
-		})
-	})
 }
 
 // Start prepares every domain and subdomain and starts listening
@@ -256,22 +248,27 @@ func (srv *HTTPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Logger:       srv.Logger,
 		errTemplate:  srv.errTemplate,
 		connTime:     time.Now(),
-		caputedError: make([]byte, 0),
+		respBuf: 	  bytes.NewBuffer(nil),
 	}
+	defer func() {
+		w.WriteHeader(h.code)
+		_, err := w.Write(h.respBuf.Bytes())
+		if err != nil {
+			h.Logger.Printf(logger.LOG_LEVEL_ERROR, "error writing response: %v", err)
+		}
+	}()
 
-	h.host, _, _ = net.SplitHostPort(r.Host)
-	h.remoteAddr, _, _ = net.SplitHostPort(r.RemoteAddr)
-	h.requestQuery = r.URL.Query()
+	host, _, _ := net.SplitHostPort(r.Host)
 
-	split := strings.Split(h.host, ".")
+	split := strings.Split(host, ".")
 	splitL := len(split)
 
 	if splitL == 1 {
-		h.domainName = h.host
+		h.domainName = host
 	} else {
 		if _, err := strconv.Atoi(split[splitL-1]); err == nil {
-			h.domainName = h.host
-		} else if strings.HasSuffix(h.host, "localhost") {
+			h.domainName = host
+		} else if strings.HasSuffix(host, "localhost") {
 			h.domainName = "localhost"
 			h.subdomainName = strings.Join(split[:splitL-1], ".") + "."
 		} else {
@@ -287,22 +284,22 @@ func (srv *HTTPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if panicErr != nil {
 		if h.code == 0 {
-			h.Error(http.StatusInternalServerError, "Internal server error", panicErr)
-			if !h.hasWrote {
+			h.Error(h, http.StatusInternalServerError, "Internal server error", panicErr)
+			if h.respBuf.Len() == 0 {
 				h.serveError()
 			}
 		} else {
-			if !h.hasWrote {
+			if h.respBuf.Len() == 0 {
 				h.serveError()
 			}
 
-			if h.logErrMessage == "" {
-				h.logErrMessage = fmt.Sprintf("panic after response: %v", panicErr)
+			if h.caputedError.Internal == "" {
+				h.caputedError.Internal = fmt.Sprintf("panic after response: %v", panicErr)
 			} else {
-				h.logErrMessage = fmt.Sprintf(
+				h.caputedError.Internal = fmt.Sprintf(
 					"panic after response: %v -> response error: %s\n%s",
 					panicErr.Unwrap(),
-					h.logErrMessage,
+					h.caputedError.Internal,
 					panicErr.Stack(),
 				)
 			}
@@ -312,7 +309,7 @@ func (srv *HTTPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.WriteHeader(200)
+	h.WriteHeader(http.StatusOK)
 
 	if h.code >= 400 {
 		h.serveError()
