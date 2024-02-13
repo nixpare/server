@@ -13,12 +13,13 @@ import (
 // Router is the main element of this package and is used to manage
 // all the servers and the background tasks.
 type Router struct {
-	httpServers map[int]*HTTPServer
-	tcpServers  map[int]*TCPServer
-	startTime       time.Time
-	state           *life.LifeCycle
-	TaskManager    *TaskManager
-	Logger         logger.Logger
+	httpServers   map[int]*HTTPServer
+	tcpServers    map[int]*TCPServer
+	customServers map[int]Server
+	startTime     time.Time
+	state         *life.LifeCycle
+	TaskManager   *TaskManager
+	Logger        logger.Logger
 }
 
 // NewRouter returns a new Router ready to be set up. If routerPath is not provided,
@@ -29,6 +30,7 @@ func NewRouter(l logger.Logger) (router *Router, err error) {
 
 	router.httpServers = make(map[int]*HTTPServer)
 	router.tcpServers = make(map[int]*TCPServer)
+	router.customServers = make(map[int]Server)
 
 	router.state = life.NewLifeCycleState()
 
@@ -50,7 +52,7 @@ func (router *Router) NewHTTPServer(address string, port int, secure bool, certs
 	}
 
 	srv, err := newHTTPServer(
-		address, port, secure, certs,
+		address, port, secure, certs, router,
 		createServerLogger(router.Logger, "http", port),
 	)
 	if err != nil {
@@ -58,8 +60,6 @@ func (router *Router) NewHTTPServer(address string, port int, secure bool, certs
 	}
 
 	router.httpServers[srv.port] = srv
-	srv.Router = router
-
 	return srv, nil
 }
 
@@ -68,7 +68,7 @@ func (router *Router) NewHTTPServer(address string, port int, secure bool, certs
 func (router *Router) NewTCPServer(address string, port int, secure bool, certs ...Certificate) (*TCPServer, error) {
 	_, ok := router.tcpServers[port]
 	if ok {
-		return nil, fmt.Errorf("tcp server listening to port %d already registered", port)
+		return nil, fmt.Errorf("tcp server listening at port %d already registered", port)
 	}
 
 	srv, err := newTCPServer(
@@ -83,6 +83,19 @@ func (router *Router) NewTCPServer(address string, port int, secure bool, certs 
 	srv.Router = router
 
 	return srv, nil
+}
+
+// NewServer creates a new TCP Server linked to the Router. See NewTCPServer function
+// for more information
+func (router *Router) RegisterCustomServer(srv Server) error {
+	port := srv.Port()
+	_, ok := router.customServers[port]
+	if ok {
+		return fmt.Errorf("custom server already registered with port %d", port)
+	}
+
+	router.customServers[port] = srv
+	return nil
 }
 
 func getPIDPath() string {
@@ -113,6 +126,9 @@ func (router *Router) Start() {
 	for _, srv := range router.httpServers {
 		srv.Start()
 	}
+	for _, srv := range router.customServers {
+		srv.Start()
+	}
 	router.TaskManager.start()
 
 	router.state.SetState(life.LCS_STARTED)
@@ -136,6 +152,9 @@ func (router *Router) Stop() {
 	for _, srv := range router.httpServers {
 		srv.Stop()
 	}
+	for _, srv := range router.customServers {
+		srv.Stop()
+	}
 
 	err := os.Remove(getPIDPath())
 	if err != nil {
@@ -143,7 +162,7 @@ func (router *Router) Stop() {
 	}
 
 	router.Logger.Print(logger.LOG_LEVEL_INFO, "Router shutdown procedure finished")
-	
+
 	router.writeLogClosure(time.Now())
 	router.state.SetState(life.LCS_STOPPED)
 }
@@ -162,10 +181,27 @@ func (router *Router) TCPServer(port int) *TCPServer {
 	return router.tcpServers[port]
 }
 
+// Server returns the TCP server running on the given port
+func (router *Router) CustomServer(port int) Server {
+	return router.customServers[port]
+}
+
 func (router *Router) StartTime() time.Time {
 	return router.startTime
 }
 
 func createServerLogger(l logger.Logger, srvType string, port int) logger.Logger {
 	return l.Clone(nil, true, "server", srvType, fmt.Sprintf("port:%d", port))
+}
+
+type Server interface {
+	Start() error
+	Stop() error
+	Port() int
+	Secure() bool
+	IsRunning() bool
+}
+
+type ServerRouter interface {
+	Router() *Router
 }

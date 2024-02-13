@@ -31,7 +31,7 @@ func (ah *API) Router() *Router {
 	return ah.h.router
 }
 
-func (ah *API) Server() *HTTPServer {
+func (ah *API) Server() *ServerHandler {
 	return ah.h.srv
 }
 

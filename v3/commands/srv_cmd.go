@@ -42,7 +42,7 @@ func serverCmd(sc *ServerConn, args ...string) (exitCode int, err error) {
 	}
 }
 
-func GoOfflineFor(srv *server.HTTPServer, d time.Duration) error {
+func GoOfflineFor(srv *server.ServerHandler, d time.Duration) error {
 	taskName := fmt.Sprintf("Back Online (%d)", srv.Port())
 
 	t := srv.Router.TaskManager.GetTask(taskName)
@@ -82,7 +82,7 @@ func GoOfflineFor(srv *server.HTTPServer, d time.Duration) error {
 	return nil
 }
 
-func GoOnline(srv *server.HTTPServer) error {
+func GoOnline(srv *server.ServerHandler) error {
 	srv.Online = true
 	srv.OnlineTime = time.Now()
 
@@ -97,7 +97,7 @@ func GoOnline(srv *server.HTTPServer) error {
 	return nil
 }
 
-func ExtendOffline(srv *server.HTTPServer, d time.Duration) error {
+func ExtendOffline(srv *server.ServerHandler, d time.Duration) error {
 	if srv.Online {
 		return GoOfflineFor(srv, d)
 	} else {
@@ -112,7 +112,7 @@ func onlineCmd(sc *ServerConn, port string) (int, error) {
 		return 1, sc.WriteError(fmt.Sprintf("error parsing port number: %v", err))
 	}
 
-	srv := sc.Router.HTTPServer(p)
+	srv := sc.Router.HTTPServer(p).ServerHandler()
 	if srv == nil {
 		return 1, sc.WriteError(fmt.Sprintf("server with port %d not found", p))
 	}
@@ -131,7 +131,7 @@ func offlineCmd(sc *ServerConn, port, minutes string) (int, error) {
 		return 1, sc.WriteError(fmt.Sprintf("Error parsing port number: %v", err))
 	}
 
-	srv := sc.Router.HTTPServer(p)
+	srv := sc.Router.HTTPServer(p).ServerHandler()
 	if srv == nil {
 		return 1, sc.WriteError(fmt.Sprintf("Server with port %d not found", p))
 	}
@@ -155,7 +155,7 @@ func extendOfflineCmd(sc *ServerConn, port, minutes string) (int, error) {
 		return 1, sc.WriteError(fmt.Sprintf("error parsing port number: %v", err))
 	}
 
-	srv := sc.Router.HTTPServer(p)
+	srv := sc.Router.HTTPServer(p).ServerHandler()
 	if srv == nil {
 		return 1, sc.WriteError(fmt.Sprintf("server with port %d not found", p))
 	}

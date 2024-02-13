@@ -34,7 +34,7 @@ type Handler struct {
 
 	subdomainName string
 
-	srv *HTTPServer
+	srv *ServerHandler
 
 	router *Router
 
@@ -109,7 +109,7 @@ func (h *Handler) ChangeDomainName(domain string) {
 func (h *Handler) ChangeSubdomainName(subdomain string) {
 	if h.stage <= serve_subdomain {
 		h.redirected = true
-		h.subdomainName = prepSubdomainName(subdomain)
+		h.subdomainName = PrepSubdomainName(subdomain)
 	}
 }
 
@@ -131,7 +131,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
-	
+
 	h.stage++
 
 	switch h.stage {
@@ -177,7 +177,7 @@ func (h *Handler) serveApp(w http.ResponseWriter, r *http.Request) {
 		t := h.srv.OnlineTime.Add(time.Minute * 30)
 		w.Header().Set("Retry-After", t.Format(time.RFC1123))
 		h.Error(w, http.StatusServiceUnavailable, "Website temporarly offline")
-		
+
 		return
 	}
 

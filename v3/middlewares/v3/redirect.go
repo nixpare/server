@@ -1,7 +1,6 @@
 package middlewares
 
 import (
-	"net"
 	"net/http"
 	"sync"
 
@@ -12,7 +11,7 @@ func isLocalDefault(remoteAddr string) bool {
 	return remoteAddr == "localhost" || remoteAddr == "127.0.0.1" || remoteAddr == "::1"
 }
 
-func RedirectIfLocal(srv *server.HTTPServer, isLocal func(remoteAddr string) bool) {
+func RedirectIfLocal(srv *server.ServerHandler, isLocal func(remoteAddr string) bool) {
 	lcm := &localClientManager{
 		m: new(sync.RWMutex),
 		clients: make(map[string]offlineClient),
@@ -24,7 +23,7 @@ func RedirectIfLocal(srv *server.HTTPServer, isLocal func(remoteAddr string) boo
 
 	srv.AddMiddleware(func(next http.Handler) http.Handler {
 		return server.HandlerFunc(func(api *server.API, w http.ResponseWriter, r *http.Request) {
-			remoteAddr, _, _ := net.SplitHostPort(r.RemoteAddr)
+			remoteAddr := server.SplitAddrPort(r.RemoteAddr)
 			if isLocal(remoteAddr) || isLocalDefault(remoteAddr) {
 				lcm.handlerLocalQuery(api.Handler(), r)
 			}
@@ -45,7 +44,7 @@ type localClientManager struct {
 }
 
 func (lcm *localClientManager) handlerLocalQuery(h *server.Handler, r *http.Request) {
-	remoteAddr, _, _ := net.SplitHostPort(r.RemoteAddr)
+	remoteAddr := server.SplitAddrPort(r.RemoteAddr)
 	query := r.URL.Query()
 
 	lcm.m.RLock()

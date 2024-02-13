@@ -1,17 +1,12 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"embed"
 	"errors"
 	"fmt"
-	"html/template"
 	"log"
-	"net"
 	"net/http"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/nixpare/logger/v2"
@@ -32,22 +27,16 @@ type HTTPServer struct {
 	secure bool
 	// state tells in which state the server is
 	state *life.LifeCycle
-	// Online tells wheter the server is responding to external requests
-	Online bool
-	// OnlineTime reports the last time the server was activated or resumed
-	OnlineTime time.Time
 	// Server is the underlying HTTP server from the standard library
 	Server *http.Server
 	// HTTP3Server is the QUIC Server, if is nil if the Server is not secure
 	HTTP3Server *http3.Server
 	port        int
-	// Router is a reference to the Router (is the server was created through it).
+	// router is a reference to the router (is the server was created through it).
 	// This should not be set by hand.
-	Router      *Router
-	Logger      logger.Logger
-	middlewares []MiddlewareFunc
-	domains     map[string]*Domain
-	errTemplate *template.Template
+	router        *Router
+	Logger        logger.Logger
+	serverHandler *ServerHandler
 }
 
 // Certificate rapresents a standard PEM certicate composed of a
@@ -63,11 +52,17 @@ var staticFS embed.FS
 
 // NewServer creates a new server
 func NewHTTPServer(address string, port int, secure bool, certs ...Certificate) (*HTTPServer, error) {
-	return newHTTPServer(address, port, secure, certs, nil)
+	return newHTTPServer(address, port, secure, certs, nil, nil)
 }
 
-func newHTTPServer(address string, port int, secure bool, certs []Certificate, l logger.Logger) (*HTTPServer, error) {
+func newHTTPServer(address string, port int, secure bool, certs []Certificate, router *Router, l logger.Logger) (*HTTPServer, error) {
 	srv := new(HTTPServer)
+	srv.router = router
+
+	if l == nil {
+		l = createServerLogger(logger.DefaultLogger, "http", port)
+	}
+	srv.Logger = l
 
 	srv.Server = new(http.Server)
 	srv.secure = secure
@@ -102,27 +97,13 @@ func newHTTPServer(address string, port int, secure bool, certs []Certificate, l
 		}
 	}
 
-	srv.domains = make(map[string]*Domain)
-	_, err := srv.RegisterDomain("*")
-	if err != nil {
-		return nil, err
-	}
-
-	errorHTMLContent, err := staticFS.ReadFile("static/error.html")
-	if err != nil {
-		return nil, err
-	}
-
-	err = srv.SetErrorTemplate(string(errorHTMLContent))
-	if err != nil {
-		return nil, err
-	}
-
-	if l == nil {
-		l = createServerLogger(logger.DefaultLogger, "http", port)
-	}
-	srv.Logger = l
 	srv.Server.ErrorLog = log.New(srv.Logger.FixedLogger(logger.LOG_LEVEL_WARNING), fmt.Sprintf("http server %d:", port), 0)
+
+	var err error
+	srv.serverHandler, err = NewServerHandler(srv, srv.Logger.Clone(nil, true, "handler"))
+	if err != nil {
+		return nil, err
+	}
 
 	return srv, nil
 }
@@ -130,6 +111,14 @@ func newHTTPServer(address string, port int, secure bool, certs []Certificate, l
 // Port returns the TCP port listened by the server
 func (srv *HTTPServer) Port() int {
 	return srv.port
+}
+
+func (srv *HTTPServer) Router() *Router {
+	return srv.router
+}
+
+func (srv *HTTPServer) ServerHandler() *ServerHandler {
+	return srv.serverHandler
 }
 
 // IsRunning tells whether the server is running or not
@@ -141,28 +130,17 @@ func (srv *HTTPServer) Secure() bool {
 	return srv.secure
 }
 
-func (srv *HTTPServer) AddMiddleware(mw func(next http.Handler) http.Handler) {
-	srv.middlewares = append(srv.middlewares, mw)
-}
-
 // Start prepares every domain and subdomain and starts listening
 // on the TCP port
-func (srv *HTTPServer) Start() {
+func (srv *HTTPServer) Start() error {
 	if srv.state.AlreadyStarted() {
-		return
+		return nil
 	}
 
 	srv.state.SetState(life.LCS_STARTING)
 	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "Server %d startup started", srv.port)
 
-	srv.Online = true
-	srv.OnlineTime = time.Now()
-
-	for _, d := range srv.domains {
-		for _, sd := range d.subdomains {
-			sd.start(srv, d)
-		}
-	}
+	srv.serverHandler.Start()
 
 	go func() {
 		if srv.secure {
@@ -189,19 +167,19 @@ func (srv *HTTPServer) Start() {
 
 	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "Server %d startup completed", srv.port)
 	srv.state.SetState(life.LCS_STARTED)
+	return nil
 }
 
 // Stop cleans up every domain and subdomain and stops listening
 // on the TCP port
-func (srv *HTTPServer) Stop() {
+func (srv *HTTPServer) Stop() error {
 	if srv.state.AlreadyStopped() {
-		return
+		return nil
 	}
 
 	srv.state.SetState(life.LCS_STOPPING)
 	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "Server %d shutdown started", srv.port)
 
-	srv.Online = false
 	srv.Server.SetKeepAlivesEnabled(false)
 
 	if srv.HTTP3Server != nil {
@@ -220,14 +198,11 @@ func (srv *HTTPServer) Stop() {
 		)
 	}
 
-	for _, d := range srv.domains {
-		for _, sd := range d.subdomains {
-			sd.stop(srv, d)
-		}
-	}
+	srv.serverHandler.Stop()
 
 	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "Server %d shutdown finished", srv.port)
 	srv.state.SetState(life.LCS_STOPPED)
+	return nil
 }
 
 func (srv *HTTPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -238,97 +213,5 @@ func (srv *HTTPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Add("Server", "NixPare")
-
-	h := &Handler{
-		w:            w,
-		r:            r,
-		srv:          srv,
-		router:       srv.Router,
-		Logger:       srv.Logger,
-		errTemplate:  srv.errTemplate,
-		connTime:     time.Now(),
-		respBuf: 	  bytes.NewBuffer(nil),
-	}
-	defer func() {
-		w.WriteHeader(h.code)
-		_, err := w.Write(h.respBuf.Bytes())
-		if err != nil {
-			h.Logger.Printf(logger.LOG_LEVEL_ERROR, "error writing response: %v", err)
-		}
-	}()
-
-	*r = *r.WithContext(context.WithValue(r.Context(), API_CTX_KEY, &API{ h: h }))
-
-	host, _, _ := net.SplitHostPort(r.Host)
-
-	split := strings.Split(host, ".")
-	splitL := len(split)
-
-	if splitL == 1 {
-		h.domainName = host
-	} else {
-		if _, err := strconv.Atoi(split[splitL-1]); err == nil {
-			h.domainName = host
-		} else if strings.HasSuffix(host, "localhost") {
-			h.domainName = "localhost"
-			h.subdomainName = strings.Join(split[:splitL-1], ".") + "."
-		} else {
-			h.domainName = split[splitL-2] + "." + split[splitL-1]
-			h.subdomainName = strings.Join(split[:splitL-2], ".") + "."
-		}
-	}
-
-	panicErr := logger.CapturePanic(func() error {
-		h.serveAppWithMiddlewares(h, r, h, srv.middlewares)
-		return nil
-	})
-
-	if panicErr != nil {
-		if h.code == 0 {
-			h.Error(h, http.StatusInternalServerError, "Internal server error", panicErr)
-			if h.respBuf.Len() == 0 {
-				h.serveError()
-			}
-		} else {
-			if h.respBuf.Len() == 0 {
-				h.serveError()
-			}
-
-			if h.caputedError.Internal == "" {
-				h.caputedError.Internal = fmt.Sprintf("panic after response: %v", panicErr)
-			} else {
-				h.caputedError.Internal = fmt.Sprintf(
-					"panic after response: %v -> response error: %s\n%s",
-					panicErr.Unwrap(),
-					h.caputedError.Internal,
-					panicErr.Stack(),
-				)
-			}
-		}
-
-		h.logHTTPPanic(h.getMetrics())
-		return
-	}
-
-	h.WriteHeader(http.StatusOK)
-
-	if h.code >= 400 {
-		h.serveError()
-	}
-
-	if h.AvoidLogging {
-		return
-	}
-
-	metrics := h.getMetrics()
-
-	switch {
-	case metrics.Code < 400:
-		h.logHTTPInfo(metrics)
-	case metrics.Code >= 400 && metrics.Code < 500:
-		h.logHTTPWarning(metrics)
-	default:
-		h.logHTTPError(metrics)
-	}
+	srv.serverHandler.ServeHTTP(w, r)
 }

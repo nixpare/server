@@ -4,9 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
-	"net"
 	"net/http"
-	"strings"
 
 	"github.com/nixpare/logger/v2"
 	"github.com/nixpare/server/v3/life"
@@ -21,13 +19,13 @@ import (
 //     will throw any error, so you will have a constant look
 type Domain struct {
 	name        string
-	srv         *HTTPServer
+	srv         *ServerHandler
 	subdomains  map[string]*Subdomain
 	errTemplate *template.Template
 	middlewares []MiddlewareFunc
 }
 
-type InitCloseFunc func(srv *HTTPServer, d *Domain, sd *Subdomain) error
+type InitCloseFunc func(srv *ServerHandler, d *Domain, sd *Subdomain) error
 
 // Subdomain rapresents a particular subdomain in a domain with all the
 // logic. It's required a serve function, which will determine the logic
@@ -54,7 +52,7 @@ type Subdomain struct {
 // display name used in the logs and the effective URL of the domain (do
 // not specify any protocol or port). If the domain name is an empy string
 // it will be treated as the default domain (see srv.RegisterDefaultDomain)
-func (srv *HTTPServer) RegisterDomain(domain string) (*Domain, error) {
+func (srv *ServerHandler) RegisterDomain(domain string) (*Domain, error) {
 	if _, ok := srv.domains[domain]; ok {
 		return nil, fmt.Errorf("domain %s: %w", domain, ErrAlreadyRegistered)
 	}
@@ -64,8 +62,8 @@ func (srv *HTTPServer) RegisterDomain(domain string) (*Domain, error) {
 		srv:        srv,
 		subdomains: make(map[string]*Subdomain),
 	}
-	d.RegisterSubdomain("*.", HandlerFunc(func (api *API, w http.ResponseWriter, r *http.Request) {
-		host, _, _ := net.SplitHostPort(r.Host)
+	d.RegisterSubdomain("*.", HandlerFunc(func(api *API, w http.ResponseWriter, r *http.Request) {
+		host := SplitAddrPort(r.Host)
 		api.Handler().Error(w, http.StatusNotFound, fmt.Sprintf("Host %s not served by this server", host))
 	}))
 
@@ -74,16 +72,16 @@ func (srv *HTTPServer) RegisterDomain(domain string) (*Domain, error) {
 }
 
 // Domain returns the domain with the given name registered in the server, if found
-func (srv *HTTPServer) Domain(domain string) *Domain {
+func (srv *ServerHandler) Domain(domain string) *Domain {
 	return srv.domains[domain]
 }
 
 // DefaultDomain returns the default domain
-func (srv *HTTPServer) DefaultDomain() *Domain {
+func (srv *ServerHandler) DefaultDomain() *Domain {
 	return srv.domains["*"]
 }
 
-func (srv *HTTPServer) RegisterDefault(handler http.Handler) {
+func (srv *ServerHandler) RegisterDefault(handler http.Handler) {
 	srv.DefaultDomain().DefaultSubdomain().Handler = handler
 }
 
@@ -92,7 +90,7 @@ func (srv *HTTPServer) RegisterDefault(handler http.Handler) {
 // Dir field is empty it will be used the default value of "<srv.Path>/public",
 // instead if it's not absolute it will be relative to the srv.Path
 func (d *Domain) RegisterSubdomain(subdomain string, handler http.Handler) (*Subdomain, error) {
-	subdomain = prepSubdomainName(subdomain)
+	subdomain = PrepSubdomainName(subdomain)
 	return d.registerSubdomain(subdomain, handler)
 }
 
@@ -117,7 +115,7 @@ func (d *Domain) registerSubdomain(subdomain string, handler http.Handler) (*Sub
 
 // Subdomain returns the subdomain with the given name, if found
 func (d *Domain) Subdomain(name string) *Subdomain {
-	return d.subdomains[prepSubdomainName(name)]
+	return d.subdomains[PrepSubdomainName(name)]
 }
 
 // DefaultSubdomain returns the default subdomain, if set
@@ -141,7 +139,7 @@ func (sd *Subdomain) AddMiddleware(mw func(next http.Handler) http.Handler) {
 	sd.middlewares = append(sd.middlewares, mw)
 }
 
-func (sd *Subdomain) start(srv *HTTPServer, d *Domain) {
+func (sd *Subdomain) start(srv *ServerHandler, d *Domain) {
 	if sd.state.AlreadyStarted() {
 		return
 	}
@@ -168,7 +166,7 @@ func (sd *Subdomain) start(srv *HTTPServer, d *Domain) {
 	sd.Enable()
 }
 
-func (sd *Subdomain) stop(srv *HTTPServer, d *Domain) {
+func (sd *Subdomain) stop(srv *ServerHandler, d *Domain) {
 	if sd.state.AlreadyStopped() {
 		return
 	}
@@ -220,22 +218,6 @@ func (sd *Subdomain) Online() bool {
 //
 //	<h2>Error {{ .Code }}</h2>
 //	<p>{{ .Message }}</p>
-func (srv *HTTPServer) SetErrorTemplate(content string) error {
-	t, err := template.New("error.html").Parse(content)
-	if err != nil {
-		return fmt.Errorf("error parsing template file: %w", err)
-	}
-
-	srv.errTemplate = t
-	return nil
-}
-
-// SetErrorTemplate sets the error template used server-wise. It's
-// required an HTML that contains two specific fields, a .Code one and
-// a .Message one, for example like so:
-//
-//	<h2>Error {{ .Code }}</h2>
-//	<p>{{ .Message }}</p>
 func (d *Domain) SetErrorTemplate(content string) error {
 	t, err := template.New("error.html").Parse(content)
 	if err != nil {
@@ -260,13 +242,4 @@ func (sd *Subdomain) SetErrorTemplate(content string) error {
 
 	sd.errTemplate = t
 	return nil
-}
-
-// prepSubdomainName sanitizes the subdomain name
-func prepSubdomainName(name string) string {
-	if name != "" && name != "*" && !strings.HasSuffix(name, ".") {
-		name += "."
-	}
-
-	return name
 }

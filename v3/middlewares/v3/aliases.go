@@ -6,7 +6,7 @@ import (
 	"github.com/nixpare/server/v3"
 )
 
-func DomainAliases(srv *server.HTTPServer, domain string, matchF func(host string) bool, aliases ...string) {
+func DomainAliases(srv *server.ServerHandler, domain string, matchF func(host string) bool, aliases ...string) {
 	if matchF == nil {
 		matchF = func(host string) bool { return false }
 	}
@@ -32,6 +32,9 @@ func DomainAliases(srv *server.HTTPServer, domain string, matchF func(host strin
 func SubdomainAliases(d *server.Domain, subdomain string, matchF func(host string) bool, aliases ...string) {
 	if matchF == nil {
 		matchF = func(host string) bool { return false }
+	}
+	for i := range aliases {
+		aliases[i] = server.PrepSubdomainName(aliases[i])
 	}
 
 	d.AddMiddleware(func(next http.Handler) http.Handler {

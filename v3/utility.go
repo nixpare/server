@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net"
+	"strings"
 )
 
 // CharSet groups the possible output of the function RandStr. For the possible values
@@ -91,7 +93,7 @@ func GenerateTSLConfig(certs []Certificate) (*tls.Config, error) {
 			tls.CurveP384,
 			tls.X25519,
 		},
-		MinVersion: tls.VersionTLS12,
+		MinVersion:               tls.VersionTLS12,
 		PreferServerCipherSuites: true,
 	}
 
@@ -105,4 +107,21 @@ func GenerateTSLConfig(certs []Certificate) (*tls.Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// PrepSubdomainName sanitizes the subdomain name
+func PrepSubdomainName(name string) string {
+	if name != "*" && !strings.HasSuffix(name, ".") {
+		name += "."
+	}
+
+	return strings.TrimSpace(name)
+}
+
+func SplitAddrPort(host string) string {
+	sHost, _, err := net.SplitHostPort(host)
+	if err != nil {
+		sHost = host
+	}
+	return sHost
 }
