@@ -45,7 +45,7 @@ type HTTPServer struct {
 	// This should not be set by hand.
 	Router      *Router
 	Logger      logger.Logger
-	middlewares []func(next http.Handler) http.Handler
+	middlewares []MiddlewareFunc
 	domains     map[string]*Domain
 	errTemplate *template.Template
 }
@@ -122,7 +122,7 @@ func newHTTPServer(address string, port int, secure bool, certs []Certificate, l
 		l = createServerLogger(logger.DefaultLogger, "http", port)
 	}
 	srv.Logger = l
-	srv.Server.ErrorLog = log.New(srv.Logger.FixedLogger(logger.LOG_LEVEL_ERROR), "", 0)
+	srv.Server.ErrorLog = log.New(srv.Logger.FixedLogger(logger.LOG_LEVEL_WARNING), fmt.Sprintf("http server %d:", port), 0)
 
 	return srv, nil
 }
@@ -242,6 +242,7 @@ func (srv *HTTPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	h := &Handler{
 		w:            w,
+		r:            r,
 		srv:          srv,
 		router:       srv.Router,
 		Logger:       srv.Logger,
@@ -257,8 +258,7 @@ func (srv *HTTPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	r = r.WithContext(context.WithValue(r.Context(), API_CTX_KEY, &API{ h: h }))
-	h.r = r
+	*r = *r.WithContext(context.WithValue(r.Context(), API_CTX_KEY, &API{ h: h }))
 
 	host, _, _ := net.SplitHostPort(r.Host)
 

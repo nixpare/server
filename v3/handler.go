@@ -113,7 +113,7 @@ func (h *Handler) ChangeSubdomainName(subdomain string) {
 	}
 }
 
-func (h *Handler) serveAppWithMiddlewares(w http.ResponseWriter, r *http.Request, appH http.Handler, mws []func(next http.Handler) http.Handler) {
+func (h *Handler) serveAppWithMiddlewares(w http.ResponseWriter, r *http.Request, appH http.Handler, mws []MiddlewareFunc) {
 	mw := appH
 
 	for i := len(mws) - 1; i >= 0; i-- {

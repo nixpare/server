@@ -2,24 +2,40 @@ package echo
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
+	"github.com/nixpare/logger/v2"
 	"github.com/nixpare/server/v3"
+	"github.com/nixpare/server/v3/middlewares/v3"
 )
 
-func GetAPIFromEchoCtx(c echo.Context) *server.API {
-	return server.GetAPIFromReq(c.Request())
+func GetAPI(c echo.Context) *server.API {
+	return server.GetAPI(c.Request())
 }
 
-func EchoHandlerFunc(f func(api *server.API, c echo.Context) error) echo.HandlerFunc {
+func GetCookieManager(c echo.Context) *middlewares.CookieManager {
+	return middlewares.GetCookieManager(c.Request())
+}
+
+func EchoHandlerFunc(f func(c echo.Context, api *server.API, cm *middlewares.CookieManager) error) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		api := GetAPIFromEchoCtx(c)
-		return f(api, c)
+		return f(c, GetAPI(c), GetCookieManager(c))
 	}
 }
 
-func EchoError(statusCode int, message string, a ...any) server.Error {
+func Error(statusCode int, message string, a ...any) server.Error {
+	if len(a) > 0 {
+		err, ok := a[0].(*echo.HTTPError)
+		if ok {
+			statusCode = err.Code
+			errMsg := fmt.Sprint(err.Message)
+			a[0] = message + " -> " + errMsg
+			message = errMsg
+		}
+	}
+
 	err := server.Error{
 		Code:    statusCode,
 		Message: message,
@@ -39,10 +55,10 @@ func EchoError(statusCode int, message string, a ...any) server.Error {
 	return err
 }
 
-func EchoHandleError() echo.HTTPErrorHandler {
+func ErrorHandler() echo.HTTPErrorHandler {
 	return func(err error, c echo.Context) {
+		api := GetAPI(c)
 		w := c.Response().Writer
-		api := GetAPIFromEchoCtx(c)
 
 		switch err := err.(type) {
 		case *echo.HTTPError:
@@ -59,8 +75,21 @@ func EchoHandleError() echo.HTTPErrorHandler {
 	}
 }
 
+func APILogger() echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			api := GetAPI(c)
+			c.Echo().StdLogger = log.New(api.Logger().FixedLogger(logger.LOG_LEVEL_WARNING), "echo: ", 0)
+			return next(c)
+		}
+	}
+}
+
 func NewEcho() *echo.Echo {
 	e := echo.New()
-	e.HTTPErrorHandler = EchoHandleError()
+
+	e.HTTPErrorHandler = ErrorHandler()
+	e.Use(APILogger())
+
 	return e
 }

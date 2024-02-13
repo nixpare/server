@@ -14,14 +14,16 @@ type API struct {
 	h *Handler
 }
 
+type MiddlewareFunc func(next http.Handler) http.Handler
+
 func HandlerFunc(h func(api *API, w http.ResponseWriter, r *http.Request)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		api := GetAPIFromReq(r)
+		api := GetAPI(r)
 		h(api, w, r)
 	})
 }
 
-func GetAPIFromReq(r *http.Request) *API {
+func GetAPI(r *http.Request) *API {
 	return r.Context().Value(API_CTX_KEY).(*API)
 }
 

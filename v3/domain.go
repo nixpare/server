@@ -24,7 +24,7 @@ type Domain struct {
 	srv         *HTTPServer
 	subdomains  map[string]*Subdomain
 	errTemplate *template.Template
-	middlewares []func(next http.Handler) http.Handler
+	middlewares []MiddlewareFunc
 }
 
 type InitCloseFunc func(srv *HTTPServer, d *Domain, sd *Subdomain) error
@@ -47,7 +47,7 @@ type Subdomain struct {
 	errTemplate *template.Template
 	online      bool
 	state       *life.LifeCycle
-	middlewares []func(next http.Handler) http.Handler
+	middlewares []MiddlewareFunc
 }
 
 // RegisterDomain registers a domain in the server. It's asked to specify a
