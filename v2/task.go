@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/nixpare/comms"
+	"github.com/nixpare/broadcaster"
 	"github.com/nixpare/logger/v2"
 )
 
@@ -46,7 +46,7 @@ type Task struct {
 	killChan    chan struct{} // killChan will kill the exec function after the 10 seconds are gone
 	initDone    bool
 	running     bool
-	bc          *comms.Broadcaster[struct{}]
+	bc          *broadcaster.Broadcaster[struct{}]
 	TaskManager *TaskManager
 	Logger      logger.Logger
 }
@@ -121,7 +121,9 @@ func (t *Task) Wait() {
 		return
 	}
 
-	t.bc.Get()
+	l := t.bc.Register(0)
+	<- l.Ch()
+	l.Unregister()
 }
 
 func (t *Task) String() string {
@@ -190,7 +192,7 @@ func (tm *TaskManager) NewTask(name string, f TaskInitFunc, timer TaskTimer) err
 		name: name, InitF: initF,
 		ExecF: execF, CleanupF: cleanupF,
 		Timer:       timer,
-		bc:          comms.NewBroadcaster[struct{}](),
+		bc:          broadcaster.NewBroadcaster[struct{}](),
 		TaskManager: tm,
 		Logger:      tm.Logger.Clone(nil, true, "task", name),
 	}
@@ -322,11 +324,7 @@ func (tm *TaskManager) execTask(t *Task) error {
 		}
 
 		t.Timer = TASK_TIMER_INACTIVE
-
-		if err != nil {
-			tm.Logger.Printf(logger.LOG_LEVEL_ERROR, "Task \"%s\" exec error: %v", t.name, err)
-			return
-		}
+		tm.Logger.Printf(logger.LOG_LEVEL_ERROR, "Task \"%s\" exec error: %v", t.name, err)
 	}()
 
 	select {
