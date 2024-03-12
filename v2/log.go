@@ -192,26 +192,6 @@ func (route *Route) logHTTPPanic(m metrics) {
 	)
 }
 
-// Log creates a Log with the given severity and message; any data after message will be used
-// to populate the extra field of the Log automatically using the built-in function
-// fmt.Sprint(extra...)
-
-// Logf creates a Log with the given severity; the rest of the arguments is used as
-// the built-in function fmt.Sprintf(format, a...), however if the resulting string
-// contains a line feed, everything after that will be used to populate the extra field
-// of the Log
-
-// Print is a shorthand for Log(LOG_LEVE_DEBUG, a...) used for debugging
-
-// Printf is a shorthand for Logf(LOG_LEVE_DEBUG, format, a...) used for debugging
-
-// Log creates a Log with the given severity and message; any data after message will be used
-// to populate the extra field of the Log automatically using the built-in function
-// fmt.Sprint(extra...)
-
-// Logf creates a Log with the given severity; the rest of the arguments is used as
-// the built-in function fmt.Sprintf(format, a...), however if the resulting string
-// contains a line feed, everything after that will be used to populate the extra field
-// of the Log
-
-// Print is a shorthand for Log(LOG_LEVE_DEBUG, a...) used for debugging
+func (route *Route) SetErrorCapture(enable bool) {
+	route.W.disableErrorCapture = !enable
+}
