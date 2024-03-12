@@ -26,22 +26,24 @@ import (
 // error template or if the connection method is different from GET or HEAD, the
 // error message is sent as a plain text
 func (route *Route) serveError() {
+	if route.W.disableErrorCapture {
+		return
+	}
 	route.W.disableErrorCapture = true
 
 	if len(route.W.caputedError) != 0 {
 		if strings.Contains(http.DetectContentType(route.W.caputedError), "text/html") {
 			route.W.Write(route.W.caputedError)
-		} else {
-			route.errMessage = string(route.W.caputedError)
+			return
 		}
 	}
 
-	if route.errMessage == "" {
+	if len(route.W.caputedError) == 0 {
 		return
 	}
 
 	if route.errTemplate == nil {
-		route.ServeText(route.errMessage)
+		route.ServeData(route.W.caputedError)
 		return
 	}
 
@@ -51,7 +53,7 @@ func (route *Route) serveError() {
 			Message string
 		}{
 			Code:    route.W.code,
-			Message: route.errMessage,
+			Message: string(route.W.caputedError),
 		}
 
 		var buf bytes.Buffer
@@ -64,7 +66,7 @@ func (route *Route) serveError() {
 		return
 	}
 
-	route.ServeText(route.errMessage)
+	route.ServeData(route.W.caputedError)
 }
 
 // Errorf is like the method Route.Error but you can format the output

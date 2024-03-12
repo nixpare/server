@@ -86,10 +86,12 @@ func (route *Route) getLock() string {
 func (route *Route) Error(statusCode int, message any, a ...any) bool {
 	route.W.WriteHeader(statusCode)
 	
-	route.errMessage = fmt.Sprint(message)
-	if message == "" {
-		route.errMessage = "Undefined error"
+	errMessage := fmt.Sprint(message)
+	if errMessage == "" {
+		errMessage = "Undefined error"
 	}
+
+	route.ServeText(errMessage)
 
 	if len(a) > 0 {
 		first := true
@@ -103,7 +105,7 @@ func (route *Route) Error(statusCode int, message any, a ...any) bool {
 			route.logErrMessage += fmt.Sprint(x)
 		}
 	} else {
-		route.logErrMessage = route.errMessage
+		route.logErrMessage = errMessage
 	}
 
 	return false

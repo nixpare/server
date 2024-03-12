@@ -223,8 +223,6 @@ type Route struct {
 	AvoidLogging bool
 	// err contains the route prep errors
 	err routePrepError
-	// errMessage contains the error message to insert into the connection reply
-	errMessage string
 	// logErrMessage contains the error message to be used in the logs
 	logErrMessage string
 	// errTemplate contains the error template: it could be inherited by the server, domain or subdomain
