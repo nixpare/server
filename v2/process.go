@@ -53,8 +53,9 @@ func (tm *TaskManager) StartProcess(name string) error {
 	if err != nil {
 		return err
 	}
+	*p = *(p.Clone())
 
-	err = p.Start(process.DevNull(), process.DevNull(), process.DevNull())
+	err = p.Start(nil, nil, nil)
 	if err != nil {
 		return err
 	}
@@ -93,8 +94,7 @@ func (tm *TaskManager) KillProcess(name string) error {
 	return p.Kill()
 }
 
-// RestartProcess first gracefully stops the process (not implemented,
-// see StopProcess method) and then starts it again
+// RestartProcess first gracefully stops the process and then starts it again
 func (tm *TaskManager) RestartProcess(name string) error {
 	_, err := tm.FindProcess(name)
 	if err != nil {

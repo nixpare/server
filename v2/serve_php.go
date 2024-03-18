@@ -22,7 +22,7 @@ func NewPHPProcessor(port int, args ...string) (php *PHPProcessor, err error) {
 	php.Process, err = process.NewProcess(
 		"", "php-cgi",
 		append(
-			process.ParseCommandArgs(fmt.Sprintf("-b %d", port)),
+			[]string{ "-b", fmt.Sprint(port) },
 			process.ParseCommandArgs(args...)...
 		)...)
 	if err != nil {

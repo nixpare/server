@@ -7,10 +7,10 @@ require (
 	github.com/gorilla/handlers v1.5.2
 	github.com/gorilla/securecookie v1.1.2
 	github.com/gorilla/websocket v1.5.1
-	github.com/nixpare/broadcaster v1.0.2
-	github.com/nixpare/logger/v2 v2.2.3
-	github.com/nixpare/process v1.6.0
-	github.com/quic-go/quic-go v0.41.0
+	github.com/nixpare/broadcaster v1.1.1
+	github.com/nixpare/logger/v2 v2.2.4
+	github.com/nixpare/process v1.6.3
+	github.com/quic-go/quic-go v0.42.0
 	github.com/yookoala/gofast v0.8.0
 	golang.org/x/net v0.22.0
 )
@@ -23,7 +23,7 @@ require (
 	github.com/quic-go/qpack v0.4.0 // indirect
 	go.uber.org/mock v0.4.0 // indirect
 	golang.org/x/crypto v0.21.0 // indirect
-	golang.org/x/exp v0.0.0-20240222234643-814bf88cf225 // indirect
+	golang.org/x/exp v0.0.0-20240314144324-c7f7c6466f7f // indirect
 	golang.org/x/mod v0.16.0 // indirect
 	golang.org/x/sys v0.18.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
