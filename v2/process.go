@@ -2,7 +2,6 @@ package server
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/nixpare/logger/v2"
 	"github.com/nixpare/process"
@@ -63,11 +62,7 @@ func (tm *TaskManager) StartProcess(name string) error {
 	go func() {
 		exitStatus := p.Wait()
 		if exitStatus.ExitCode != 0 || exitStatus.ExitError != nil {
-			var output string
-			for _, x := range p.Stderr() {
-				output += string(x) + "\n"
-			}
-			tm.Router.Logger.Printf(logger.LOG_LEVEL_ERROR, "exit error on process %s: %v\n%s", p.ExecName, exitStatus, strings.TrimSpace(output))
+			tm.Router.Logger.Printf(logger.LOG_LEVEL_ERROR, "exit error on process %s: %v\n%s", p.ExecName, exitStatus, p.Stderr())
 		}
 	}()
 
