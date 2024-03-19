@@ -6,28 +6,22 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"strings"
 
 	"github.com/nixpare/logger/v2"
 )
 
-type Conn struct {
-	TCPConn net.Conn
-	RemoteAddr string
-}
-
-type ConnHandlerFunc func(srv *TCPServer, conn *Conn)
+type ConnHandlerFunc func(srv *TCPServer, conn net.Conn)
 
 type TCPServer struct {
-	listener net.Listener
-	address string
-	port int
-	secure bool
-	Online bool
-	state *LifeCycle
+	listener    net.Listener
+	address     string
+	port        int
+	secure      bool
+	Online      bool
+	state       *LifeCycle
 	ConnHandler ConnHandlerFunc
-	Router  *Router
-	Logger  logger.Logger
+	Router      *Router
+	Logger      logger.Logger
 }
 
 func NewTCPServer(address string, port int, secure bool, certs ...Certificate) (*TCPServer, error) {
@@ -38,23 +32,23 @@ func newTCPServer(address string, port int, secure bool, certs []Certificate, l 
 	var listener net.Listener
 	var err error
 
-	listenAddr := fmt.Sprintf("%s:%d", address, port)
+	listenAddr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%d", address, port))
+	if err != nil {
+		return nil, err
+	}
+
+	listener, err = net.ListenTCP("tcp", listenAddr)
+	if err != nil {
+		return nil, err
+	}
 
 	if secure {
-		tslConfig, err := GenerateTSLConfig(certs)
+		tlsConfig, err := GenerateTSLConfig(certs)
 		if err != nil {
 			return nil, err
 		}
 
-		listener, err = tls.Listen("tcp", listenAddr, tslConfig)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		listener, err = net.Listen("tcp", listenAddr)
-		if err != nil {
-			return nil, err
-		}
+		listener = tls.NewListener(listener, tlsConfig)
 	}
 
 	if l == nil {
@@ -89,18 +83,16 @@ func (srv *TCPServer) Start() {
 				srv.Logger.Print(logger.LOG_LEVEL_ERROR, err)
 				continue
 			}
-	
-			c := createConn(conn)
 
 			go func() {
-				defer c.TCPConn.Close()
+				defer conn.Close()
 
 				if srv.ConnHandler == nil {
 					return
 				}
 
 				err := logger.PanicToErr(func() error {
-					srv.ConnHandler(srv, c)
+					srv.ConnHandler(srv, conn)
 					return nil
 				})
 				if err != nil {
@@ -143,15 +135,6 @@ func (srv *TCPServer) IsSecure() bool {
 	return srv.secure
 }
 
-func createConn(conn net.Conn) *Conn {
-	remoteAdrr := strings.Split(conn.RemoteAddr().String(), ":")[0]
-
-	return &Conn {
-		TCPConn: conn,
-		RemoteAddr: remoteAdrr,
-	}
-}
-
 func TCPPipe(conn1, conn2 net.Conn) {
 	done := make(chan struct{})
 
@@ -177,16 +160,19 @@ func TCPPipe(conn1, conn2 net.Conn) {
 	<- done
 }
 
-func TCPProxy(address string, port int) ConnHandlerFunc {
-	dest := fmt.Sprintf("%s:%d", address, port)
+func TCPProxy(address string, port int) (ConnHandlerFunc, error) {
+	target, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%d", address, port))
+	if err != nil {
+		return nil, err
+	}
 
-	return func(srv *TCPServer, conn *Conn) {
-		proxyDest, err := net.Dial("tcp", dest)
+	return func(srv *TCPServer, conn net.Conn) {
+		proxy, err := net.DialTCP("tcp", nil, target)
 		if err != nil {
 			srv.Logger.Print(logger.LOG_LEVEL_ERROR, err)
 			return
 		}
 
-		TCPPipe(conn.TCPConn, proxyDest)
-	}
+		TCPPipe(conn, proxy)
+	}, nil
 }
