@@ -74,44 +74,61 @@ func (srv *TCPServer) Start() {
 	if srv.state.AlreadyStarted() {
 		return
 	}
+	defer srv.state.SetState(LCS_STARTED)
 
 	srv.Online = true
-	srv.state.SetState(LCS_STARTED)
 
 	go func() {
-		for srv.state.GetState() == LCS_STARTED {
+		for {
 			conn, err := srv.listener.Accept()
 			if err != nil {
-				if !errors.Is(err, net.ErrClosed) {
-					srv.Logger.Print(logger.LOG_LEVEL_ERROR, err)
+				if errors.Is(err, net.ErrClosed) {
+					break
 				}
-				
+
+				srv.Logger.Print(logger.LOG_LEVEL_ERROR, err)
 				continue
 			}
 	
 			c := createConn(conn)
-	
-			if srv.Online && srv.ConnHandler != nil {
-				go func() {
-					err := logger.PanicToErr(func() error {
-						srv.ConnHandler(srv, c)
-						return nil
-					})
-					if err != nil {
-						srv.Logger.Printf(logger.LOG_LEVEL_ERROR, "Panic captured: %v", err.Error())
-					}
-				}()
-			}
+
+			go func() {
+				defer c.TCPConn.Close()
+
+				if srv.ConnHandler == nil {
+					return
+				}
+
+				err := logger.PanicToErr(func() error {
+					srv.ConnHandler(srv, c)
+					return nil
+				})
+				if err != nil {
+					srv.Logger.Printf(logger.LOG_LEVEL_ERROR, "Panic captured: %v", err.Error())
+				}
+			}()
 		}
 	}()
+
+	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "TCP Server %d startup completed", srv.port)
 }
 
 func (srv *TCPServer) Stop() error {
 	srv.state.SetState(LCS_STOPPING)
-	srv.Online = false
-
 	defer srv.state.SetState(LCS_STOPPED)
-	return srv.listener.Close()
+
+	srv.Online = false
+	err := srv.listener.Close()
+	if err != nil {
+		srv.Logger.Printf(logger.LOG_LEVEL_FATAL,
+			"TCP Server %d shutdown failed due to: %v",
+			srv.port, err,
+		)
+	} else {
+		srv.Logger.Printf(logger.LOG_LEVEL_INFO, "TCP Server %d shutdown finished", srv.port)
+	}
+	
+	return err
 }
 
 func (srv *TCPServer) Address() string {
@@ -135,6 +152,31 @@ func createConn(conn net.Conn) *Conn {
 	}
 }
 
+func TCPPipe(conn1, conn2 net.Conn) {
+	done := make(chan struct{})
+
+	go func() {
+		defer func() {
+			conn2.Close()
+			done <- struct{}{}
+		}()
+
+		io.Copy(conn1, conn2)
+	}()
+
+	go func() {
+		defer func() {
+			conn2.Close()
+			done <- struct{}{}
+		}()
+
+		io.Copy(conn2, conn1)
+	}()
+
+	<- done
+	<- done
+}
+
 func TCPProxy(address string, port int) ConnHandlerFunc {
 	dest := fmt.Sprintf("%s:%d", address, port)
 
@@ -142,27 +184,9 @@ func TCPProxy(address string, port int) ConnHandlerFunc {
 		proxyDest, err := net.Dial("tcp", dest)
 		if err != nil {
 			srv.Logger.Print(logger.LOG_LEVEL_ERROR, err)
+			return
 		}
 
-		done := make(chan struct{})
-
-		go func() {
-			defer conn.TCPConn.Close()
-			defer proxyDest.Close()
-
-			io.Copy(proxyDest, conn.TCPConn)
-			done <- struct{}{}
-		}()
-
-		go func() {
-			defer conn.TCPConn.Close()
-			defer proxyDest.Close()
-
-			io.Copy(conn.TCPConn, proxyDest)
-			done <- struct{}{}
-		}()
-
-		<- done
-		<- done
+		TCPPipe(conn.TCPConn, proxyDest)
 	}
 }

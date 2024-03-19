@@ -235,7 +235,7 @@ func (srv *HTTPServer) Start() {
 	}
 
 	srv.state.SetState(LCS_STARTING)
-	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "Server %d startup started", srv.port)
+	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "HTTP Server %d startup started", srv.port)
 
 	srv.Online = true
 	srv.OnlineTime = time.Now()
@@ -249,12 +249,12 @@ func (srv *HTTPServer) Start() {
 	go func() {
 		if srv.Secure {
 			if err := srv.Server.ListenAndServeTLS("", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				srv.Logger.Printf(logger.LOG_LEVEL_FATAL, "Server %d error: %v", srv.port, err)
+				srv.Logger.Printf(logger.LOG_LEVEL_FATAL, "HTTP Server %d error: %v", srv.port, err)
 				srv.Stop()
 			}
 		} else {
 			if err := srv.Server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				srv.Logger.Printf(logger.LOG_LEVEL_FATAL, "Server %d error: %v", srv.port, err)
+				srv.Logger.Printf(logger.LOG_LEVEL_FATAL, "HTTP Server %d error: %v", srv.port, err)
 				srv.Stop()
 			}
 		}
@@ -263,13 +263,13 @@ func (srv *HTTPServer) Start() {
 	if srv.HTTP3Server != nil {
 		go func() {
 			if err := srv.HTTP3Server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				srv.Logger.Printf(logger.LOG_LEVEL_FATAL, "Server (HTTP/3) %d error: %v", srv.port, err)
+				srv.Logger.Printf(logger.LOG_LEVEL_FATAL, "HTTP Server (HTTP/3) %d error: %v", srv.port, err)
 				srv.Stop()
 			}
 		}()
 	}
 
-	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "Server %d startup completed", srv.port)
+	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "HTTP Server %d startup completed", srv.port)
 	srv.state.SetState(LCS_STARTED)
 }
 
@@ -281,7 +281,7 @@ func (srv *HTTPServer) Stop() {
 	}
 
 	srv.state.SetState(LCS_STOPPING)
-	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "Server %d shutdown started", srv.port)
+	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "HTTP Server %d shutdown started", srv.port)
 
 	srv.Online = false
 	srv.Server.SetKeepAlivesEnabled(false)
@@ -289,7 +289,7 @@ func (srv *HTTPServer) Stop() {
 	if srv.HTTP3Server != nil {
 		if err := srv.HTTP3Server.CloseGracefully(10 * time.Second); err != nil {
 			srv.Logger.Printf(logger.LOG_LEVEL_FATAL,
-				"Server (HTTP/3) %d shutdown crashed due to: %v",
+				"HTTP Server (HTTP/3) %d shutdown crashed due to: %v",
 				srv.port, err.Error(),
 			)
 		}
@@ -297,8 +297,8 @@ func (srv *HTTPServer) Stop() {
 
 	if err := srv.Server.Shutdown(context.Background()); err != nil {
 		srv.Logger.Printf(logger.LOG_LEVEL_FATAL,
-			"Server %d shutdown crashed due to: %v",
-			srv.port, err.Error(),
+			"HTTP Server %d shutdown crashed due to: %v",
+			srv.port, err,
 		)
 	}
 
@@ -308,6 +308,6 @@ func (srv *HTTPServer) Stop() {
 		}
 	}
 
-	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "Server %d shutdown finished", srv.port)
+	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "HTTP Server %d shutdown finished", srv.port)
 	srv.state.SetState(LCS_STOPPED)
 }
