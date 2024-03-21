@@ -127,6 +127,7 @@ func UpdateFileCache() {
 		newInfo, err := os.Stat(filePath)
 		if err != nil || newInfo.IsDir() {
 			delete(fc.m, filePath)
+			continue
 		}
 
 		if !newInfo.ModTime().After(cf.info.ModTime()) {
