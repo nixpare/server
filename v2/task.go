@@ -316,7 +316,6 @@ func (tm *TaskManager) execTask(t *Task) error {
 			return t.ExecF(t)
 		})
 		if err == nil {
-			tm.Logger.Printf(logger.LOG_LEVEL_INFO, "Task \"%s\" execution terminated successfully", t.name)
 			return
 		}
 
