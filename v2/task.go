@@ -269,7 +269,6 @@ func (tm *TaskManager) initTask(t *Task) {
 		return
 	}
 
-	tm.Logger.Printf(logger.LOG_LEVEL_INFO, "Task \"%s\" initialization started", t.name)
 	err := logger.PanicToErr(func() error {
 		return t.InitF(t)
 	})
@@ -281,7 +280,6 @@ func (tm *TaskManager) initTask(t *Task) {
 	}
 
 	t.initDone = true
-	tm.Logger.Printf(logger.LOG_LEVEL_INFO, "Task \"%s\" initialization successful", t.name)
 }
 
 // execTask runs the exec function, catching every possible error or panic,
@@ -315,7 +313,6 @@ func (tm *TaskManager) execTask(t *Task) error {
 		defer func() { execDone <- struct{}{} }()
 
 		err := logger.PanicToErr(func() error {
-			tm.Logger.Printf(logger.LOG_LEVEL_INFO, "Task \"%s\" execution started", t.name)
 			return t.ExecF(t)
 		})
 		if err == nil {
@@ -324,7 +321,6 @@ func (tm *TaskManager) execTask(t *Task) error {
 		}
 
 		t.Timer = TASK_TIMER_INACTIVE
-		tm.Logger.Printf(logger.LOG_LEVEL_ERROR, "Task \"%s\" exec error: %v", t.name, err)
 	}()
 
 	select {
@@ -365,8 +361,6 @@ func (tm *TaskManager) killTask(t *Task) {
 		tm.Logger.Printf(logger.LOG_LEVEL_ERROR, "Task \"%s\" cleanup error: %v", t.name, err)
 		return
 	}
-
-	tm.Logger.Printf(logger.LOG_LEVEL_INFO, "Task \"%s\" stopped successfully", t.name)
 }
 
 // stopTask runs the cleanup function, catching every possible error or panic
@@ -392,8 +386,6 @@ func (tm *TaskManager) stopTask(t *Task) {
 		tm.Logger.Printf(logger.LOG_LEVEL_ERROR, "Task \"%s\" cleanup error: %v", t.name, err)
 		return
 	}
-
-	tm.Logger.Printf(logger.LOG_LEVEL_INFO, "Task \"%s\" stopped successfully", t.name)
 }
 
 func (tm *TaskManager) runTasksWithTimer(timer TaskTimer) {

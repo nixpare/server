@@ -55,13 +55,13 @@ func GoOfflineFor(srv *server.ServerHandler, d time.Duration) error {
 	}
 
 	err := srv.Router.TaskManager.NewTask(taskName, func() (startupF server.TaskFunc, execF server.TaskFunc, cleanupF server.TaskFunc) {
-		startupF = func(t *server.Task) error {
+		startupF = func(_ *server.Task) error {
 			srv.Online = false
 			srv.OnlineTime = time.Now().Add(d)
 			return nil
 		}
 
-		execF = func(t *server.Task) error {
+		execF = func(_ *server.Task) error {
 			if time.Now().After(srv.OnlineTime) {
 				GoOnline(srv)
 			}
