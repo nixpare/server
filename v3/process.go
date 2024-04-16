@@ -14,19 +14,19 @@ import (
 // in every operating system
 //
 // The underlying process is described in the package github.com/nixpare/process
-func (tm *TaskManager) NewProcess(name, dir string, execName string, args ...string) error {
+func (tm *TaskManager) NewProcess(name, dir string, execName string, args ...string) (*process.Process, error) {
 	if !tm.checkProcessName(name) {
-		return fmt.Errorf("process named \"%s\" already registered", name)
+		return nil, fmt.Errorf("process named \"%s\" already registered", name)
 	}
 
 	p, err := process.NewProcess(dir, execName, args...)
 	if err != nil {
-		return fmt.Errorf("error creating process \"%s\": %w", name, err)
+		return nil, fmt.Errorf("error creating process \"%s\": %w", name, err)
 	}
 	p.ExecName = name
 
 	tm.processes[name] = p
-	return nil
+	return p, nil
 }
 
 // FindProcess finds if a process with the given name is registered in the process map
