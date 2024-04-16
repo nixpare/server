@@ -2,16 +2,19 @@ package server
 
 import (
 	"bufio"
-	"bytes"
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
 	"os"
 	"path"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/nixpare/broadcaster"
 )
 
 func newXFile(filePath string) (b []byte, modTime time.Time, err error) {
@@ -71,143 +74,240 @@ func newXFile(filePath string) (b []byte, modTime time.Time, err error) {
 }
 
 type cachedFile struct {
-	b    []byte
-	info fs.FileInfo
+	vf         *VirtualFile
+	info       fs.FileInfo
+	expiration time.Time
 }
 
 type fileCache struct {
-	m     map[string]cachedFile
+	m     map[string]*cachedFile
 	mutex *sync.RWMutex
 }
 
 var (
 	fc = fileCache{
-		m: make(map[string]cachedFile),
+		m: make(map[string]*cachedFile),
 		mutex: new(sync.RWMutex),
 	}
 
-	fileCacheUpdateInterval time.Duration = time.Minute * 15
+	fileCacheTTL time.Duration = time.Minute * 15
 	cacheEnabled = false
-	ticker *time.Ticker = time.NewTicker(fileCacheUpdateInterval)
+	CachedExtensions = []string{ "", "txt", "html", "css", "js", "json" }
 )
 
-func SetFileCacheUpdateInterval(d time.Duration) {
-	fileCacheUpdateInterval = d
-	ticker.Reset(fileCacheUpdateInterval)
+func SetFileCacheTTL(ttl time.Duration) {
+	fileCacheTTL = ttl
 }
 
 func EnableFileCache() {
 	cacheEnabled = true
-	ticker.Reset(fileCacheUpdateInterval)
 }
 
 func DisableFileCache() {
 	cacheEnabled = false
-	ticker.Stop()
-	for key := range fc.m {
+	fc.mutex.Lock()
+	defer fc.mutex.Unlock()
+
+	for key, cacheFile := range fc.m {
+		cacheFile.vf.b = nil
 		delete(fc.m, key)
 	}
 }
 
-func getFile(filePath string) (content []byte, info fs.FileInfo, found bool) {
-	f, err := os.Open(filePath)
+func getFile(filePath string) (f *os.File, info fs.FileInfo) {
+	var err error
+	f, err = os.Open(filePath)
 	if err != nil {
 		return
 	}
-	defer f.Close()
-	found = true
 
 	info, _ = f.Stat()
-	content, _ = io.ReadAll(f)
 	return
 }
 
-func UpdateFileCache() {
-	for filePath, cf := range fc.m {
-		newInfo, err := os.Stat(filePath)
-		if err != nil || newInfo.IsDir() {
-			delete(fc.m, filePath)
-			continue
-		}
+func (route *Route) httpServeFileCached(filepath string) {
+	if !cacheEnabled {
+		route.httpServeFile(filepath)
+		return
+	}
 
-		if !newInfo.ModTime().After(cf.info.ModTime()) {
-			continue
-		}
-
-		content, info, found := getFile(filePath)
-		if !found {
-			delete(fc.m, filePath)
-		} else {
-			fc.m[filePath] = cachedFile{
-				b: content,
-				info: info,
-			}
+	var found bool
+	_, ext, _ := strings.Cut(filepath, ".")
+	for _, e := range CachedExtensions {
+		if e == ext {
+			found = true
+			break
 		}
 	}
-}
-
-func init() {
-	go func() {		
-		for range ticker.C {
-			UpdateFileCache()
-		}
-	}()
-}
-
-func (route *Route) httpServeFileCached(filePath string) bool {
-	if !cacheEnabled {
-		return route.httpServeFile(filePath)
+	if !found {
+		route.httpServeFile(filepath)
+		return
 	}
 
 	fc.mutex.RLock()
-	cf, ok := fc.m[filePath]
+	cf, ok := fc.m[filepath]
 	fc.mutex.RUnlock()
-	if ok {
-		route.ServeCompressedContent(
-			cf.info.Name(), cf.info.ModTime(),
-			bytes.NewReader(cf.b),
-			gzip.DefaultCompression,
-		)
-		return true
-	}
-
-	fc.mutex.Lock()
-	cf, ok = fc.m[filePath]
-	if !ok {
-		content, info, found := getFile(filePath)
-		if !found {
-			fc.mutex.Unlock()
+	
+	if !ok || cf.expiration.Before(time.Now()) {
+		cf = updateCachedFile(filepath)
+		if cf == nil {
 			route.Error(http.StatusNotFound, "Not Found")
-			return false
+			return
 		}
-
-		cf = cachedFile{
-			b: content,
-			info: info,
-		}
-		fc.m[filePath] = cf
 	}
-	fc.mutex.Unlock()
 
+	route.Logger.Debug("Serving ...")
 	route.ServeCompressedContent(
 		cf.info.Name(), cf.info.ModTime(),
-		bytes.NewReader(cf.b),
+		cf.vf.NewReader(),
 		gzip.DefaultCompression,
 	)
-	return true
 }
 
-func (route *Route) httpServeFile(filePath string) bool {
-	content, info, found := getFile(filePath)
-	if !found {
-		route.Error(http.StatusNotFound, "Not Found")
-		return false
+func updateCachedFile(filepath string) *cachedFile {
+	fc.mutex.Lock()
+	defer fc.mutex.Unlock()
+
+	f, info := getFile(filepath)
+	if info == nil {
+		return nil
 	}
 
+	cf, ok := fc.m[filepath]
+	if ok && info.ModTime().Equal(cf.info.ModTime()) {
+		// No modifications
+		f.Close()
+		return cf
+	}
+
+	if !ok {
+		// The file does not exist in the cache
+		cf = &cachedFile{
+			info: info,
+			expiration: time.Now().Add(fileCacheTTL),
+		}
+		fc.m[filepath] = cf
+	}
+
+	cf.vf = NewVirtualFile(int(info.Size()))
+	go func() {
+		defer f.Close()
+		defer cf.vf.bc.Close()
+		io.Copy(cf.vf, f)
+	}()
+
+	return cf
+}
+
+func (route *Route) httpServeFile(filePath string) {
+	f, info := getFile(filePath)
+	if info == nil {
+		route.Error(http.StatusNotFound, "Not Found")
+		return
+	}
+	defer f.Close()
+
 	route.ServeCompressedContent(
-		info.Name(), info.ModTime(),
-		bytes.NewReader(content),
+		info.Name(), info.ModTime(), f,
 		gzip.DefaultCompression,
 	)
-	return true
+}
+
+type VirtualFile struct {
+	b       []byte
+	len     int
+	bc      *broadcaster.Broadcaster[struct{}]
+}
+
+func NewVirtualFile(size int) *VirtualFile {
+	return &VirtualFile{
+		b: make([]byte, size),
+		bc: broadcaster.NewBroadcaster[struct{}](),
+	}
+}
+
+func (vf *VirtualFile) Write(b []byte) (n int, err error) {
+	if len(b) == 0 {
+		return 0, nil
+	}
+
+	if len(b) > vf.Size() - vf.Len() {
+		n = vf.Size() - vf.Len()
+		err = errors.New("virtual file error: exeeded file size")
+	} else {
+		n = len(b)
+	}
+
+	vf.len += copy(vf.b[vf.len:], b[:n])
+	vf.bc.Send(struct{}{})
+
+	return
+}
+
+func (vf *VirtualFile) Len() int {
+	return vf.len
+}
+
+func (vf *VirtualFile) Size() int {
+	return cap(vf.b)
+}
+
+type virtualFileReader struct {
+	vf *VirtualFile
+	offset int64
+}
+
+func (vf *VirtualFile) NewReader() io.ReadSeeker {
+	return &virtualFileReader{ vf: vf }
+}
+
+// Read is used to implement the io.Reader interface
+func (r *virtualFileReader) Read(p []byte) (n int, err error) {
+	if len(p) == 0 {
+		return 0, nil // Reading no data
+	}
+
+	if int(r.offset) == r.vf.Size() {
+		return 0, io.EOF // Charet position already off
+	}
+
+	var ch *broadcaster.Channel[struct{}]
+	for len(p) > r.vf.Len() - int(r.offset) && r.vf.Len() < r.vf.Size() {
+		if ch == nil {
+			ch = r.vf.bc.Register(20)
+			defer ch.Unregister()
+		}
+
+		_, ok := <- ch.Ch()
+		if !ok {
+			break
+		}
+	}
+
+	n = copy(p, r.vf.b[r.offset:])
+	r.offset += int64(n)
+	if int(r.offset) == r.vf.Size() {
+		err = io.EOF
+	}
+
+	return
+}
+
+// Seek is used to implement the io.Seeker interface
+func (r *virtualFileReader) Seek(offset int64, whence int) (int64, error) {
+	switch whence {
+	case io.SeekStart:
+		r.offset = offset
+	case io.SeekCurrent:
+		r.offset = int64(r.offset) + offset
+	case io.SeekEnd:
+		r.offset = int64(r.vf.Size()) + offset
+	default:
+		return 0, errors.New("virtual file seek: invalid whence")
+	}
+
+	if r.offset < 0 {
+		return 0, errors.New("virtual file seek: negative position")
+	}
+	return r.offset, nil
 }

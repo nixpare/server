@@ -79,39 +79,43 @@ func (route *Route) Errorf(statusCode int, message string, format string, a ...a
 // ServeFile will serve a file in the file system. If the path is not
 // absolute, it will first try to complete it with the website directory
 // (if set) or with the server path
-func (route *Route) ServeFile(filePath string) bool {
+func (route *Route) ServeFile(filePath string) {
 	if !filepath.IsAbs(filePath) {
 		filePath = route.Website.Dir + "/" + filePath
 	}
 
 	if strings.Contains(filePath, "..") {
-		return route.Error(http.StatusBadRequest, "Bad request URL", "URL contains ..")
+		route.Error(http.StatusBadRequest, "Bad request URL", "URL contains ..")
+		return
 	}
 
 	if value, ok := route.Website.XFiles[route.RequestURI]; ok {
 		if !filepath.IsAbs(value) {
 			value = route.Website.Dir + "/" + value
 		}
-		return route.serveXFile(value)
+		route.serveXFile(value)
+		return
 	}
 
-	return route.httpServeFileCached(filePath)
+	route.httpServeFileCached(filePath)
 }
 
-func (route *Route) serveFileTestHTML(filePath string) bool {
+func (route *Route) serveFileTestHTML(filePath string) {
 	if !filepath.IsAbs(filePath) {
 		filePath = route.Website.Dir + "/" + filePath
 	}
 
 	if strings.Contains(filePath, "..") {
-		return route.Error(http.StatusBadRequest, "Bad request URL", "URL contains ..")
+		route.Error(http.StatusBadRequest, "Bad request URL", "URL contains ..")
+		return
 	}
 
 	if value, ok := route.Website.XFiles[route.RequestURI]; ok {
 		if !filepath.IsAbs(value) {
 			value = route.Website.Dir + "/" + value
 		}
-		return route.serveXFile(value)
+		route.serveXFile(value)
+		return
 	}
 
 	fileInfo, err := os.Stat(filePath)
@@ -119,44 +123,46 @@ func (route *Route) serveFileTestHTML(filePath string) bool {
 		filePath += ".html"
 	}
 
-	return route.httpServeFileCached(filePath)
+	route.httpServeFileCached(filePath)
 }
 
-func (route *Route) serveXFile(xFilePath string) bool {
+func (route *Route) serveXFile(xFilePath string) {
 	content, modTime, err := newXFile(xFilePath)
 	if err != nil {
-		return route.Error(
+		route.Error(
 			http.StatusInternalServerError,
 			"Internal server error", err,
 		)
+		return
 	}
 
 	route.ServeCompressedContent(route.RequestURI, modTime, bytes.NewReader(content), gzip.DefaultCompression)
-	return true
 }
 
 // ServeCustomFileWithTime will serve a pseudo-file saved in memory specifing the
 // last modification time. The name of the file is important for MIME type detection
-func (route *Route) ServeCustomFileWithTime(fileName string, data []byte, t time.Time) bool {
+func (route *Route) ServeCustomFileWithTime(fileName string, data []byte, t time.Time) {
 	http.ServeContent(route.W, route.R, fileName, t, bytes.NewReader(data))
-	return true
 }
 
 // ServeCustomFile serves a pseudo-file saved in memory. The name of the file is
 // important for MIME type detection
-func (route *Route) ServeCustomFile(fileName string, data []byte) bool {
-	return route.ServeCustomFileWithTime(fileName, data, time.Now())
+func (route *Route) ServeCustomFile(fileName string, data []byte) {
+	route.ServeCustomFileWithTime(fileName, data, time.Now())
 }
 
 // ServeData serves raw bytes to the client
-func (route *Route) ServeData(data []byte) bool {
+func (route *Route) ServeData(data []byte) {
 	http.ServeContent(route.W, route.R, "", time.Now(), bytes.NewReader(data))
-	return true
 }
 
 // ServeText serves a string (as raw bytes) to the client
-func (route *Route) ServeText(text string) bool {
-	return route.ServeData([]byte(text))
+func (route *Route) ServeText(text string) {
+	route.ServeData([]byte(text))
+}
+
+func (route *Route) ServeContent(name string, modtime time.Time, content io.ReadSeeker) {
+	http.ServeContent(route.W, route.R, name, modtime, content)
 }
 
 func (route *Route) CompressedServe(serveF http.HandlerFunc, compressLevel int) {
@@ -176,32 +182,37 @@ func (route *Route) ServeCompressedContent(name string, modtime time.Time, conte
 // flag argument set to true, it will serve index.html automatically
 // for connection with request uri empty or equal to "/", it will serve
 // every file inside the AllFolders field of the Website
-func (route *Route) StaticServe(serveHTML bool) bool {
+func (route *Route) StaticServe(serveHTML bool) {
 	if route.Method != "GET" && route.Method != "HEAD" {
-		return route.Error(http.StatusMethodNotAllowed, "Method not allowed")
+		route.Error(http.StatusMethodNotAllowed, "Method not allowed")
+		return
 	}
 
 	for _, s := range route.Website.HiddenFolders {
 		if s == "" || strings.HasPrefix(route.RequestURI, s) {
-			return route.Error(http.StatusNotFound, "Not Found")
+			route.Error(http.StatusNotFound, "Not Found")
+			return
 		}
 	}
 
 	if route.RequestURI == "/" && serveHTML {
-		return route.ServeFile(route.Website.Dir + "/index.html")
+		route.ServeFile(route.Website.Dir + "/index.html")
+		return
 	}
 
 	if strings.HasSuffix(route.RequestURI, ".html") && !serveHTML {
-		return route.Error(http.StatusNotFound, "Not Found")
+		route.Error(http.StatusNotFound, "Not Found")
+		return
 	}
 
 	for _, s := range route.Website.AllFolders {
 		if s == "" || strings.HasPrefix(route.RequestURI, s) {
-			return route.serveFileTestHTML(route.Website.Dir + route.RequestURI)
+			route.serveFileTestHTML(route.Website.Dir + route.RequestURI)
+			return
 		}
 	}
 
-	return route.Error(http.StatusNotFound, "Not Found")
+	route.Error(http.StatusNotFound, "Not Found")
 }
 
 // SetCookie creates a new cookie with the given name and value, maxAge can be used

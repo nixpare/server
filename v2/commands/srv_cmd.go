@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"runtime"
 	"strconv"
 	"time"
 
@@ -21,8 +22,6 @@ func serverCmd(sc *ServerConn, args ...string) (exitCode int, err error) {
 			return enableCache(sc)
 		case "disable-cache":
 			return disableCache(sc)
-		case "update-cache":
-			return updateCache(sc)
 		default:
 			return 1, sc.WriteError(serverHelp(args[0]))
 		}
@@ -30,8 +29,8 @@ func serverCmd(sc *ServerConn, args ...string) (exitCode int, err error) {
 		switch args[0] {
 		case "online":
 			return onlineCmd(sc, args[1])
-		case "cache-update-interval":
-			return setCacheUpdateInterval(sc, args[1])
+		case "set-cache-TTL":
+			return setCacheTTL(sc, args[1])
 		default:
 			return 1, sc.WriteError(serverHelp(args[0]))
 		}
@@ -181,11 +180,6 @@ func extendOfflineCmd(sc *ServerConn, port, minutes string) (int, error) {
 	return 0, sc.WriteOutput(fmt.Sprintf("Server offline period extended by %d minutes", duration))
 }
 
-func updateCache(sc *ServerConn) (int, error) {
-	server.UpdateFileCache()
-	return 0, sc.WriteOutput("Cache updated!")
-}
-
 func enableCache(sc *ServerConn) (int, error) {
 	server.EnableFileCache()
 	return 0, sc.WriteOutput("Cache enabled!")
@@ -193,17 +187,18 @@ func enableCache(sc *ServerConn) (int, error) {
 
 func disableCache(sc *ServerConn) (int, error) {
 	server.DisableFileCache()
+	go runtime.GC()
 	return 0, sc.WriteOutput("Cache disabled!")
 }
 
-func setCacheUpdateInterval(sc *ServerConn, minutes string) (int, error) {
+func setCacheTTL(sc *ServerConn, minutes string) (int, error) {
 	m, err := strconv.Atoi(minutes)
 	if err != nil {
 		return 1, sc.WriteError(fmt.Sprintf("error parsing minutes: %v", err))
 	}
 
-	server.SetFileCacheUpdateInterval(time.Duration(m) * time.Minute)
-	return 0, sc.WriteOutput("Cache update interval updated!")
+	server.SetFileCacheTTL(time.Duration(m) * time.Minute)
+	return 0, sc.WriteOutput("Cache TTL updated!")
 }
 
 func serverHelp(cmd string) string {
@@ -218,7 +213,6 @@ func serverHelp(cmd string) string {
 				 "    - extend-offile <port> <minutes>  : extends the server offline time with the provided period\n" +
 				 "    - enable-cache                    : enables the server file cache\n" +
 				 "    - disable-cache                   : disables the server file cache, resetting it\n" +
-				 "    - update-cache                    : forces the server file cache to update instantly\n" +
-				 "    - cache-update-interval <minutes> : changes the server file cache update interval\n" +
+				 "    - set-cache-ttl <minutes>         : changes the server file cache TTL\n" +
 				 "    - help                            : prints out the help message\n"
 }
