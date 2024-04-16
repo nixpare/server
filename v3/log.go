@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/nixpare/logger/v2"
@@ -54,23 +55,55 @@ func (h *Handler) getMetrics() metrics {
 	return metrics{
 		Code:     h.code,
 		Duration: time.Since(h.connTime),
-		Written:  int64(h.respBuf.Len()),
+		Written:  h.written,
 		RemoteAddr: h.r.RemoteAddr,
 	}
 }
 
-// remoteAddress + code + method + requestURI + written + duration + subdomain.domain + proto (+ error)
+type CapturedError struct {
+	Code     int
+	Data     []byte
+	Internal string
+}
+
+func (err CapturedError) Error() string {
+	return fmt.Sprintf(`{"code": %d, "message": "%s", "internal": "%s"}`, err.Code, err.Data, err.Internal)
+}
+
+// remoteAddress + s/u lock + code + method + requestURI + written + duration + subdomain.domain + proto (+ error)
 const (
-	http_info_format    = "%s%-15s%s - %s%d %s%-4s %-50s%s - %s%10.3f MB (%6d ms)%s \u279C %s%s %s(%s)%s"
-	http_warning_format = "%s%-15s%s - %s%d %s%-4s %-50s%s - %s%10.3f MB (%6d ms)%s \u279C %s%s %s(%s)%s \u279C %s%s%s"
-	http_error_format   = "%s%-15s%s - %s%d %s%-4s %-50s%s - %s%10.3f MB (%6d ms)%s \u279C %s%s %s(%s)%s \u279C %s%s%s"
-	http_panic_format   = "%s%-15s%s - %s%d %s%-4s %-50s%s - %s%10.3f MB (%6d ms)%s \u279C %s%s %s(%s)%s \u279C %spanic: %s%s"
+	http_info_format    = "%s%-15s%s - %s %s%d %s%-4s %-50s%s - %s%10.3f MB (%6d ms)%s \u279C %s%s %s(%s)%s"
+	http_warning_format = "%s%-15s%s - %s %s%d %s%-4s %-50s%s - %s%10.3f MB (%6d ms)%s \u279C %s%s %s(%s)%s \u279C %s%s%s"
+	http_error_format   = "%s%-15s%s - %s %s%d %s%-4s %-50s%s - %s%10.3f MB (%6d ms)%s \u279C %s%s %s(%s)%s \u279C %s%s%s"
+	http_panic_format   = "%s%-15s%s - %s %s%d %s%-4s %-50s%s - %s%10.3f MB (%6d ms)%s \u279C %s%s %s(%s)%s \u279C %spanic: %s%s"
 )
+
+func getLock(h *Handler) string {
+	var lock string
+	if h.srv.Secure() {
+		lock = "\U0001F512"  + logger.BRIGHT_GREEN_COLOR + "S"
+	} else {
+		lock = "\U0001F513" + logger.DARK_RED_COLOR + "U"
+	}
+
+	switch {
+	case strings.Contains(h.r.Proto, "HTTP/3"):
+		lock += "/3"
+	case strings.Contains(h.r.Proto, "HTTP/2"):
+		lock += "/2"
+	case strings.Contains(h.r.Proto, "HTTP/1.1"):
+		lock += "/1"
+	default:
+		lock += "/0"
+	}
+
+	return lock + logger.DEFAULT_COLOR
+}
 
 // logHTTPInfo logs http request with an exit code < 400
 func (h *Handler) logHTTPInfo(m metrics) {
 	h.l.Printf(logger.LOG_LEVEL_INFO, http_info_format,
-		logger.BRIGHT_BLUE_COLOR, m.RemoteAddr, logger.DEFAULT_COLOR,
+		logger.BRIGHT_BLUE_COLOR, m.RemoteAddr, logger.DEFAULT_COLOR, getLock(h),
 		logger.BRIGHT_GREEN_COLOR, m.Code,
 		logger.DARK_GREEN_COLOR, h.r.Method,
 		h.r.RequestURI, logger.DEFAULT_COLOR,
@@ -84,11 +117,11 @@ func (h *Handler) logHTTPInfo(m metrics) {
 // logHTTPWarning logs http request with an exit code >= 400 and < 500
 func (h *Handler) logHTTPWarning(m metrics) {
 	if h.caputedError.Internal == "" {
-		h.caputedError.Internal = h.caputedError.Message
+		h.caputedError.Internal = string(h.caputedError.Data)
 	}
 
 	h.l.Printf(logger.LOG_LEVEL_WARNING, http_warning_format,
-		logger.BRIGHT_BLUE_COLOR, m.RemoteAddr, logger.DEFAULT_COLOR,
+		logger.BRIGHT_BLUE_COLOR, m.RemoteAddr, logger.DEFAULT_COLOR, getLock(h),
 		logger.DARK_YELLOW_COLOR, m.Code,
 		logger.DARK_GREEN_COLOR, h.r.Method,
 		h.r.RequestURI, logger.DEFAULT_COLOR,
@@ -103,11 +136,11 @@ func (h *Handler) logHTTPWarning(m metrics) {
 // logHTTPError logs http request with an exit code >= 500
 func (h *Handler) logHTTPError(m metrics) {
 	if h.caputedError.Internal == "" {
-		h.caputedError.Internal = h.caputedError.Message
+		h.caputedError.Internal = string(h.caputedError.Data)
 	}
 
 	h.l.Printf(logger.LOG_LEVEL_ERROR, http_error_format,
-		logger.BRIGHT_BLUE_COLOR, m.RemoteAddr, logger.DEFAULT_COLOR,
+		logger.BRIGHT_BLUE_COLOR, m.RemoteAddr, logger.DEFAULT_COLOR, getLock(h),
 		logger.DARK_RED_COLOR, m.Code,
 		logger.DARK_GREEN_COLOR, h.r.Method,
 		h.r.RequestURI, logger.DEFAULT_COLOR,
@@ -121,11 +154,11 @@ func (h *Handler) logHTTPError(m metrics) {
 
 func (h *Handler) logHTTPPanic(m metrics) {
 	if h.caputedError.Internal == "" {
-		h.caputedError.Internal = h.caputedError.Message
+		h.caputedError.Internal = string(h.caputedError.Data)
 	}
 
 	h.l.Printf(logger.LOG_LEVEL_FATAL, http_panic_format,
-		logger.BRIGHT_BLUE_COLOR, m.RemoteAddr, logger.DEFAULT_COLOR,
+		logger.BRIGHT_BLUE_COLOR, m.RemoteAddr, logger.DEFAULT_COLOR, getLock(h),
 		logger.DARK_RED_COLOR, m.Code,
 		logger.DARK_GREEN_COLOR, h.r.Method,
 		h.r.RequestURI, logger.DEFAULT_COLOR,

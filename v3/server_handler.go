@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"html/template"
@@ -137,15 +136,7 @@ func (srv *ServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		l:      srv.Logger,
 		errTemplate: srv.errTemplate,
 		connTime:    time.Now(),
-		respBuf:     bytes.NewBuffer(nil),
 	}
-	defer func() {
-		w.WriteHeader(h.code)
-		_, err := w.Write(h.respBuf.Bytes())
-		if err != nil {
-			h.l.Printf(logger.LOG_LEVEL_ERROR, "error writing response: %v", err)
-		}
-	}()
 
 	*r = *r.WithContext(context.WithValue(r.Context(), handler_ctx_key, h))
 
@@ -176,11 +167,11 @@ func (srv *ServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if panicErr != nil {
 		if h.code == 0 {
 			h.Error(h, http.StatusInternalServerError, "Internal server error", panicErr)
-			if h.respBuf.Len() == 0 {
+			if h.written == 0 {
 				h.serveError()
 			}
 		} else {
-			if h.respBuf.Len() == 0 {
+			if h.written == 0 {
 				h.serveError()
 			}
 
@@ -199,8 +190,6 @@ func (srv *ServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.logHTTPPanic(h.getMetrics())
 		return
 	}
-
-	h.WriteHeader(http.StatusOK)
 
 	if h.code >= 400 {
 		h.serveError()

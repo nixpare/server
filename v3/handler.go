@@ -49,13 +49,13 @@ type Handler struct {
 
 	AvoidLogging bool
 
-	DisableErrorCapture bool
+	disableErrorCapture bool
 
-	caputedError Error
+	caputedError CapturedError
 
 	code int
 
-	respBuf *bytes.Buffer
+	written int64
 }
 
 // Header is the equivalent of the http.ResponseWriter method
@@ -65,26 +65,30 @@ func (h *Handler) Header() http.Header {
 
 // Write is the equivalent of the http.ResponseWriter method
 func (h *Handler) Write(data []byte) (int, error) {
-	if h.code >= 400 && !h.DisableErrorCapture {
-		h.caputedError.Message += string(data)
+	if h.written == 0 && h.code == 0 {
+		h.WriteHeader(http.StatusOK)
+	}
+
+	if h.code >= 400 && !h.disableErrorCapture {
+		h.caputedError.Data = append(h.caputedError.Data, data...)
 		return len(data), nil
 	}
 
-	return h.respBuf.Write(data)
+	n, err := h.w.Write(data)
+	h.written += int64(n)
+
+	return n, err
 }
 
 // WriteHeader is the equivalent of the http.ResponseWriter method
 // but handles multiple calls, using only the first one used
 func (h *Handler) WriteHeader(statusCode int) {
 	if h.code != 0 {
+		h.l.Printf(logger.LOG_LEVEL_WARNING, "Redundant WriteHeader call with code %d", statusCode)
 		return
 	}
 
-	h.code = statusCode
-
-	if h.code >= 400 && !h.DisableErrorCapture {
-		h.caputedError.Code = h.code
-	}
+	h.w.WriteHeader(statusCode)
 }
 
 func (h *Handler) DomainName() string {
@@ -184,55 +188,46 @@ func (h *Handler) serveApp(w http.ResponseWriter, r *http.Request) {
 	h.serveAppWithMiddlewares(w, r, h.subdomain.Handler, nil)
 }
 
+func (h *Handler) serveData(data []byte) {
+	http.ServeContent(h, h.r, "", time.Now(), bytes.NewReader(data))
+}
+
 // serveError serves the error in a predefines error template (if set) and only
 // if no other information was alredy sent to the ResponseWriter. If there is no
 // error template or if the connection method is different from GET or HEAD, the
 // error message is sent as a plain text
 func (h *Handler) serveError() {
-	h.DisableErrorCapture = true
+	h.disableErrorCapture = true
 
-	if len(h.caputedError.Message) == 0 {
-		return
+	if len(h.caputedError.Data) != 0 {
+		if strings.Contains(http.DetectContentType(h.caputedError.Data), "text/html") {
+			h.w.Write(h.caputedError.Data)
+			return
+		}
 	}
 
-	if ctype := h.Header().Get("content-type"); ctype != "" && !strings.HasPrefix(ctype, "text/plain") {
-		h.Write(h.caputedError.Bytes())
+	if len(h.caputedError.Data) == 0 {
 		return
 	}
 
 	if h.errTemplate == nil {
-		h.Write(h.caputedError.Bytes())
+		h.serveData(h.caputedError.Data)
 		return
 	}
 
 	if h.r.Method != "GET" && h.r.Method != "HEAD" {
-		h.Write(h.caputedError.Bytes())
+		h.serveData(h.caputedError.Data)
 		return
 	}
 
 	b := bytes.NewBuffer(nil)
 	if err := h.errTemplate.Execute(b, h.caputedError); err != nil {
 		h.l.Printf(logger.LOG_LEVEL_ERROR, "Error serving template file: %v", err)
-		h.Write(h.caputedError.Bytes())
+		h.serveData(h.caputedError.Data)
 		return
 	}
 
-	h.Header().Set("content-type", http.DetectContentType(b.Bytes()))
-	h.Write(b.Bytes())
-}
-
-type Error struct {
-	Code     int
-	Message  string
-	Internal string
-}
-
-func (err Error) Error() string {
-	return fmt.Sprintf(`{"code": %d, "message": "%s", "internal": "%s"}`, err.Code, err.Message, err.Internal)
-}
-
-func (err Error) Bytes() []byte {
-	return []byte(err.Message)
+	h.serveData(b.Bytes())
 }
 
 // Error is used to manually report an HTTP Error to send to the
