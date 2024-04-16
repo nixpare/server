@@ -14,6 +14,7 @@ require (
 require (
 	github.com/go-task/slim-sprig v0.0.0-20230315185526-52ccab3ef572 // indirect
 	github.com/google/pprof v0.0.0-20240415144954-be81aee2d733 // indirect
+	github.com/gorilla/securecookie v1.1.2
 	github.com/onsi/ginkgo/v2 v2.17.1 // indirect
 	github.com/quic-go/qpack v0.4.0 // indirect
 	github.com/stretchr/testify v1.9.0 // indirect
