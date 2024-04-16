@@ -28,7 +28,7 @@ type ServerHandler struct {
 	Logger      logger.Logger
 }
 
-func NewServerHandler(srv Server, l logger.Logger) (*ServerHandler, error) {
+func newServerHandler(srv Server, l logger.Logger) (*ServerHandler, error) {
 	srvHandler := new(ServerHandler)
 	srvHandler.state = life.NewLifeCycleState()
 

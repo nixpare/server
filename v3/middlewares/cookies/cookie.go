@@ -1,75 +1,11 @@
-package middlewares
+package cookie
 
 import (
-	"context"
-	"crypto/sha256"
-	"fmt"
 	"net/http"
 	"time"
 
-	"github.com/gorilla/securecookie"
 	"github.com/nixpare/server/v3"
 )
-
-type CookieCtxKeyT string
-
-const COOKIE_CTX_KEY CookieCtxKeyT = "nix-cookie-middleware"
-
-var (
-	HashKeyString  = "NixPare Server"
-	BlockKeyString = "github.com/nixpare/server"
-)
-
-func RegisterCookieManager() server.MiddlewareFunc {
-	cm, err := NewCookieManager()
-	if err != nil {
-		return func(next http.Handler) http.Handler {
-			return next
-		}
-	}
-
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			*r = *r.WithContext(context.WithValue(r.Context(), COOKIE_CTX_KEY, cm))
-			next.ServeHTTP(w, r)
-		})
-	}
-}
-
-func GetCookieManager(r *http.Request) *CookieManager {
-	return r.Context().Value(COOKIE_CTX_KEY).(*CookieManager)
-}
-
-type CookieManager struct {
-	secureCookie     *securecookie.SecureCookie
-	secureCookiePerm *securecookie.SecureCookie
-}
-
-func NewCookieManager() (*CookieManager, error) {
-	cm := new(CookieManager)
-
-	hashKey := securecookie.GenerateRandomKey(64)
-	if hashKey == nil {
-		return nil, fmt.Errorf("error creating hashKey")
-	}
-	blockKey := securecookie.GenerateRandomKey(32)
-	if blockKey == nil {
-		return nil, fmt.Errorf("error creating blockKey")
-	}
-	cm.secureCookie = securecookie.New(hashKey, blockKey).MaxAge(0)
-
-	hashKeyPerm := make([]byte, 0, 32)
-	for _, b := range sha256.Sum256([]byte(HashKeyString)) {
-		hashKeyPerm = append(hashKeyPerm, b)
-	}
-	blockKeyPerm := make([]byte, 0, 32)
-	for _, b := range sha256.Sum256([]byte(BlockKeyString)) {
-		blockKeyPerm = append(blockKeyPerm, b)
-	}
-	cm.secureCookiePerm = securecookie.New(hashKeyPerm, blockKeyPerm).MaxAge(0)
-
-	return cm, nil
-}
 
 type CookieOption func(cookie *http.Cookie)
 

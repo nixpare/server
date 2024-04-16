@@ -97,10 +97,10 @@ func newHTTPServer(address string, port int, secure bool, certs []Certificate, r
 		}
 	}
 
-	srv.Server.ErrorLog = log.New(srv.Logger.FixedLogger(logger.LOG_LEVEL_WARNING), fmt.Sprintf("http server %d:", port), 0)
+	srv.Server.ErrorLog = log.New(srv.Logger.FixedLogger(logger.LOG_LEVEL_WARNING), fmt.Sprintf("http server %d error:", port), 0)
 
 	var err error
-	srv.serverHandler, err = NewServerHandler(srv, srv.Logger.Clone(nil, true, "handler"))
+	srv.serverHandler, err = newServerHandler(srv, srv.Logger.Clone(nil, true, "handler"))
 	if err != nil {
 		return nil, err
 	}
