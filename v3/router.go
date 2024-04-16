@@ -25,8 +25,8 @@ type Router struct {
 // NewRouter returns a new Router ready to be set up. If routerPath is not provided,
 // the router will try to get the working directory; if logger is nil, the standard
 // logger.DefaultLogger will be used
-func NewRouter(l logger.Logger) (router *Router, err error) {
-	router = new(Router)
+func NewRouter(l logger.Logger) *Router {
+	router := new(Router)
 
 	router.httpServers = make(map[int]*HTTPServer)
 	router.tcpServers = make(map[int]*TCPServer)
@@ -40,7 +40,7 @@ func NewRouter(l logger.Logger) (router *Router, err error) {
 	router.Logger = l
 
 	router.newTaskManager()
-	return
+	return router
 }
 
 // NewServer creates a new HTTP/HTTPS Server linked to the Router. See NewServer function

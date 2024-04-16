@@ -88,6 +88,7 @@ func (h *Handler) WriteHeader(statusCode int) {
 		return
 	}
 
+	h.code = statusCode
 	h.w.WriteHeader(statusCode)
 }
 

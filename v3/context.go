@@ -11,10 +11,10 @@ const handler_ctx_key handler_ctx_key_t = "github.com/nixpare/server/v3.Handler"
 
 type MiddlewareFunc func(next http.Handler) http.Handler
 
-func HandlerFunc(h func(api *Handler, w http.ResponseWriter, r *http.Request)) http.Handler {
+func HandlerFunc(handler func(h *Handler, w http.ResponseWriter, r *http.Request)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		api := GetHandlerFromCTX(r)
-		h(api, w, r)
+		h := GetHandlerFromCTX(r)
+		handler(h, w, r)
 	})
 }
 

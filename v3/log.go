@@ -3,7 +3,6 @@ package server
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/nixpare/logger/v2"
@@ -70,47 +69,36 @@ func (err CapturedError) Error() string {
 	return fmt.Sprintf(`{"code": %d, "message": "%s", "internal": "%s"}`, err.Code, err.Data, err.Internal)
 }
 
-// remoteAddress + s/u lock + code + method + requestURI + written + duration + subdomain.domain + proto (+ error)
+// remoteAddress + code + method + requestURI + written + duration + subdomain.domain + proto (+ error)
 const (
-	http_info_format    = "%s%-15s%s - %s %s%d %s%-4s %-50s%s - %s%10.3f MB (%6d ms)%s \u279C %s%s %s(%s)%s"
-	http_warning_format = "%s%-15s%s - %s %s%d %s%-4s %-50s%s - %s%10.3f MB (%6d ms)%s \u279C %s%s %s(%s)%s \u279C %s%s%s"
-	http_error_format   = "%s%-15s%s - %s %s%d %s%-4s %-50s%s - %s%10.3f MB (%6d ms)%s \u279C %s%s %s(%s)%s \u279C %s%s%s"
-	http_panic_format   = "%s%-15s%s - %s %s%d %s%-4s %-50s%s - %s%10.3f MB (%6d ms)%s \u279C %s%s %s(%s)%s \u279C %spanic: %s%s"
+	http_info_format    = "%s%-15s%s - %s%d %s%-4s %-50s%s - %s%10.3f MB (%6d ms)%s \u279C %s%s %s(%s)%s"
+	http_warning_format = "%s%-15s%s - %s%d %s%-4s %-50s%s - %s%10.3f MB (%6d ms)%s \u279C %s%s %s(%s)%s \u279C %s%s%s"
+	http_error_format   = "%s%-15s%s - %s%d %s%-4s %-50s%s - %s%10.3f MB (%6d ms)%s \u279C %s%s %s(%s)%s \u279C %s%s%s"
+	http_panic_format   = "%s%-15s%s - %s%d %s%-4s %-50s%s - %s%10.3f MB (%6d ms)%s \u279C %s%s %s(%s)%s \u279C %spanic: %s%s"
 )
 
-func getLock(h *Handler) string {
+func getProto(h *Handler) string {
 	var lock string
 	if h.srv.Secure() {
-		lock = "\U0001F512"  + logger.BRIGHT_GREEN_COLOR + "S"
+		lock = "🔒"
 	} else {
-		lock = "\U0001F513" + logger.DARK_RED_COLOR + "U"
+		lock = "🔓"
 	}
 
-	switch {
-	case strings.Contains(h.r.Proto, "HTTP/3"):
-		lock += "/3"
-	case strings.Contains(h.r.Proto, "HTTP/2"):
-		lock += "/2"
-	case strings.Contains(h.r.Proto, "HTTP/1.1"):
-		lock += "/1"
-	default:
-		lock += "/0"
-	}
-
-	return lock + logger.DEFAULT_COLOR
+	return lock + " " + h.r.Proto
 }
 
 // logHTTPInfo logs http request with an exit code < 400
 func (h *Handler) logHTTPInfo(m metrics) {
 	h.l.Printf(logger.LOG_LEVEL_INFO, http_info_format,
-		logger.BRIGHT_BLUE_COLOR, m.RemoteAddr, logger.DEFAULT_COLOR, getLock(h),
+		logger.BRIGHT_BLUE_COLOR, m.RemoteAddr, logger.DEFAULT_COLOR,
 		logger.BRIGHT_GREEN_COLOR, m.Code,
 		logger.DARK_GREEN_COLOR, h.r.Method,
 		h.r.RequestURI, logger.DEFAULT_COLOR,
 		logger.BRIGHT_BLACK_COLOR, float64(m.Written)/1000000.,
 		m.Duration.Milliseconds(), logger.DEFAULT_COLOR,
 		logger.DARK_CYAN_COLOR, h.logHost(),
-		logger.BRIGHT_BLACK_COLOR, h.r.Proto, logger.DEFAULT_COLOR,
+		logger.BRIGHT_BLACK_COLOR, getProto(h), logger.DEFAULT_COLOR,
 	)
 }
 
@@ -121,14 +109,14 @@ func (h *Handler) logHTTPWarning(m metrics) {
 	}
 
 	h.l.Printf(logger.LOG_LEVEL_WARNING, http_warning_format,
-		logger.BRIGHT_BLUE_COLOR, m.RemoteAddr, logger.DEFAULT_COLOR, getLock(h),
+		logger.BRIGHT_BLUE_COLOR, m.RemoteAddr, logger.DEFAULT_COLOR,
 		logger.DARK_YELLOW_COLOR, m.Code,
 		logger.DARK_GREEN_COLOR, h.r.Method,
 		h.r.RequestURI, logger.DEFAULT_COLOR,
 		logger.BRIGHT_BLACK_COLOR, float64(m.Written)/1000000.,
 		m.Duration.Milliseconds(), logger.DEFAULT_COLOR,
 		logger.DARK_CYAN_COLOR, h.logHost(),
-		logger.BRIGHT_BLACK_COLOR, h.r.Proto, logger.DEFAULT_COLOR,
+		logger.BRIGHT_BLACK_COLOR, getProto(h), logger.DEFAULT_COLOR,
 		logger.DARK_YELLOW_COLOR, h.caputedError.Internal, logger.DEFAULT_COLOR,
 	)
 }
@@ -140,14 +128,14 @@ func (h *Handler) logHTTPError(m metrics) {
 	}
 
 	h.l.Printf(logger.LOG_LEVEL_ERROR, http_error_format,
-		logger.BRIGHT_BLUE_COLOR, m.RemoteAddr, logger.DEFAULT_COLOR, getLock(h),
+		logger.BRIGHT_BLUE_COLOR, m.RemoteAddr, logger.DEFAULT_COLOR,
 		logger.DARK_RED_COLOR, m.Code,
 		logger.DARK_GREEN_COLOR, h.r.Method,
 		h.r.RequestURI, logger.DEFAULT_COLOR,
 		logger.BRIGHT_BLACK_COLOR, float64(m.Written)/1000000.,
 		m.Duration.Milliseconds(), logger.DEFAULT_COLOR,
 		logger.DARK_CYAN_COLOR, h.logHost(),
-		logger.BRIGHT_BLACK_COLOR, h.r.Proto, logger.DEFAULT_COLOR,
+		logger.BRIGHT_BLACK_COLOR, getProto(h), logger.DEFAULT_COLOR,
 		logger.DARK_RED_COLOR, h.caputedError.Internal, logger.DEFAULT_COLOR,
 	)
 }
@@ -158,14 +146,14 @@ func (h *Handler) logHTTPPanic(m metrics) {
 	}
 
 	h.l.Printf(logger.LOG_LEVEL_FATAL, http_panic_format,
-		logger.BRIGHT_BLUE_COLOR, m.RemoteAddr, logger.DEFAULT_COLOR, getLock(h),
+		logger.BRIGHT_BLUE_COLOR, m.RemoteAddr, logger.DEFAULT_COLOR,
 		logger.DARK_RED_COLOR, m.Code,
 		logger.DARK_GREEN_COLOR, h.r.Method,
 		h.r.RequestURI, logger.DEFAULT_COLOR,
 		logger.BRIGHT_BLACK_COLOR, float64(m.Written)/1000000.,
 		m.Duration.Milliseconds(), logger.DEFAULT_COLOR,
 		logger.DARK_CYAN_COLOR, h.logHost(),
-		logger.BRIGHT_BLACK_COLOR, h.r.Proto, logger.DEFAULT_COLOR,
+		logger.BRIGHT_BLACK_COLOR, getProto(h), logger.DEFAULT_COLOR,
 		logger.DARK_RED_COLOR, h.caputedError.Internal, logger.DEFAULT_COLOR,
 	)
 }
