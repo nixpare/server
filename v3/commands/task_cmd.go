@@ -35,10 +35,10 @@ func taskCmd(sc *ServerConn, args ...string) (int, error) {
 		if err != nil {
 			return 1, sc.WriteError(fmt.Sprintf("Error executing task: %v", err))
 		}
-	case "kill":
-		err := sc.Router.TaskManager.KillTask(args[1])
+	case "stop":
+		err := sc.Router.TaskManager.StopTask(args[1])
 		if err != nil {
-			return 1, sc.WriteError(fmt.Sprintf("Error killing task: %v", err))
+			return 1, sc.WriteError(fmt.Sprintf("Error stopping task: %v", err))
 		}
 	case "set-timer":
 		if len(args) < 3 {

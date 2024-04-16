@@ -72,12 +72,12 @@ func (tm *TaskManager) stop() {
 	if tm.state.AlreadyStopped() {
 		return
 	}
+
 	tm.state.SetState(life.LCS_STOPPING)
+	defer tm.state.SetState(life.LCS_STOPPED)
 
 	tm.stopAllTasks()
 	tm.stopAllProcesses()
-
-	tm.state.SetState(life.LCS_STOPPED)
 }
 
 func (tm *TaskManager) stopAllTasks() {
@@ -88,31 +88,15 @@ func (tm *TaskManager) stopAllTasks() {
 	tm.ticker30m.Stop()
 	tm.ticker1h.Stop()
 
-	var stillRunning int
-	wg := new(sync.WaitGroup)
+	var wg sync.WaitGroup
 
 	for _, t := range tm.tasks {
-		stillRunning++
 		wg.Add(1)
+		go func(t *Task) {
+			defer wg.Done()
 
-		go func(task *Task) {
-			tm.stopTask(task)
-
-			stillRunning--
-			wg.Done()
+			tm.cleanupTask(t)
 		}(t)
-	}
-
-	counter := 100
-	for stillRunning > 0 && counter > 0 {
-		time.Sleep(time.Millisecond * 100)
-		counter--
-	}
-
-	if counter == 0 {
-		for _, t := range tm.tasks {
-			t.killChan <- struct{}{}
-		}
 	}
 
 	wg.Wait()
@@ -124,18 +108,20 @@ func (tm *TaskManager) stopAllTasks() {
 // with the Router
 func (tm *TaskManager) stopAllProcesses() {
 	tm.Logger.Print(logger.LOG_LEVEL_INFO, "Stopping every process")
-	wg := new(sync.WaitGroup)
+	
+	var wg sync.WaitGroup
 	for _, p := range tm.processes {
 		if !p.IsRunning() {
 			continue
 		}
-		wg.Add(1)
 
-		go func(process *process.Process) {
-			if err := process.Stop(); err != nil {
-				tm.Logger.Print(logger.LOG_LEVEL_ERROR, err.Error())
+		wg.Add(1)
+		go func(p *process.Process) {
+			defer wg.Done()
+
+			if err := p.Stop(); err != nil {
+				tm.Logger.Print(logger.LOG_LEVEL_ERROR, err)
 			}
-			wg.Done()
 		}(p)
 	}
 
