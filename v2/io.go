@@ -156,7 +156,6 @@ func (route *Route) httpServeFileCached(filepath string) {
 		}
 	}
 
-	route.Logger.Debug("Serving ...")
 	route.ServeCompressedContent(
 		cf.info.Name(), cf.info.ModTime(),
 		cf.vf.NewReader(),
