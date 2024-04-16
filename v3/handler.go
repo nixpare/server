@@ -38,7 +38,7 @@ type Handler struct {
 
 	router *Router
 
-	Logger logger.Logger
+	l logger.Logger
 
 	redirected bool
 
@@ -150,7 +150,7 @@ func (h *Handler) serveDomain(w http.ResponseWriter, r *http.Request) {
 		h.domain = h.srv.DefaultDomain()
 	}
 
-	h.Logger = h.Logger.Clone(nil, true, h.domain.name)
+	h.l = h.l.Clone(nil, true, h.domain.name)
 	if h.domain.errTemplate != nil {
 		h.errTemplate = h.domain.errTemplate
 	}
@@ -164,7 +164,7 @@ func (h *Handler) serveSubdomain(w http.ResponseWriter, r *http.Request) {
 		h.subdomain = h.domain.DefaultSubdomain()
 	}
 
-	h.Logger = h.Logger.Clone(nil, true, h.subdomain.name)
+	h.l = h.l.Clone(nil, true, h.subdomain.name)
 	if h.subdomain.errTemplate != nil {
 		h.errTemplate = h.subdomain.errTemplate
 	}
@@ -212,7 +212,7 @@ func (h *Handler) serveError() {
 
 	b := bytes.NewBuffer(nil)
 	if err := h.errTemplate.Execute(b, h.caputedError); err != nil {
-		h.Logger.Printf(logger.LOG_LEVEL_ERROR, "Error serving template file: %v", err)
+		h.l.Printf(logger.LOG_LEVEL_ERROR, "Error serving template file: %v", err)
 		h.Write(h.caputedError.Bytes())
 		return
 	}

@@ -11,17 +11,17 @@ import (
 	"github.com/nixpare/server/v3/middlewares/v3"
 )
 
-func GetAPI(c echo.Context) *server.API {
-	return server.GetAPI(c.Request())
+func GetHandler(c echo.Context) *server.Handler {
+	return server.GetHandlerFromCTX(c.Request())
 }
 
 func GetCookieManager(c echo.Context) *middlewares.CookieManager {
 	return middlewares.GetCookieManager(c.Request())
 }
 
-func EchoHandlerFunc(f func(c echo.Context, api *server.API, cm *middlewares.CookieManager) error) echo.HandlerFunc {
+func EchoHandlerFunc(f func(echo.Context, *server.Handler, *middlewares.CookieManager) error) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		return f(c, GetAPI(c), GetCookieManager(c))
+		return f(c, GetHandler(c), GetCookieManager(c))
 	}
 }
 
@@ -57,20 +57,20 @@ func Error(statusCode int, message string, a ...any) server.Error {
 
 func ErrorHandler() echo.HTTPErrorHandler {
 	return func(err error, c echo.Context) {
-		api := GetAPI(c)
+		h := GetHandler(c)
 		w := c.Response().Writer
 
 		switch err := err.(type) {
 		case *echo.HTTPError:
 			if err.Internal == nil {
-				api.Handler().Error(w, err.Code, fmt.Sprint(err.Message))
+				h.Error(w, err.Code, fmt.Sprint(err.Message))
 			} else {
-				api.Handler().Error(w, err.Code, fmt.Sprint(err.Message), err.Internal)
+				h.Error(w, err.Code, fmt.Sprint(err.Message), err.Internal)
 			}
 		case server.Error:
-			api.Handler().Error(w, err.Code, string(err.Message), err.Internal)
+			h.Error(w, err.Code, string(err.Message), err.Internal)
 		default:
-			api.Handler().Error(w, http.StatusInternalServerError, err.Error())
+			h.Error(w, http.StatusInternalServerError, err.Error())
 		}
 	}
 }
@@ -78,7 +78,7 @@ func ErrorHandler() echo.HTTPErrorHandler {
 func APILogger() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			api := GetAPI(c)
+			api := GetHandler(c)
 			c.Echo().StdLogger = log.New(api.Logger().FixedLogger(logger.LOG_LEVEL_WARNING), "echo: ", 0)
 			return next(c)
 		}

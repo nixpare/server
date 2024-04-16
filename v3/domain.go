@@ -62,9 +62,9 @@ func (srv *ServerHandler) RegisterDomain(domain string) (*Domain, error) {
 		srv:        srv,
 		subdomains: make(map[string]*Subdomain),
 	}
-	d.RegisterSubdomain("*.", HandlerFunc(func(api *API, w http.ResponseWriter, r *http.Request) {
+	d.RegisterSubdomain("*.", HandlerFunc(func(h *Handler, w http.ResponseWriter, r *http.Request) {
 		host := SplitAddrPort(r.Host)
-		api.Handler().Error(w, http.StatusNotFound, fmt.Sprintf("Host %s not served by this server", host))
+		h.Error(w, http.StatusNotFound, fmt.Sprintf("Host %s not served by this server", host))
 	}))
 
 	srv.domains[domain] = d

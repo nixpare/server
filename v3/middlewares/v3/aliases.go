@@ -12,8 +12,8 @@ func DomainAliases(srv *server.ServerHandler, domain string, matchF func(host st
 	}
 
 	srv.AddMiddleware(func(next http.Handler) http.Handler {
-		return server.HandlerFunc(func(api *server.API, w http.ResponseWriter, r *http.Request) {
-			d, match := api.Handler().DomainName(), false
+		return server.HandlerFunc(func(h *server.Handler, w http.ResponseWriter, r *http.Request) {
+			d, match := h.DomainName(), false
 			for _, a := range aliases {
 				if a == d {
 					match = true
@@ -21,7 +21,7 @@ func DomainAliases(srv *server.ServerHandler, domain string, matchF func(host st
 				}
 			}
 			if match || matchF(domain) {
-				api.Handler().ChangeDomainName(domain)
+				h.ChangeDomainName(domain)
 			}
 
 			next.ServeHTTP(w, r)
@@ -38,8 +38,8 @@ func SubdomainAliases(d *server.Domain, subdomain string, matchF func(host strin
 	}
 
 	d.AddMiddleware(func(next http.Handler) http.Handler {
-		return server.HandlerFunc(func(api *server.API, w http.ResponseWriter, r *http.Request) {
-			sd, match := api.Handler().SubdomainName(), false
+		return server.HandlerFunc(func(h *server.Handler, w http.ResponseWriter, r *http.Request) {
+			sd, match := h.SubdomainName(), false
 			for _, a := range aliases {
 				if a == sd {
 					match = true
@@ -47,7 +47,7 @@ func SubdomainAliases(d *server.Domain, subdomain string, matchF func(host strin
 				}
 			}
 			if match || matchF(sd) {
-				api.Handler().ChangeSubdomainName(subdomain)
+				h.ChangeSubdomainName(subdomain)
 			}
 
 			next.ServeHTTP(w, r)

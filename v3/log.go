@@ -69,7 +69,7 @@ const (
 
 // logHTTPInfo logs http request with an exit code < 400
 func (h *Handler) logHTTPInfo(m metrics) {
-	h.Logger.Printf(logger.LOG_LEVEL_INFO, http_info_format,
+	h.l.Printf(logger.LOG_LEVEL_INFO, http_info_format,
 		logger.BRIGHT_BLUE_COLOR, m.RemoteAddr, logger.DEFAULT_COLOR,
 		logger.BRIGHT_GREEN_COLOR, m.Code,
 		logger.DARK_GREEN_COLOR, h.r.Method,
@@ -87,7 +87,7 @@ func (h *Handler) logHTTPWarning(m metrics) {
 		h.caputedError.Internal = h.caputedError.Message
 	}
 
-	h.Logger.Printf(logger.LOG_LEVEL_WARNING, http_warning_format,
+	h.l.Printf(logger.LOG_LEVEL_WARNING, http_warning_format,
 		logger.BRIGHT_BLUE_COLOR, m.RemoteAddr, logger.DEFAULT_COLOR,
 		logger.DARK_YELLOW_COLOR, m.Code,
 		logger.DARK_GREEN_COLOR, h.r.Method,
@@ -106,7 +106,7 @@ func (h *Handler) logHTTPError(m metrics) {
 		h.caputedError.Internal = h.caputedError.Message
 	}
 
-	h.Logger.Printf(logger.LOG_LEVEL_ERROR, http_error_format,
+	h.l.Printf(logger.LOG_LEVEL_ERROR, http_error_format,
 		logger.BRIGHT_BLUE_COLOR, m.RemoteAddr, logger.DEFAULT_COLOR,
 		logger.DARK_RED_COLOR, m.Code,
 		logger.DARK_GREEN_COLOR, h.r.Method,
@@ -124,7 +124,7 @@ func (h *Handler) logHTTPPanic(m metrics) {
 		h.caputedError.Internal = h.caputedError.Message
 	}
 
-	h.Logger.Printf(logger.LOG_LEVEL_FATAL, http_panic_format,
+	h.l.Printf(logger.LOG_LEVEL_FATAL, http_panic_format,
 		logger.BRIGHT_BLUE_COLOR, m.RemoteAddr, logger.DEFAULT_COLOR,
 		logger.DARK_RED_COLOR, m.Code,
 		logger.DARK_GREEN_COLOR, h.r.Method,

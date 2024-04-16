@@ -9,17 +9,17 @@ import (
 	"github.com/nixpare/server/v3/middlewares/v3"
 )
 
-func GetAPI(ctx *gin.Context) *server.API {
-	return server.GetAPI(ctx.Request)
+func GetHandler(ctx *gin.Context) *server.Handler {
+	return server.GetHandlerFromCTX(ctx.Request)
 }
 
 func GetCoomieManager(ctx *gin.Context) *middlewares.CookieManager {
 	return middlewares.GetCookieManager(ctx.Request)
 }
 
-func HandlerFunc(f func(ctx *gin.Context, api *server.API, cm *middlewares.CookieManager) error) gin.HandlerFunc {
+func HandlerFunc(f func(*gin.Context, *server.Handler, *middlewares.CookieManager) error) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
-		err := f(ctx, GetAPI(ctx), GetCoomieManager(ctx))
+		err := f(ctx, GetHandler(ctx), GetCoomieManager(ctx))
 		if err != nil {
 			ctx.Error(err)
 		}
@@ -50,14 +50,14 @@ func ErrorHandler() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		ctx.Next()
 	
-		api := GetAPI(ctx)
+		h := GetHandler(ctx)
 		w := ctx.Writer
 		for _, ginErr := range ctx.Errors {
 			switch err := ginErr.Err.(type) {
 			case server.Error:
-				api.Handler().Error(w, err.Code, string(err.Message), err.Internal)
+				h.Error(w, err.Code, string(err.Message), err.Internal)
 			default:
-				api.Handler().Error(w, http.StatusInternalServerError, ginErr.Error(), ginErr.Meta)
+				h.Error(w, http.StatusInternalServerError, ginErr.Error(), ginErr.Meta)
 			}
 		}
 	}

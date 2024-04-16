@@ -22,10 +22,10 @@ func RedirectIfLocal(srv *server.ServerHandler, isLocal func(remoteAddr string) 
 	}
 
 	srv.AddMiddleware(func(next http.Handler) http.Handler {
-		return server.HandlerFunc(func(api *server.API, w http.ResponseWriter, r *http.Request) {
+		return server.HandlerFunc(func(h *server.Handler, w http.ResponseWriter, r *http.Request) {
 			remoteAddr := server.SplitAddrPort(r.RemoteAddr)
 			if isLocal(remoteAddr) || isLocalDefault(remoteAddr) {
-				lcm.handlerLocalQuery(api.Handler(), r)
+				lcm.handlerLocalQuery(h, r)
 			}
 
 			next.ServeHTTP(w, r)

@@ -134,7 +134,7 @@ func (srv *ServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r:           r,
 		srv:         srv,
 		router:      srv.Router,
-		Logger:      srv.Logger,
+		l:      srv.Logger,
 		errTemplate: srv.errTemplate,
 		connTime:    time.Now(),
 		respBuf:     bytes.NewBuffer(nil),
@@ -143,11 +143,11 @@ func (srv *ServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(h.code)
 		_, err := w.Write(h.respBuf.Bytes())
 		if err != nil {
-			h.Logger.Printf(logger.LOG_LEVEL_ERROR, "error writing response: %v", err)
+			h.l.Printf(logger.LOG_LEVEL_ERROR, "error writing response: %v", err)
 		}
 	}()
 
-	*r = *r.WithContext(context.WithValue(r.Context(), API_CTX_KEY, &API{h: h}))
+	*r = *r.WithContext(context.WithValue(r.Context(), handler_ctx_key, h))
 
 	host := SplitAddrPort(r.Host)
 
