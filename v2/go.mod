@@ -1,13 +1,13 @@
 module github.com/nixpare/server/v2
 
-go 1.22.1
+go 1.22.2
 
 require (
 	github.com/Microsoft/go-winio v0.6.1
 	github.com/gorilla/handlers v1.5.2
 	github.com/gorilla/securecookie v1.1.2
 	github.com/gorilla/websocket v1.5.1
-	github.com/nixpare/broadcaster v1.1.1
+	github.com/nixpare/broadcaster v1.2.1
 	github.com/nixpare/logger/v2 v2.2.4
 	github.com/nixpare/process v1.6.3
 	github.com/quic-go/quic-go v0.42.0

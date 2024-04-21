@@ -31,6 +31,8 @@ github.com/nixpare/broadcaster v1.0.2 h1:3Uhkb9LWH8jy97g8JG8npUqa8H1DuoWUBANyK/J
 github.com/nixpare/broadcaster v1.0.2/go.mod h1:IC56SeoQvQGqaqJ06HUN5zMlCLB2NoKNOXo2zNmsp7w=
 github.com/nixpare/broadcaster v1.1.1 h1:zNz8d+6kaiuVJwqKIM9A/G1G0DjBXkehOhGtEZHLVno=
 github.com/nixpare/broadcaster v1.1.1/go.mod h1:IC56SeoQvQGqaqJ06HUN5zMlCLB2NoKNOXo2zNmsp7w=
+github.com/nixpare/broadcaster v1.2.1 h1:eit04tSQgKCBvF0lFOQKaMUdVGgIvgwkQdIhvilf+vg=
+github.com/nixpare/broadcaster v1.2.1/go.mod h1:IC56SeoQvQGqaqJ06HUN5zMlCLB2NoKNOXo2zNmsp7w=
 github.com/nixpare/logger/v2 v2.2.3 h1:gG1h9K0aUlHqLIjDo475iERNfm+79TkGx6sdLqFs88w=
 github.com/nixpare/logger/v2 v2.2.3/go.mod h1:7XBM6b5aMGDsVwEtrYyGISskeYSR1FwwvtWaZnc/+uk=
 github.com/nixpare/logger/v2 v2.2.4 h1:4GPSNhHsXSf6L7Mk7RFOZju9fio8jmi10mQ+GvqG538=
