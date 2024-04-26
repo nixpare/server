@@ -2,10 +2,8 @@ package server
 
 import (
 	"context"
-	"embed"
 	"errors"
 	"fmt"
-	"html/template"
 	"log"
 	"net/http"
 	"time"
@@ -23,9 +21,6 @@ import (
 // Before creating any server you should change the HashKeyString and
 // BlockKeyString global variables: see Route.SetCookiePerm method
 type HTTPServer struct {
-	// secure is set to indicate whether the server is using
-	// the HTTP or HTTPS protocol
-	secure bool
 	// state tells in which state the server is
 	state *life.LifeCycle
 	// Server is the underlying HTTP server from the standard library
@@ -33,13 +28,13 @@ type HTTPServer struct {
 	// HTTP3Server is the QUIC Server, if is nil if the Server is not secure
 	HTTP3Server *http3.Server
 	port        int
+	secure      bool
 	// router is a reference to the router (is the server was created through it).
 	// This should not be set by hand.
 	router        *Router
 	Logger        logger.Logger
 	
 	Handler	   http.Handler
-	errTemplate *template.Template
 
 	Online bool
 	OnlineTime time.Time
@@ -52,9 +47,6 @@ type Certificate struct {
 	PublicKey  string // CertPemPath is the path to the full chain public key
 	PrivateKey string // KeyPemPath is the path to the private key
 }
-
-//go:embed static
-var staticFS embed.FS
 
 // NewServer creates a new server
 func NewHTTPServer(address string, port int, certs ...Certificate) (*HTTPServer, error) {
@@ -71,7 +63,6 @@ func newHTTPServer(address string, port int, certs []Certificate, router *Router
 	srv.Logger = l
 
 	srv.Server = new(http.Server)
-	srv.secure = len(certs) > 0
 	srv.port = port
 	srv.Server.Handler = srv
 
@@ -81,19 +72,11 @@ func newHTTPServer(address string, port int, certs []Certificate, router *Router
 	srv.Server.Addr = serverAddress
 
 	srv.Server.ErrorLog = log.New(srv.Logger.FixedLogger(logger.LOG_LEVEL_WARNING), fmt.Sprintf("http server %d error:", port), 0)
-	
-	errTemplate, err := staticFS.ReadFile("static/error.html")
-	if err != nil {
-		return nil, err
-	}
-
-	srv.errTemplate, err = template.New("error.html").Parse(string(errTemplate))
-	if err != nil {
-		return nil, fmt.Errorf("error parsing template file: %w", err)
-	}
 
 	//Setting up Redirect Server parameters
-	if srv.secure {
+	if len(certs) > 0 {
+		srv.secure = true
+
 		var err error
 		srv.Server.TLSConfig, err = GenerateTSLConfig(certs)
 		if err != nil {
@@ -129,10 +112,6 @@ func (srv *HTTPServer) Router() *Router {
 // IsRunning tells whether the server is running or not
 func (srv *HTTPServer) IsRunning() bool {
 	return srv.state.GetState() == life.LCS_STARTED
-}
-
-func (srv *HTTPServer) Secure() bool {
-	return srv.secure
 }
 
 // Start prepares every domain and subdomain and starts listening
