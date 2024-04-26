@@ -3,48 +3,25 @@ package server
 import (
 	"bytes"
 	"fmt"
-	"html/template"
 	"net/http"
 	"strings"
+	"html/template"
 	"time"
 
 	"github.com/nixpare/logger/v2"
 )
 
-type servingStage int
-
-const (
-	serve_domain servingStage = iota + 1
-	serve_subdomain
-	serve_app
-)
-
 type Handler struct {
-	stage servingStage
-
 	w http.ResponseWriter
 
 	r *http.Request
 
-	domain *Domain
-
-	domainName string
-
-	subdomain *Subdomain
-
-	subdomainName string
-
-	srv *ServerHandler
+	srv *HTTPServer
 
 	router *Router
 
 	l logger.Logger
 
-	redirected bool
-
-	errTemplate *template.Template
-
-	// connTime is the timestamp that refers to the request arrival
 	connTime time.Time
 
 	AvoidLogging bool
@@ -52,6 +29,8 @@ type Handler struct {
 	disableErrorCapture bool
 
 	caputedError CapturedError
+
+	errTemplate *template.Template
 
 	code int
 
@@ -89,36 +68,20 @@ func (h *Handler) WriteHeader(statusCode int) {
 	}
 
 	h.code = statusCode
-	h.w.WriteHeader(statusCode)
-}
-
-func (h *Handler) DomainName() string {
-	return h.domainName
-}
-
-func (h *Handler) SubdomainName() string {
-	return h.subdomainName
-}
-
-func (h *Handler) Redirected() bool {
-	return h.redirected
-}
-
-func (h *Handler) ChangeDomainName(domain string) {
-	if h.stage <= serve_domain {
-		h.redirected = true
-		h.domainName = domain
+	if statusCode < 400 || h.disableErrorCapture {
+		h.w.WriteHeader(statusCode)
+	} else {
+		h.caputedError.Code = statusCode
 	}
 }
 
-func (h *Handler) ChangeSubdomainName(subdomain string) {
-	if h.stage <= serve_subdomain {
-		h.redirected = true
-		h.subdomainName = PrepSubdomainName(subdomain)
-	}
+func (h *Handler) writeError(data []byte, ctype string) {
+	h.w.Header().Set("Content-Type", ctype)
+	h.w.WriteHeader(h.code)
+	h.w.Write(data)
 }
 
-func (h *Handler) serveAppWithMiddlewares(w http.ResponseWriter, r *http.Request, appH http.Handler, mws []MiddlewareFunc) {
+/* func (h *Handler) serveAppWithMiddlewares(w http.ResponseWriter, r *http.Request, appH http.Handler, mws []MiddlewareFunc) {
 	mw := appH
 
 	for i := len(mws) - 1; i >= 0; i-- {
@@ -129,13 +92,7 @@ func (h *Handler) serveAppWithMiddlewares(w http.ResponseWriter, r *http.Request
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if !h.srv.Online {
-		t := h.srv.OnlineTime.Add(time.Minute)
-		h.w.Header().Set("Retry-After", t.Format(time.RFC1123))
-		h.Error(w, http.StatusServiceUnavailable, "Server temporarly offline, retry in "+time.Until(t).Truncate(time.Second).String())
-
-		return
-	}
+	
 
 	h.stage++
 
@@ -187,11 +144,7 @@ func (h *Handler) serveApp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.serveAppWithMiddlewares(w, r, h.subdomain.Handler, nil)
-}
-
-func (h *Handler) serveData(data []byte) {
-	http.ServeContent(h, h.r, "", time.Now(), bytes.NewReader(data))
-}
+} */
 
 // serveError serves the error in a predefines error template (if set) and only
 // if no other information was alredy sent to the ResponseWriter. If there is no
@@ -200,35 +153,38 @@ func (h *Handler) serveData(data []byte) {
 func (h *Handler) serveError() {
 	h.disableErrorCapture = true
 
+	ctype := http.DetectContentType(h.caputedError.Data)
 	if len(h.caputedError.Data) != 0 {
-		if strings.Contains(http.DetectContentType(h.caputedError.Data), "text/html") {
-			h.w.Write(h.caputedError.Data)
+		if strings.Contains(ctype, "text/html") {
+			h.writeError(h.caputedError.Data, ctype)
 			return
 		}
 	}
 
 	if len(h.caputedError.Data) == 0 {
+		h.writeError(h.caputedError.Data, ctype)
 		return
 	}
 
 	if h.errTemplate == nil {
-		h.serveData(h.caputedError.Data)
+		h.writeError(h.caputedError.Data, ctype)
 		return
 	}
 
 	if h.r.Method != "GET" && h.r.Method != "HEAD" {
-		h.serveData(h.caputedError.Data)
+		h.writeError(h.caputedError.Data, ctype)
 		return
 	}
 
 	b := bytes.NewBuffer(nil)
 	if err := h.errTemplate.Execute(b, h.caputedError); err != nil {
 		h.l.Printf(logger.LOG_LEVEL_ERROR, "Error serving template file: %v", err)
-		h.serveData(h.caputedError.Data)
+		h.writeError(h.caputedError.Data, ctype)
 		return
 	}
 
-	h.serveData(b.Bytes())
+	ctype = http.DetectContentType(b.Bytes())
+	h.writeError(b.Bytes(), ctype)
 }
 
 // Error is used to manually report an HTTP Error to send to the

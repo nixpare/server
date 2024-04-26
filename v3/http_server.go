@@ -5,6 +5,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"html/template"
 	"log"
 	"net/http"
 	"time"
@@ -36,26 +37,31 @@ type HTTPServer struct {
 	// This should not be set by hand.
 	router        *Router
 	Logger        logger.Logger
-	serverHandler *ServerHandler
+	
+	Handler	   http.Handler
+	errTemplate *template.Template
+
+	Online bool
+	OnlineTime time.Time
 }
 
 // Certificate rapresents a standard PEM certicate composed of a
 // full chain public key and a private key. This is used when creating
 // an HTTPS server
 type Certificate struct {
-	CertPemPath string // CertPemPath is the path to the full chain public key
-	KeyPemPath  string // KeyPemPath is the path to the private key
+	PublicKey  string // CertPemPath is the path to the full chain public key
+	PrivateKey string // KeyPemPath is the path to the private key
 }
 
 //go:embed static
 var staticFS embed.FS
 
 // NewServer creates a new server
-func NewHTTPServer(address string, port int, secure bool, certs ...Certificate) (*HTTPServer, error) {
-	return newHTTPServer(address, port, secure, certs, nil, nil)
+func NewHTTPServer(address string, port int, certs ...Certificate) (*HTTPServer, error) {
+	return newHTTPServer(address, port, certs, nil, nil)
 }
 
-func newHTTPServer(address string, port int, secure bool, certs []Certificate, router *Router, l logger.Logger) (*HTTPServer, error) {
+func newHTTPServer(address string, port int, certs []Certificate, router *Router, l logger.Logger) (*HTTPServer, error) {
 	srv := new(HTTPServer)
 	srv.router = router
 
@@ -65,9 +71,8 @@ func newHTTPServer(address string, port int, secure bool, certs []Certificate, r
 	srv.Logger = l
 
 	srv.Server = new(http.Server)
-	srv.secure = secure
+	srv.secure = len(certs) > 0
 	srv.port = port
-
 	srv.Server.Handler = srv
 
 	srv.state = life.NewLifeCycleState()
@@ -75,8 +80,20 @@ func newHTTPServer(address string, port int, secure bool, certs []Certificate, r
 	serverAddress := fmt.Sprintf("%s:%d", address, port)
 	srv.Server.Addr = serverAddress
 
+	srv.Server.ErrorLog = log.New(srv.Logger.FixedLogger(logger.LOG_LEVEL_WARNING), fmt.Sprintf("http server %d error:", port), 0)
+	
+	errTemplate, err := staticFS.ReadFile("static/error.html")
+	if err != nil {
+		return nil, err
+	}
+
+	srv.errTemplate, err = template.New("error.html").Parse(string(errTemplate))
+	if err != nil {
+		return nil, fmt.Errorf("error parsing template file: %w", err)
+	}
+
 	//Setting up Redirect Server parameters
-	if secure {
+	if srv.secure {
 		var err error
 		srv.Server.TLSConfig, err = GenerateTSLConfig(certs)
 		if err != nil {
@@ -97,14 +114,6 @@ func newHTTPServer(address string, port int, secure bool, certs []Certificate, r
 		}
 	}
 
-	srv.Server.ErrorLog = log.New(srv.Logger.FixedLogger(logger.LOG_LEVEL_WARNING), fmt.Sprintf("http server %d error:", port), 0)
-
-	var err error
-	srv.serverHandler, err = newServerHandler(srv, srv.Logger.Clone(nil, true, "handler"))
-	if err != nil {
-		return nil, err
-	}
-
 	return srv, nil
 }
 
@@ -115,10 +124,6 @@ func (srv *HTTPServer) Port() int {
 
 func (srv *HTTPServer) Router() *Router {
 	return srv.router
-}
-
-func (srv *HTTPServer) ServerHandler() *ServerHandler {
-	return srv.serverHandler
 }
 
 // IsRunning tells whether the server is running or not
@@ -139,8 +144,6 @@ func (srv *HTTPServer) Start() error {
 
 	srv.state.SetState(life.LCS_STARTING)
 	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "Server %d startup started", srv.port)
-
-	srv.serverHandler.Start()
 
 	go func() {
 		if srv.secure {
@@ -198,8 +201,6 @@ func (srv *HTTPServer) Stop() error {
 		)
 	}
 
-	srv.serverHandler.Stop()
-
 	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "Server %d shutdown finished", srv.port)
 	srv.state.SetState(life.LCS_STOPPED)
 	return nil
@@ -213,5 +214,87 @@ func (srv *HTTPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	srv.serverHandler.ServeHTTP(w, r)
+	w.Header().Add("Server", "NixPare")
+
+	h := &Handler{
+		w:           w,
+		r:           r,
+		srv:         srv,
+		router:      srv.router,
+		l:      	 srv.Logger,
+		connTime:    time.Now(),
+		errTemplate: srv.errTemplate,
+	}
+
+	*r = *r.WithContext(context.WithValue(r.Context(), handler_ctx_key, h))
+
+	/* host := SplitAddrPort(r.Host)
+
+	split := strings.Split(host, ".")
+	splitL := len(split)
+
+	if splitL == 1 {
+		h.domainName = host
+	} else {
+		if _, err := strconv.Atoi(split[splitL-1]); err == nil {
+			h.domainName = host
+		} else if strings.HasSuffix(host, "localhost") {
+			h.domainName = "localhost"
+			h.subdomainName = strings.Join(split[:splitL-1], ".") + "."
+		} else {
+			h.domainName = split[splitL-2] + "." + split[splitL-1]
+			h.subdomainName = strings.Join(split[:splitL-2], ".") + "."
+		}
+	} */
+
+	panicErr := logger.CapturePanic(func() error {
+		srv.Handler.ServeHTTP(h, r)
+		return nil
+	})
+
+	if panicErr != nil {
+		if h.code == 0 {
+			h.Error(h, http.StatusInternalServerError, "Internal server error", panicErr)
+			if h.written == 0 {
+				h.serveError()
+			}
+		} else {
+			if h.written == 0 {
+				h.serveError()
+			}
+
+			if h.caputedError.Internal == "" {
+				h.caputedError.Internal = fmt.Sprintf("panic after response: %v", panicErr)
+			} else {
+				h.caputedError.Internal = fmt.Sprintf(
+					"panic after response: %v -> response error: %s\n%s",
+					panicErr.Unwrap(),
+					h.caputedError.Internal,
+					panicErr.Stack(),
+				)
+			}
+		}
+
+		h.logHTTPPanic(h.getMetrics())
+		return
+	}
+
+	if h.code >= 400 {
+		h.serveError()
+	}
+
+	if h.AvoidLogging {
+		return
+	}
+
+	metrics := h.getMetrics()
+
+	switch {
+	case metrics.Code < 400:
+		h.logHTTPInfo(metrics)
+	case metrics.Code >= 400 && metrics.Code < 500:
+		h.logHTTPWarning(metrics)
+	default:
+		h.logHTTPError(metrics)
+	}
 }

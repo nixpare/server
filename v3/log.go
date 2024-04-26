@@ -65,6 +65,10 @@ type CapturedError struct {
 	Internal string
 }
 
+func (err CapturedError) Message() string {
+	return string(err.Data)
+}
+
 func (err CapturedError) Error() string {
 	return fmt.Sprintf(`{"code": %d, "message": "%s", "internal": "%s"}`, err.Code, err.Data, err.Internal)
 }
@@ -159,9 +163,9 @@ func (h *Handler) logHTTPPanic(m metrics) {
 }
 
 func (h *Handler) logHost() string {
-	if !h.redirected {
+	//if !h.redirected {
 		return h.r.Host
-	}
+	//}
 
-	return fmt.Sprintf("%s (%s%s)", h.r.Host, h.subdomain.name, h.domain.name)
+	//return fmt.Sprintf("%s (%s%s)", h.r.Host, h.subdomain.name, h.domain.name)
 }

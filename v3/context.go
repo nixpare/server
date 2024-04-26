@@ -35,16 +35,8 @@ func (h *Handler) Router() *Router {
 	return h.router
 }
 
-func (h *Handler) Server() *ServerHandler {
+func (h *Handler) Server() *HTTPServer {
 	return h.srv
-}
-
-func (h *Handler) Domain() *Domain {
-	return h.domain
-}
-
-func (h *Handler) Subdomain() *Subdomain {
-	return h.subdomain
 }
 
 func (h *Handler) Logger() logger.Logger {

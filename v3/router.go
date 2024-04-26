@@ -45,14 +45,14 @@ func NewRouter(l logger.Logger) *Router {
 
 // NewServer creates a new HTTP/HTTPS Server linked to the Router. See NewServer function
 // for more information
-func (router *Router) NewHTTPServer(address string, port int, secure bool, certs ...Certificate) (*HTTPServer, error) {
+func (router *Router) NewHTTPServer(address string, port int, certs ...Certificate) (*HTTPServer, error) {
 	_, ok := router.httpServers[port]
 	if ok {
 		return nil, fmt.Errorf("http server listening to port %d already registered", port)
 	}
 
 	srv, err := newHTTPServer(
-		address, port, secure, certs, router,
+		address, port, certs, router,
 		createServerLogger(router.Logger, "http", port),
 	)
 	if err != nil {
