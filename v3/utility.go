@@ -2,10 +2,8 @@ package server
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/tls"
 	"errors"
-	"fmt"
 	"math/big"
 	"net"
 	"strings"
@@ -69,10 +67,7 @@ func RandStr(length int, randType CharSet) string {
 	return string(res)
 }
 
-// GenerateHashString generate a hash with sha256 from data
-func GenerateHashString(data []byte) string {
-	return fmt.Sprintf("%x", sha256.Sum256(data))
-}
+
 
 func GenerateTSLConfig(certs []Certificate) (*tls.Config, error) {
 	cfg := &tls.Config{

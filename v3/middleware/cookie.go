@@ -1,10 +1,10 @@
-package cookie
+package middleware
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"net/http"
 	"time"
-
-	"github.com/nixpare/server/v3"
 )
 
 type CookieOption func(cookie *http.Cookie)
@@ -66,7 +66,7 @@ func (cm *CookieManager) SetCookie(w http.ResponseWriter, name string, value any
 	}
 
 	cookie := &http.Cookie{
-		Name:     server.GenerateHashString([]byte(name)),
+		Name:     GenerateHashString([]byte(name)),
 		Value:    encValue,
 		MaxAge:   maxAge,
 		HttpOnly: true,
@@ -84,7 +84,7 @@ func (cm *CookieManager) SetCookie(w http.ResponseWriter, name string, value any
 // or route.SetCookiePerm
 func (cm *CookieManager) DeleteCookie(w http.ResponseWriter, name string) {
 	http.SetCookie(w, &http.Cookie{
-		Name:   server.GenerateHashString([]byte(name)),
+		Name:   GenerateHashString([]byte(name)),
 		MaxAge: -1,
 	})
 }
@@ -102,8 +102,8 @@ func (cm *CookieManager) DeleteCookie(w http.ResponseWriter, name string) {
 // The argument value must be a pointer, otherwise the value will not
 // be returned. A workaround might be using the type parametric
 // function server.DecodeCookie
-func (cm *CookieManager) Cookie(r *http.Request, name string, value any) error {
-	cookie, err := r.Cookie(server.GenerateHashString([]byte(name)))
+func (cm *CookieManager) GetCookie(r *http.Request, name string, value any) error {
+	cookie, err := r.Cookie(GenerateHashString([]byte(name)))
 	if err != nil {
 		return err
 	}
@@ -127,7 +127,7 @@ func (cm *CookieManager) SetCookiePerm(w http.ResponseWriter, name string, value
 	}
 
 	cookie := &http.Cookie{
-		Name:     server.GenerateHashString([]byte(name)),
+		Name:     GenerateHashString([]byte(name)),
 		Value:    encValue,
 		MaxAge:   maxAge,
 		HttpOnly: true,
@@ -153,11 +153,16 @@ func (cm *CookieManager) SetCookiePerm(w http.ResponseWriter, name string, value
 // The argument value must be a pointer, otherwise the value will not
 // be returned. A workaround might be using the type parametric
 // function server.DecodeCookiePerm
-func (cm *CookieManager) CookiePerm(r *http.Request, name string, value any) error {
-	cookie, err := r.Cookie(server.GenerateHashString([]byte(name)))
+func (cm *CookieManager) GetCookiePerm(r *http.Request, name string, value any) error {
+	cookie, err := r.Cookie(GenerateHashString([]byte(name)))
 	if err != nil {
 		return err
 	}
 
 	return cm.secureCookiePerm.Decode(name, cookie.Value, value)
+}
+
+// GenerateHashString generate a hash with sha256 from data
+func GenerateHashString(data []byte) string {
+	return fmt.Sprintf("%x", sha256.Sum256(data))
 }

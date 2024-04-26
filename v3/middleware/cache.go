@@ -1,7 +1,6 @@
-package cache
+package middleware
 
 import (
-	"context"
 	"io"
 	"io/fs"
 	"net/http"
@@ -9,8 +8,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/nixpare/server/v3"
 )
 
 var (
@@ -37,15 +34,6 @@ func NewCache(ttl time.Duration, extensions []string) *Cache {
         ttl:   ttl,
         exts:  extensions,
 		mutex: new(sync.RWMutex),
-	}
-}
-
-func (c *Cache) Register() server.MiddlewareFunc {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			*r = *r.WithContext(context.WithValue(r.Context(), cache_ctx_key, c))
-			next.ServeHTTP(w, r)
-		})
 	}
 }
 

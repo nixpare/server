@@ -1,13 +1,11 @@
-package cookie
+package middleware
 
 import (
-	"context"
 	"crypto/sha256"
 	"fmt"
 	"net/http"
 
 	"github.com/gorilla/securecookie"
-	"github.com/nixpare/server/v3"
 )
 
 type CookieManager struct {
@@ -39,15 +37,6 @@ func NewCookieManager(hashKey []byte, blockKey []byte) (*CookieManager, error) {
 	cm.secureCookiePerm = securecookie.New(hashKeyPerm, blockKeyPerm).MaxAge(0)
 
 	return cm, nil
-}
-
-func (cm *CookieManager) Register() server.MiddlewareFunc {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			*r = *r.WithContext(context.WithValue(r.Context(), cookie_ctx_key, cm))
-			next.ServeHTTP(w, r)
-		})
-	}
 }
 
 type cookie_ctx_key_t string
