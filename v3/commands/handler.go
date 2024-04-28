@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/nixpare/logger/v2"
-	"github.com/nixpare/server/v3/pipe"
+	"github.com/nixpare/pipe"
 )
 
 var (

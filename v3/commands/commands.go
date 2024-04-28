@@ -5,17 +5,19 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"os"
 
 	"github.com/nixpare/logger/v2"
+	"github.com/nixpare/pipe"
 	"github.com/nixpare/server/v3"
-	"github.com/nixpare/server/v3/pipe"
 )
 
 type CommandServer struct {
 	ps       *pipe.PipeServer
 	commands map[string]ServerCommandHandler
 	router   *server.Router
+	l        logger.Logger
 }
 
 func newCommandServer(pipePath string, router *server.Router) (*CommandServer, error) {
@@ -24,17 +26,19 @@ func newCommandServer(pipePath string, router *server.Router) (*CommandServer, e
 		return nil, err
 	}
 
-	ps.Logger = router.Logger.Clone(nil, true, "cmd-server")
-
-	return &CommandServer{
+	cmdServer := &CommandServer{
 		ps: ps,
 		commands: make(map[string]ServerCommandHandler),
 		router: router,
-	}, nil
+		l: router.Logger.Clone(nil, true, "cmd-server"),
+	}
+	ps.Logger = log.New(cmdServer.l.AsStderr(), "", 0)
+
+	return cmdServer, nil
 }
 
 func (cs *CommandServer) Logger() logger.Logger {
-	return cs.ps.Logger
+	return cs.l
 }
 
 func (cs *CommandServer) RegisterCommand(cmd string, f ServerCommandHandler) {
