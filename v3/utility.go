@@ -93,7 +93,7 @@ func GenerateTSLConfig(certs []Certificate) (*tls.Config, error) {
 	}
 
 	for _, x := range certs {
-		cert, err := tls.LoadX509KeyPair(x.PublicKey, x.PrivateKey)
+		cert, err := tls.LoadX509KeyPair(x.FullChainCert, x.PrivateKey)
 		if err != nil {
 			return nil, err
 		}

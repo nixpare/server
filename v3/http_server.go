@@ -44,7 +44,7 @@ type HTTPServer struct {
 // full chain public key and a private key. This is used when creating
 // an HTTPS server
 type Certificate struct {
-	PublicKey  string // CertPemPath is the path to the full chain public key
+	FullChainCert  string // CertPemPath is the path to the full chain public key
 	PrivateKey string // KeyPemPath is the path to the private key
 }
 
@@ -71,7 +71,7 @@ func newHTTPServer(address string, port int, certs []Certificate, router *Router
 	serverAddress := fmt.Sprintf("%s:%d", address, port)
 	srv.Server.Addr = serverAddress
 
-	srv.Server.ErrorLog = log.New(srv.Logger.FixedLogger(logger.LOG_LEVEL_WARNING), fmt.Sprintf("http server %d error:", port), 0)
+	srv.Server.ErrorLog = log.New(srv.Logger.FixedLogger(logger.LOG_LEVEL_WARNING), fmt.Sprintf("http server %d error: ", port), 0)
 
 	//Setting up Redirect Server parameters
 	if len(certs) > 0 {
