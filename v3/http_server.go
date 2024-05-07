@@ -147,6 +147,9 @@ func (srv *HTTPServer) Start() error {
 		}()
 	}
 
+	srv.OnlineTime = time.Now()
+	srv.Online = true
+
 	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "Server %d startup completed", srv.port)
 	srv.state.SetState(life.LCS_STARTED)
 	return nil
@@ -162,6 +165,7 @@ func (srv *HTTPServer) Stop() error {
 	srv.state.SetState(life.LCS_STOPPING)
 	srv.Logger.Printf(logger.LOG_LEVEL_INFO, "Server %d shutdown started", srv.port)
 
+	srv.Online = false
 	srv.Server.SetKeepAlivesEnabled(false)
 
 	if srv.HTTP3Server != nil {

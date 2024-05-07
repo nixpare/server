@@ -62,7 +62,6 @@ func (cs *CommandServer) Start() {
 }
 
 func (cs *CommandServer) Stop() error {
-	defer cs.Logger().Print(logger.LOG_LEVEL_INFO, "Command PipeServer stopped")
 	return cs.ps.Stop()
 }
 
