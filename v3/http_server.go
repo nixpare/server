@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/nixpare/logger/v2"
+	"github.com/nixpare/logger/v3"
 	"github.com/nixpare/server/v3/life"
 	"github.com/quic-go/quic-go/http3"
 	"golang.org/x/net/http2"
@@ -32,7 +32,7 @@ type HTTPServer struct {
 	// router is a reference to the router (is the server was created through it).
 	// This should not be set by hand.
 	router        *Router
-	Logger        logger.Logger
+	Logger        *logger.Logger
 	
 	Handler	   http.Handler
 
@@ -53,7 +53,7 @@ func NewHTTPServer(address string, port int, certs ...Certificate) (*HTTPServer,
 	return newHTTPServer(address, port, certs, nil, nil)
 }
 
-func newHTTPServer(address string, port int, certs []Certificate, router *Router, l logger.Logger) (*HTTPServer, error) {
+func newHTTPServer(address string, port int, certs []Certificate, router *Router, l *logger.Logger) (*HTTPServer, error) {
 	srv := new(HTTPServer)
 	srv.router = router
 

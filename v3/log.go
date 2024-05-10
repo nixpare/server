@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/nixpare/logger/v2"
+	"github.com/nixpare/logger/v3"
 )
 
 var (

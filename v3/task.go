@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/nixpare/broadcaster"
-	"github.com/nixpare/logger/v2"
+	"github.com/nixpare/logger/v3"
 )
 
 // TaskTimer tells the TaskManager how often a Task should be executed.
@@ -47,7 +47,7 @@ type Task struct {
 	running     bool
 	exitWaitBC  *broadcaster.Broadcaster[struct{}]
 	TaskManager *TaskManager
-	Logger      logger.Logger
+	Logger      *logger.Logger
 }
 
 // Name returns the name of the function

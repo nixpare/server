@@ -8,7 +8,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/nixpare/logger/v2"
+	"github.com/nixpare/logger/v3"
 	"github.com/nixpare/pipe"
 	"github.com/nixpare/server/v3"
 )
@@ -17,7 +17,7 @@ type CommandServer struct {
 	ps       *pipe.PipeServer
 	commands map[string]ServerCommandHandler
 	router   *server.Router
-	l        logger.Logger
+	l        *logger.Logger
 }
 
 func newCommandServer(pipePath string, router *server.Router) (*CommandServer, error) {
@@ -37,7 +37,7 @@ func newCommandServer(pipePath string, router *server.Router) (*CommandServer, e
 	return cmdServer, nil
 }
 
-func (cs *CommandServer) Logger() logger.Logger {
+func (cs *CommandServer) Logger() *logger.Logger {
 	return cs.l
 }
 

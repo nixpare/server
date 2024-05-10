@@ -4,7 +4,7 @@ go 1.22.2
 
 require (
 	github.com/nixpare/broadcaster v1.2.1
-	github.com/nixpare/logger/v2 v2.2.6
+	github.com/nixpare/logger/v3 v3.0.0
 	github.com/nixpare/pipe v0.0.0
 	github.com/nixpare/process v1.6.4
 	github.com/quic-go/quic-go v0.43.0
@@ -26,4 +26,7 @@ require (
 	golang.org/x/tools v0.20.0 // indirect
 )
 
-replace github.com/nixpare/pipe v0.0.0 => D:\Coding\GitHub\pipe\pipe
+replace (
+	github.com/nixpare/pipe v0.0.0 => D:\Coding\GitHub\pipe\pipe
+	github.com/nixpare/logger/v3 v3.0.0 => D:\Coding\GitHub\logger\logger\v3
+)

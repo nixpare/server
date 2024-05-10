@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/nixpare/logger/v2"
-	"github.com/nixpare/server/v3"
+	"github.com/nixpare/logger/v3"
 	"github.com/nixpare/pipe"
+	"github.com/nixpare/server/v3"
 )
 
 var (
@@ -165,7 +165,7 @@ func (cc *ClientConn) Pipe(stdin io.Reader, stdout io.Writer, stderr io.Writer) 
 
 type ServerConn struct {
 	Router *server.Router
-	Logger logger.Logger
+	Logger *logger.Logger
 	cs     *CommandServer
 	conn   *pipe.Conn
 }

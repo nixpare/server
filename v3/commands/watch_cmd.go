@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/nixpare/logger/v2"
+	"github.com/nixpare/logger/v3"
 )
 
 func watchCmd(sc *ServerConn, args ...string) (exitCode int, err error) {
@@ -51,7 +51,7 @@ func watchCmd(sc *ServerConn, args ...string) (exitCode int, err error) {
 }
 
 func watchLoop(sc *ServerConn, printLog func(l logger.Log) error, logSelector func(l logger.Log) bool) (int, error) {
-	lastSent := sc.Router.Logger.NLogs()
+	lastSent := sc.Router.Logger.Logs()
 	for _, l := range sc.Router.Logger.GetLogs(0, lastSent) {
 		if !logSelector(l) {
 			continue
@@ -78,7 +78,7 @@ func watchLoop(sc *ServerConn, printLog func(l logger.Log) error, logSelector fu
 		for {
 			select {
 			case <-ticker.C:
-				logs := sc.Router.Logger.GetLastNLogs(sc.Router.Logger.NLogs() - lastSent)
+				logs := sc.Router.Logger.GetLastNLogs(sc.Router.Logger.Logs() - lastSent)
 				lastSent += len(logs)
 
 				for _, l := range logs {

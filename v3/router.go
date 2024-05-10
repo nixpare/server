@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/nixpare/logger/v2"
+	"github.com/nixpare/logger/v3"
 	"github.com/nixpare/server/v3/life"
 )
 
@@ -19,13 +19,13 @@ type Router struct {
 	startTime     time.Time
 	state         *life.LifeCycle
 	TaskManager   *TaskManager
-	Logger        logger.Logger
+	Logger        *logger.Logger
 }
 
 // NewRouter returns a new Router ready to be set up. If routerPath is not provided,
 // the router will try to get the working directory; if logger is nil, the standard
 // logger.DefaultLogger will be used
-func NewRouter(l logger.Logger) *Router {
+func NewRouter(l *logger.Logger) *Router {
 	router := new(Router)
 
 	router.httpServers = make(map[int]*HTTPServer)
@@ -190,7 +190,7 @@ func (router *Router) StartTime() time.Time {
 	return router.startTime
 }
 
-func createServerLogger(l logger.Logger, srvType string, port int) logger.Logger {
+func createServerLogger(l *logger.Logger, srvType string, port int) *logger.Logger {
 	return l.Clone(nil, true, "server", srvType, fmt.Sprintf("port:%d", port))
 }
 
