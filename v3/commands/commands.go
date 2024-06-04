@@ -36,6 +36,7 @@ func (cs *CommandServer) ListenAndServe() error {
 		if err != nil {
 			return err
 		}
+		defer conn.Close()
 	
 		go func() {
 			sc := &ServerConn{
