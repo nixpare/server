@@ -102,7 +102,6 @@ func watchLoop(sc *ServerConn, printLog func(l logger.Log) error, logSelector fu
 	go func() {
 		for {
 			msg, err := sc.ReadMessage()
-			sc.Logger.Debug(msg)
 			if err != nil {
 				stopWatching <- exitRes{1, err}
 				return
