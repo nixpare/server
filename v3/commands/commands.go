@@ -36,9 +36,10 @@ func (cs *CommandServer) ListenAndServe() error {
 		if err != nil {
 			return err
 		}
-		defer conn.Close()
 	
 		go func() {
+			defer conn.Close()
+			
 			sc := &ServerConn{
 				Router: cs.Router,
 				Logger: cs.Logger.Clone(nil, true, "command-handler"),
