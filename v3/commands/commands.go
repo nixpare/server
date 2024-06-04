@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 
@@ -116,8 +115,6 @@ func SendCommand(dialFunc func() (net.Conn, error), stdin io.Reader, stdout, std
 
 	err = conn.Pipe(stdin, stdout, stderr)
 	exitCode = conn.exitCode
-
-	fmt.Println("end", exitCode, err)
 
 	return
 }
