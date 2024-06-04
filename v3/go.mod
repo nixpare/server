@@ -23,8 +23,3 @@ require (
 	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/tools v0.20.0 // indirect
 )
-
-replace (
-	github.com/nixpare/logger/v3 v3.0.0 => D:\Coding\GitHub\logger\logger\v3
-	github.com/nixpare/pipe v0.0.0 => D:\Coding\GitHub\pipe\pipe
-)

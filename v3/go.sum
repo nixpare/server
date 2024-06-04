@@ -10,6 +10,8 @@ github.com/google/pprof v0.0.0-20240424215950-a892ee059fd6 h1:k7nVchz72niMH6YLQN
 github.com/google/pprof v0.0.0-20240424215950-a892ee059fd6/go.mod h1:kf6iHlnVGwgKolg33glAes7Yg/8iWP8ukqeldJSO7jw=
 github.com/nixpare/broadcaster v1.2.1 h1:eit04tSQgKCBvF0lFOQKaMUdVGgIvgwkQdIhvilf+vg=
 github.com/nixpare/broadcaster v1.2.1/go.mod h1:IC56SeoQvQGqaqJ06HUN5zMlCLB2NoKNOXo2zNmsp7w=
+github.com/nixpare/logger/v3 v3.0.0 h1:ZPijVXL6ZDJU7qE/jUK0t5vJMPDfafZvWtEtN2c5l+Q=
+github.com/nixpare/logger/v3 v3.0.0/go.mod h1:8zWWJSZ8eIMCq+y1sPU3t0CkOUfbxdEFCQvZfZc0a64=
 github.com/nixpare/process v1.6.4 h1:qZxT5/F11SHpRmHfHFiIPC3pQzQIl8nVsfTZUAS85wg=
 github.com/nixpare/process v1.6.4/go.mod h1:7x0QIS3SnMK6Lro8doW1XD+Ppfb/Sd8n8v5GSQ+7SKo=
 github.com/nixpare/process v1.6.6 h1:YtB0MvyD4TGJ1PPSYdzcH/5/G0Z8/WCv6ct2A5ohTsk=
