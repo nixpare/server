@@ -4,10 +4,12 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 
 	"github.com/nixpare/logger/v3"
+	"github.com/nixpare/process"
 	"github.com/nixpare/server/v3"
 )
 
@@ -102,7 +104,20 @@ func SendCommand(dialFunc func() (net.Conn, error), stdin io.Reader, stdout, std
 		return -1, err
 	}
 
+	exitC := process.ListenForCTRLC()
+	defer process.StopListenForCTRLC(exitC)
+
+	go func() {
+		_, ok := <-exitC
+		if ok {
+			conn.SendInterrupt()
+		}
+	}()
+
 	err = conn.Pipe(stdin, stdout, stderr)
 	exitCode = conn.exitCode
+
+	fmt.Println("end", exitCode, err)
+
 	return
 }

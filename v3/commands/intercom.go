@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"strings"
 
 	"github.com/nixpare/logger/v3"
 	"github.com/nixpare/server/v3"
@@ -26,73 +25,118 @@ type ClientConn struct {
 	exited   bool
 }
 
-type respType int
+type responseType int
 
 const (
-	resp_type_out respType = iota
-	resp_type_err
-	resp_type_exit
+	response_type_out responseType = iota
+	response_type_err
+	response_type_exit
 )
 
-type message struct {
-	Msg      string   `json:"msg"`
-	Type     respType `json:"type"`
+type responseMessage struct {
+	Message      string   `json:"message"`
+	Type     responseType `json:"type"`
 	ExitCode int      `json:"code"`
 }
 
-type Message struct {
-	Msg string
-	t   respType
+type ResponseMessage struct {
+	Message string
+	typ   responseType
 }
 
-func (msg Message) ToStdOut() bool {
-	return msg.t == resp_type_out
+func (msg ResponseMessage) ToStdOut() bool {
+	return msg.typ == response_type_out
 }
 
-func (msg Message) ToStdErr() bool {
-	return msg.t == resp_type_err
+func (msg ResponseMessage) ToStdErr() bool {
+	return msg.typ == response_type_err
 }
 
-func (msg Message) IsExit() bool {
-	return msg.t == resp_type_exit
+func (msg ResponseMessage) IsExit() bool {
+	return msg.typ == response_type_exit
 }
 
-func (cc *ClientConn) ReadMessage() (Message, error) {
-	var msg message
+type requestType int
 
+const (
+	request_type_message requestType = iota
+	request_type_interrupt
+)
+
+type requestMessage struct {
+	Message      string   `json:"message"`
+	Type     requestType `json:"type"`
+}
+
+type RequestMessage struct {
+	Message string
+	typ   requestType
+}
+
+func (msg RequestMessage) IsInterrupt() bool {
+	return msg.typ == request_type_interrupt
+}
+
+func (cc *ClientConn) ReadMessage() (message ResponseMessage, err error) {
 	if cc.exited {
-		return Message{}, io.EOF
+		err = io.EOF
+		return
 	}
 
 	data, err := cc.br.ReadBytes('\n')
 	if err != nil {
-		return Message{}, err
+		return
 	}
+	data = data[:len(data)-1]
 
+	var msg responseMessage
 	err = json.Unmarshal(data, &msg)
 	if err != nil {
-		return Message{}, fmt.Errorf("%w: %w", ErrDecodeMessage, err)
+		err = fmt.Errorf("%w: %w", ErrDecodeMessage, err)
+		return
 	}
 
-	if msg.Type != resp_type_out && msg.Type != resp_type_err && msg.Type != resp_type_exit {
-		return Message{}, fmt.Errorf("%w: received %v", ErrInvalidRespType, msg.Type)
+	if msg.Type != response_type_out && msg.Type != response_type_err && msg.Type != response_type_exit {
+		err = fmt.Errorf("%w: received %v", ErrInvalidRespType, msg.Type)
+		return
 	}
 
-	if msg.Type == resp_type_exit {
+	if msg.Type == response_type_exit {
 		cc.exitCode = msg.ExitCode
 		cc.exited = true
-
-		return Message{}, io.EOF
 	}
 
-	return Message{
-		Msg: msg.Msg,
-		t:   msg.Type,
-	}, nil
+	message.Message = msg.Message
+	message.typ = msg.Type
+	return
 }
 
 func (cc *ClientConn) WriteMessage(message string) error {
-	_, err := cc.conn.Write(append([]byte(message), '\n'))
+	request := requestMessage{
+		Message:  message,
+		Type: request_type_message,
+	}
+
+	data, err := json.Marshal(request)
+	if err != nil {
+		return err
+	}
+
+	_, err = cc.conn.Write(append(data, '\n'))
+	return err
+}
+
+func (cc *ClientConn) SendInterrupt() error {
+	request := requestMessage{
+		Type: request_type_interrupt,
+	}
+
+	data, err := json.Marshal(request)
+	if err != nil {
+		return err
+	}
+
+	_, err = cc.conn.Write(append(data, '\n'))
 	return err
 }
 
@@ -102,8 +146,16 @@ func (cc *ClientConn) Pipe(stdin io.Reader, stdout io.Writer, stderr io.Writer) 
 
 	if stdin != nil {
 		go func() {
-			_, err := io.Copy(cc.conn, stdin)
-			if err != nil {
+			sc := bufio.NewScanner(stdin)
+			for sc.Scan() {
+				err := cc.WriteMessage(sc.Text())
+				if err != nil {
+					exitC <- err
+					return
+				}
+			}
+			
+			if err := sc.Err(); err != nil {
 				exitC <- err
 			}
 		}()
@@ -125,7 +177,7 @@ func (cc *ClientConn) Pipe(stdin io.Reader, stdout io.Writer, stderr io.Writer) 
 
 			if msg.ToStdOut() {
 				if stdout != nil {
-					_, err = stdout.Write(append([]byte(msg.Msg), '\n'))
+					_, err = stdout.Write(append([]byte(msg.Message), '\n'))
 					if err != nil {
 						exitC <- err
 						break
@@ -137,7 +189,7 @@ func (cc *ClientConn) Pipe(stdin io.Reader, stdout io.Writer, stderr io.Writer) 
 
 			if msg.ToStdErr() {
 				if stderr != nil {
-					_, err = stderr.Write(append([]byte(msg.Msg), '\n'))
+					_, err = stderr.Write(append([]byte(msg.Message), '\n'))
 					if err != nil {
 						exitC <- err
 						break
@@ -162,21 +214,40 @@ type ServerConn struct {
 	Router *server.Router
 	Logger *logger.Logger
 	Server *CommandServer
+	exited bool
 }
 
-func (sc *ServerConn) ReadMessage() (string, error) {
-	b, err := sc.br.ReadBytes('\n')
-	if err != nil {
-		return "", err
+func (sc *ServerConn) ReadMessage() (message RequestMessage, err error) {
+	if sc.exited {
+		err = io.EOF
+		return
 	}
 
-	return strings.TrimSpace(string(b)), nil
+	data, err := sc.br.ReadBytes('\n')
+	if err != nil {
+		return
+	}
+	data = data[:len(data)-1]
+
+	var msg requestMessage
+	err = json.Unmarshal(data, &msg)
+	if err != nil {
+		return
+	}
+
+	if msg.Type == request_type_interrupt {
+		sc.exited = true
+	}
+
+	message.Message = msg.Message
+	message.typ = msg.Type
+	return
 }
 
 func (sc *ServerConn) WriteOutput(msg string) error {
-	m := message{
-		Msg:  msg,
-		Type: resp_type_out,
+	m := responseMessage{
+		Message:  msg,
+		Type: response_type_out,
 	}
 
 	data, err := json.Marshal(m)
@@ -189,9 +260,9 @@ func (sc *ServerConn) WriteOutput(msg string) error {
 }
 
 func (sc *ServerConn) WriteError(msg string) error {
-	m := message{
-		Msg:  msg,
-		Type: resp_type_err,
+	m := responseMessage{
+		Message:  msg,
+		Type: response_type_err,
 	}
 
 	data, err := json.Marshal(m)
@@ -204,8 +275,8 @@ func (sc *ServerConn) WriteError(msg string) error {
 }
 
 func (sc *ServerConn) exit(exitCode int) error {
-	m := message{
-		Type:     resp_type_exit,
+	m := responseMessage{
+		Type:     response_type_exit,
 		ExitCode: exitCode,
 	}
 
