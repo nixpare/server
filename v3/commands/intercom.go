@@ -6,9 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"strings"
 
 	"github.com/nixpare/logger/v3"
-	"github.com/nixpare/pipe"
 	"github.com/nixpare/server/v3"
 )
 
@@ -19,7 +20,8 @@ var (
 )
 
 type ClientConn struct {
-	Conn     *pipe.Conn
+	conn     net.Conn
+	br       *bufio.Reader
 	exitCode int
 	exited   bool
 }
@@ -39,8 +41,8 @@ type message struct {
 }
 
 type Message struct {
-	Msg      string
-	t        respType
+	Msg string
+	t   respType
 }
 
 func (msg Message) ToStdOut() bool {
@@ -55,49 +57,43 @@ func (msg Message) IsExit() bool {
 	return msg.t == resp_type_exit
 }
 
-func (cc *ClientConn) ListenMessage() (msg Message, err error) {
+func (cc *ClientConn) ReadMessage() (Message, error) {
+	var msg message
+
 	if cc.exited {
-		err = io.EOF
-		return
+		return Message{}, io.EOF
 	}
 
-	data, ok := cc.Conn.ReadMessage()
-	if !ok {
-		err = io.EOF
-		return
-	}
-
-	var m message
-	err = json.Unmarshal(data, &m)
+	data, err := cc.br.ReadBytes('\n')
 	if err != nil {
-		err = fmt.Errorf("%w: %w", ErrDecodeMessage, err)
-		return
+		return Message{}, err
 	}
 
-	if m.Type != resp_type_out && m.Type != resp_type_err && m.Type != resp_type_exit {
-		err = ErrInvalidRespType
-		return
+	err = json.Unmarshal(data, &msg)
+	if err != nil {
+		return Message{}, fmt.Errorf("%w: %w", ErrDecodeMessage, err)
 	}
 
-	if m.Type == resp_type_exit {
-		cc.exitCode = m.ExitCode
+	if msg.Type != resp_type_out && msg.Type != resp_type_err && msg.Type != resp_type_exit {
+		return Message{}, fmt.Errorf("%w: received %v", ErrInvalidRespType, msg.Type)
+	}
+
+	if msg.Type == resp_type_exit {
+		cc.exitCode = msg.ExitCode
 		cc.exited = true
-		err = io.EOF
-		return
+
+		return Message{}, io.EOF
 	}
 
-	msg.Msg = m.Msg
-	msg.t = m.Type
-	return
+	return Message{
+		Msg: msg.Msg,
+		t:   msg.Type,
+	}, nil
 }
 
 func (cc *ClientConn) WriteMessage(message string) error {
-	data, err := json.Marshal(message)
-	if err != nil {
-		return err
-	}
-
-	return cc.Conn.WriteMessage(string(data))
+	_, err := cc.conn.Write(append([]byte(message), '\n'))
+	return err
 }
 
 func (cc *ClientConn) Pipe(stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
@@ -106,20 +102,16 @@ func (cc *ClientConn) Pipe(stdin io.Reader, stdout io.Writer, stderr io.Writer) 
 
 	if stdin != nil {
 		go func() {
-			sc := bufio.NewScanner(stdin)
-			for sc.Scan() {
-				err := cc.WriteMessage(sc.Text())
-				if err != nil {
-					exitC <- err
-					break
-				}
+			_, err := io.Copy(cc.conn, stdin)
+			if err != nil {
+				exitC <- err
 			}
 		}()
 	}
 
 	go func() {
 		for {
-			msg, err := cc.ListenMessage()
+			msg, err := cc.ReadMessage()
 
 			if err != nil {
 				if errors.Is(err, io.EOF) {
@@ -139,7 +131,7 @@ func (cc *ClientConn) Pipe(stdin io.Reader, stdout io.Writer, stderr io.Writer) 
 						break
 					}
 				}
-				
+
 				continue
 			}
 
@@ -151,7 +143,7 @@ func (cc *ClientConn) Pipe(stdin io.Reader, stdout io.Writer, stderr io.Writer) 
 						break
 					}
 				}
-				
+
 				continue
 			}
 
@@ -164,30 +156,26 @@ func (cc *ClientConn) Pipe(stdin io.Reader, stdout io.Writer, stderr io.Writer) 
 }
 
 type ServerConn struct {
+	conn   net.Conn
+	br     *bufio.Reader
+	args   []string
 	Router *server.Router
 	Logger *logger.Logger
-	cs     *CommandServer
-	conn   *pipe.Conn
+	Server *CommandServer
 }
 
 func (sc *ServerConn) ReadMessage() (string, error) {
-	b, ok := sc.conn.ReadMessage()
-	if !ok {
-		return "", io.EOF
-	}
-
-	var message string
-	err := json.Unmarshal(b, &message)
+	b, err := sc.br.ReadBytes('\n')
 	if err != nil {
 		return "", err
 	}
 
-	return message, nil
+	return strings.TrimSpace(string(b)), nil
 }
 
 func (sc *ServerConn) WriteOutput(msg string) error {
 	m := message{
-		Msg: msg,
+		Msg:  msg,
 		Type: resp_type_out,
 	}
 
@@ -196,12 +184,13 @@ func (sc *ServerConn) WriteOutput(msg string) error {
 		return err
 	}
 
-	return sc.conn.WriteMessage(string(data))
+	_, err = sc.conn.Write(append(data, '\n'))
+	return err
 }
 
 func (sc *ServerConn) WriteError(msg string) error {
 	m := message{
-		Msg: msg,
+		Msg:  msg,
 		Type: resp_type_err,
 	}
 
@@ -210,12 +199,13 @@ func (sc *ServerConn) WriteError(msg string) error {
 		return err
 	}
 
-	return sc.conn.WriteMessage(string(data))
+	_, err = sc.conn.Write(append(data, '\n'))
+	return err
 }
 
 func (sc *ServerConn) exit(exitCode int) error {
 	m := message{
-		Type: resp_type_exit,
+		Type:     resp_type_exit,
 		ExitCode: exitCode,
 	}
 
@@ -224,5 +214,6 @@ func (sc *ServerConn) exit(exitCode int) error {
 		return err
 	}
 
-	return sc.conn.WriteMessage(string(data))
+	_, err = sc.conn.Write(append(data, '\n'))
+	return err
 }

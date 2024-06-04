@@ -1,5 +1,3 @@
-github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
-github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/go-logr/logr v1.4.1 h1:pKouT5E8xu9zeFC39JXRDukb6JFQPXM5p5I91188VAQ=
@@ -12,8 +10,6 @@ github.com/google/pprof v0.0.0-20240424215950-a892ee059fd6 h1:k7nVchz72niMH6YLQN
 github.com/google/pprof v0.0.0-20240424215950-a892ee059fd6/go.mod h1:kf6iHlnVGwgKolg33glAes7Yg/8iWP8ukqeldJSO7jw=
 github.com/nixpare/broadcaster v1.2.1 h1:eit04tSQgKCBvF0lFOQKaMUdVGgIvgwkQdIhvilf+vg=
 github.com/nixpare/broadcaster v1.2.1/go.mod h1:IC56SeoQvQGqaqJ06HUN5zMlCLB2NoKNOXo2zNmsp7w=
-github.com/nixpare/logger/v3 v2.2.6 h1:UJ6O2WBBAU90DDvbZX93GKSqiFmsHf9CIKt8CO5i4kI=
-github.com/nixpare/logger/v3 v2.2.6/go.mod h1:A1daE2ZoZ76YKSUqAuq7vtgiwIKjkiCQx2J3fVU8b+8=
 github.com/nixpare/process v1.6.4 h1:qZxT5/F11SHpRmHfHFiIPC3pQzQIl8nVsfTZUAS85wg=
 github.com/nixpare/process v1.6.4/go.mod h1:7x0QIS3SnMK6Lro8doW1XD+Ppfb/Sd8n8v5GSQ+7SKo=
 github.com/onsi/ginkgo/v2 v2.17.2 h1:7eMhcy3GimbsA3hEnVKdw/PQM9XN9krpKVXsZdph0/g=

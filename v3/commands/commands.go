@@ -1,136 +1,108 @@
 package commands
 
 import (
-	"bytes"
+	"bufio"
 	"encoding/json"
 	"errors"
 	"io"
-	"log"
-	"os"
+	"net"
 
 	"github.com/nixpare/logger/v3"
-	"github.com/nixpare/pipe"
 	"github.com/nixpare/server/v3"
 )
 
 type CommandServer struct {
-	ps       *pipe.PipeServer
-	commands map[string]ServerCommandHandler
-	router   *server.Router
-	l        *logger.Logger
+	ln       net.Listener
+	Commands map[string]ServerCommandHandler
+	Router   *server.Router
+	Logger   *logger.Logger
 }
 
-func newCommandServer(pipePath string, router *server.Router) (*CommandServer, error) {
-	ps, err := pipe.NewPipeServer(pipePath)
-	if err != nil {
-		return nil, err
-	}
-
+func NewCommandServer(ln net.Listener, router *server.Router) (*CommandServer, error) {
 	cmdServer := &CommandServer{
-		ps: ps,
-		commands: make(map[string]ServerCommandHandler),
-		router: router,
-		l: router.Logger.Clone(nil, true, "cmd-server"),
+		ln:       ln,
+		Commands: make(map[string]ServerCommandHandler),
+		Router:   router,
+		Logger:   router.Logger.Clone(nil, true, "command-server"),
 	}
-	ps.Logger = log.New(cmdServer.l.AsStderr(), "", 0)
 
 	return cmdServer, nil
 }
 
-func (cs *CommandServer) Logger() *logger.Logger {
-	return cs.l
-}
-
-func (cs *CommandServer) RegisterCommand(cmd string, f ServerCommandHandler) {
-	if f == nil {
-		return
-	}
-	cs.commands[cmd] = f
-}
-
-func (cs *CommandServer) Start() {
-	cs.ps.Start(func(conn *pipe.Conn) error {
-		sc := &ServerConn{
-			Router: cs.router,
-			Logger: cs.Logger().Clone(nil, true, "cmd-handler"),
-			cs: cs,
-			conn: conn,
+func (cs *CommandServer) ListenAndServe() error {
+	for {
+		conn, err := cs.ln.Accept()
+		if err != nil {
+			return err
 		}
-		return sc.commandHandler()
-	})
-	cs.Logger().Print(logger.LOG_LEVEL_INFO, "Command PipeServer started")
+	
+		go func() {
+			sc := &ServerConn{
+				Router: cs.Router,
+				Logger: cs.Logger.Clone(nil, true, "command-handler"),
+				Server: cs,
+				conn:   conn,
+				br:     bufio.NewReader(conn),
+			}
+	
+			exitCode, err := sc.commandHandler()
+			switch {
+			case err == nil:
+				sc.Logger.Printf(logger.LOG_LEVEL_INFO, "Command %v execution terminated (%d)", sc.args, exitCode)
+			case errors.Is(err, net.ErrClosed):
+				sc.Logger.Printf(logger.LOG_LEVEL_WARNING, "Command %v connection lost: %v", sc.args, err)
+				return
+			case errors.Is(err, io.EOF):
+				sc.Logger.Printf(logger.LOG_LEVEL_WARNING, "Command %v connection unexpected EOF: %v", sc.args, err)
+				return
+			default:
+				sc.Logger.Printf(logger.LOG_LEVEL_ERROR, "Command %v execution error: %v", sc.args, err)
+			}
+
+			err = sc.exit(exitCode)
+			if err != nil {
+				sc.Logger.Printf(logger.LOG_LEVEL_ERROR, "Command %v exit code write error: %v", sc.args, err)
+			}
+		}()
+	}
 }
 
-func (cs *CommandServer) Stop() error {
-	return cs.ps.Stop()
+func (cs *CommandServer) Shutdown() error {
+	return cs.ln.Close()
 }
 
 type ClientCommandHandlerFunc func(cc *ClientConn) error
 
-func initCommand(pipePath string, handler ClientCommandHandlerFunc, cmd string, args []string) (exitCode int, err error) {
-	err = pipe.ConnectToPipe(pipePath, func(conn *pipe.Conn) error {
-		data, err := json.Marshal(append([]string{cmd}, args...))
-		if err != nil {
-			return err
-		}
-		cmd := string(data)
+func InitCommand(dialFunc func() (net.Conn, error), cmd string, args ...string) (*ClientConn, error) {
+	conn, err := dialFunc()
+	if err != nil {
+		return nil, err
+	}
 
-		err = conn.WriteMessage(cmd)
-		if err != nil {
-			return err
-		}
+	args = append([]string{cmd}, args...)
+	data, err := json.Marshal(args)
+	if err != nil {
+		return nil, err
+	}
 
-		cc := &ClientConn{ Conn: conn }
-		err = handler(cc)
-		if err != nil {
-			return err
-		}
+	_, err = conn.Write(append(data, '\n'))
+	if err != nil {
+		return nil, err
+	}
 
-		if cc.exited {
-			exitCode = cc.exitCode
-			return nil
-		}
+	return &ClientConn{
+		br:   bufio.NewReader(conn),
+		conn: conn,
+	}, nil
+}
 
-		for {
-			_, err = cc.ListenMessage()
-			if err == nil {
-				continue
-			}
+func SendCommand(dialFunc func() (net.Conn, error), stdin io.Reader, stdout, stderr io.Writer, cmd string, args ...string) (exitCode int, err error) {
+	conn, err := InitCommand(dialFunc, cmd, args...)
+	if err != nil {
+		return -1, err
+	}
 
-			if !errors.Is(err, io.EOF) {
-				exitCode = 1
-				return err
-			}
-
-			if !cc.exited {
-				exitCode = 1
-				return ErrExitCodeLost
-			}
-
-			exitCode = cc.exitCode
-			return nil
-		}
-	})
+	err = conn.Pipe(stdin, stdout, stderr)
+	exitCode = conn.exitCode
 	return
 }
-
-func sendCommand(pipePath string, cmd string, args []string) (exitCode int, err error) {
-	return initCommand(pipePath, func(cc *ClientConn) error {
-		return cc.Pipe(os.Stdin, os.Stdout, os.Stderr)
-	}, cmd, args)
-}
-
-func captureCommand(stdin io.Reader, pipePath string, cmd string, args []string) (stdout string, stderr string, exitCode int, err error) {
-	stdoutBuf := new(bytes.Buffer)
-	stderrBuf := new(bytes.Buffer)
-
-	exitCode, err = initCommand(pipePath, func(cc *ClientConn) error {
-		return cc.Pipe(stdin, stdoutBuf, stderrBuf)
-	}, cmd, args)
-
-	stdout = stdoutBuf.String()
-	stderr = stderrBuf.String()
-
-	return
-}
-

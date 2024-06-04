@@ -6,48 +6,37 @@ import (
 	"fmt"
 
 	"github.com/nixpare/logger/v3"
-	"github.com/nixpare/pipe"
 )
 
 var (
-	ErrCommandRead = errors.New("failed reading command: no data received")
+	ErrCommandRead = errors.New("failed reading command")
 	ErrCommandInit = errors.New("invalid command")
 )
 
 type ServerCommandHandler func(sc *ServerConn, args ...string) (exitCode int, err error)
 
-func (sc *ServerConn) commandHandler() error {
-	data, ok := sc.conn.ReadMessage()
-	if !ok {
-		return ErrCommandRead
-	}
-
-	var args []string
-	err := json.Unmarshal(data, &args)
+func (sc *ServerConn) commandHandler() (exitCode int, err error) {
+	data, err := sc.br.ReadBytes('\n')
 	if err != nil {
-		return fmt.Errorf("command arguments decode error: %w", err)
+		err = fmt.Errorf("%w: %v", ErrCommandRead, err)
+		return
 	}
 
-	sc.Logger.Printf(logger.LOG_LEVEL_INFO, "Received command %v", args)
+	err = json.Unmarshal(data, &sc.args)
+	if err != nil {
+		err = fmt.Errorf("command arguments decode error: %w", err)
+		return
+	}
 
-	var exitCode int
+	sc.Logger.Printf(logger.LOG_LEVEL_INFO, "Received command %v", sc.args)
+
 	err = logger.PanicToErr(func() error {
 		var err error
-		exitCode, err = sc.executeCommands(args[0], args[1:]...)
+		exitCode, err = sc.executeCommands(sc.args[0], sc.args[1:]...)
 		return err
 	})
-	if err != nil {
-		if pipe.ErrIsEOF(err) {
-			sc.Logger.Printf(logger.LOG_LEVEL_WARNING, "Command %v connection lost", args)
-			return nil
-		} else {
-			sc.Logger.Printf(logger.LOG_LEVEL_ERROR, "Command %v execution error: %v", args, err)
-			return sc.exit(exitCode)
-		}
-	}
-
-	sc.Logger.Printf(logger.LOG_LEVEL_INFO, "Command %v execution terminated (%d)", args, exitCode)
-	return sc.exit(exitCode)
+	
+	return
 }
 
 func (sc *ServerConn) executeCommands(cmd string, args ...string) (exitCode int, err error) {
@@ -69,7 +58,7 @@ func (sc *ServerConn) executeCommands(cmd string, args ...string) (exitCode int,
 	case "watch":
 		return watchCmd(sc, args...)
 	default:
-		f, ok := sc.cs.commands[cmd]
+		f, ok := sc.Server.Commands[cmd]
 		if !ok {
 			err = sc.WriteError(sc.commandNotFound(cmd))
 			exitCode = 1
@@ -89,7 +78,7 @@ func (sc *ServerConn) commandNotFound(cmd string) string {
 	}
 
 	customCmds := "[ "
-	for c := range sc.cs.commands {
+	for c := range sc.Server.Commands {
 		customCmds += c + " "
 	}
 	customCmds += "]"

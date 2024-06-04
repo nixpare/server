@@ -5,14 +5,12 @@ go 1.22.2
 require (
 	github.com/nixpare/broadcaster v1.2.1
 	github.com/nixpare/logger/v3 v3.0.0
-	github.com/nixpare/pipe v0.0.0
 	github.com/nixpare/process v1.6.4
 	github.com/quic-go/quic-go v0.43.0
 	golang.org/x/net v0.24.0
 )
 
 require (
-	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/google/pprof v0.0.0-20240424215950-a892ee059fd6 // indirect
 	github.com/onsi/ginkgo/v2 v2.17.2 // indirect
@@ -27,6 +25,6 @@ require (
 )
 
 replace (
-	github.com/nixpare/pipe v0.0.0 => D:\Coding\GitHub\pipe\pipe
 	github.com/nixpare/logger/v3 v3.0.0 => D:\Coding\GitHub\logger\logger\v3
+	github.com/nixpare/pipe v0.0.0 => D:\Coding\GitHub\pipe\pipe
 )
