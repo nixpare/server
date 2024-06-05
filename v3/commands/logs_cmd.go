@@ -26,26 +26,28 @@ func logCmd(sc *ServerConn, args ...string) (int, error) {
 		switch args[0] {
 		case "help":
 			return 0, sc.WriteOutput(logHelp("help"))
+
 		case "all":
-			sc.Router.Logger.GetLastNLogsBuffered(sc.Router.Logger.Logs())
+			logs = sc.Router.Logger.GetLastNLogsBuffered(sc.Router.Logger.Logs())
+
 		case "tags":
+			logs = sc.Router.Logger.GetLastNLogsBuffered(sc.Router.Logger.Logs())
 			filter = func(log logger.Log) bool {
 				return log.Match(args[1:]...)
 			}
 
-			sc.Router.Logger.GetLastNLogsBuffered(sc.Router.Logger.Logs())
 		case "tags-any":
+			logs = sc.Router.Logger.GetLastNLogsBuffered(sc.Router.Logger.Logs())
 			filter = func(log logger.Log) bool {
 				return log.MatchAny(args[1:]...)
 			}
-
-			sc.Router.Logger.GetLastNLogsBuffered(sc.Router.Logger.Logs())
+			
 		case "level":
+			logs = sc.Router.Logger.GetLastNLogsBuffered(sc.Router.Logger.Logs())
 			filter = func(log logger.Log) bool {
 				return log.LevelMatchAny(fromStringToLogLevel(args[1:])...)
 			}
 
-			sc.Router.Logger.GetLastNLogsBuffered(sc.Router.Logger.Logs())
 		case "range":
 			if len(args) < 2 {
 				return 1, sc.WriteError("Not enough arguments")
@@ -58,10 +60,13 @@ func logCmd(sc *ServerConn, args ...string) (int, error) {
 			}
 
 			logs = sc.Router.Logger.GetLogsBuffered(start, end)
+
 		case "list-tags":
 			return 0, sc.WriteOutput(listTags(sc.Router))
+
 		default:
 			return 1, sc.WriteError(logHelp(args[0]))
+			
 		}
 	}
 

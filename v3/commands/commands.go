@@ -19,12 +19,12 @@ type CommandServer struct {
 	Logger   *logger.Logger
 }
 
-func NewCommandServer(ln net.Listener, router *server.Router) (*CommandServer, error) {
+func NewCommandServer(ln net.Listener, l *logger.Logger, router *server.Router) (*CommandServer, error) {
 	cmdServer := &CommandServer{
 		ln:       ln,
 		Commands: make(map[string]ServerCommandHandler),
 		Router:   router,
-		Logger:   router.Logger.Clone(nil, true, "command-server"),
+		Logger:   l,
 	}
 
 	return cmdServer, nil
