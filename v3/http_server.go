@@ -190,8 +190,8 @@ func (srv *HTTPServer) Stop() error {
 }
 
 func (srv *HTTPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if srv.HTTP3Server != nil {
-		err := srv.HTTP3Server.SetQuicHeaders(w.Header())
+	if srv.HTTP3Server != nil && r.ProtoMajor < 3 {
+		err := srv.HTTP3Server.SetQUICHeaders(w.Header())
 		if err != nil {
 			srv.Logger.Printf(logger.LOG_LEVEL_ERROR, "Error setting Alt-Svc header: %v", err)
 		}
