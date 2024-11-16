@@ -149,7 +149,7 @@ func (cc *ClientConn) Pipe(stdin io.Reader, stdout io.Writer, stderr io.Writer) 
 			// catch send on closed channel
 			defer func() {
 				if err := recover(); err != nil {
-					logger.Printf(logger.LOG_LEVEL_WARNING, "caught error after response: %v", err)
+					logger.Printf(logger.LOG_LEVEL_WARNING, "caught error from stdin after response: %v", err)
 				}
 			}()
 
@@ -170,6 +170,13 @@ func (cc *ClientConn) Pipe(stdin io.Reader, stdout io.Writer, stderr io.Writer) 
 	}
 
 	go func() {
+		// catch send on closed channel
+		defer func() {
+			if err := recover(); err != nil {
+				logger.Printf(logger.LOG_LEVEL_WARNING, "caught error from stdout after response: %v", err)
+			}
+		}()
+
 		for {
 			msg, err := cc.ReadMessage()
 
