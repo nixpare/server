@@ -146,10 +146,18 @@ func (cc *ClientConn) Pipe(stdin io.Reader, stdout io.Writer, stderr io.Writer) 
 
 	if stdin != nil {
 		go func() {
+			// catch send on closed channel
+			defer func() {
+				if err := recover(); err != nil {
+					logger.Printf(logger.LOG_LEVEL_WARNING, "caught error after response: %v", err)
+				}
+			}()
+
 			sc := bufio.NewScanner(stdin)
 			for sc.Scan() {
 				err := cc.WriteMessage(sc.Text())
 				if err != nil {
+					logger.Debug(err)
 					exitC <- err
 					return
 				}
