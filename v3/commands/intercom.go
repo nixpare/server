@@ -146,7 +146,6 @@ func (cc *ClientConn) Pipe(stdin io.Reader, stdout io.Writer, stderr io.Writer) 
 	exitC := make(chan error, 10)
 	var wg sync.WaitGroup
 
-	var reading bool
 	cancelRead := func() error { return nil }
 
 	if stdin != nil {
@@ -172,7 +171,7 @@ func (cc *ClientConn) Pipe(stdin io.Reader, stdout io.Writer, stderr io.Writer) 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			pipeStdin(stdin, cc, exitC, &reading)
+			pipeStdin(stdin, cc, exitC)
 		}()
 	}
 
@@ -181,9 +180,7 @@ func (cc *ClientConn) Pipe(stdin io.Reader, stdout io.Writer, stderr io.Writer) 
 		defer wg.Done()
 
 		pipeStdoutStderr(stdout, stderr, cc, exitC)
-		if reading {
-			cancelRead()
-		}
+		exitC <- cancelRead()
 	}()
 
 	wg.Wait()
@@ -197,13 +194,10 @@ func (cc *ClientConn) Pipe(stdin io.Reader, stdout io.Writer, stderr io.Writer) 
 	return errors.Join(errs...)
 }
 
-func pipeStdin(stdin io.Reader, cc *ClientConn, exitC chan<- error, reading *bool) {
+func pipeStdin(stdin io.Reader, cc *ClientConn, exitC chan<- error) {
 	rd := bufio.NewReader(stdin)
 	for {
-		*reading = true
 		line, err := rd.ReadString('\n')
-		*reading = false
-
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
 				exitC <- err
