@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 
+	"github.com/nixpare/cancelio"
 	"github.com/nixpare/logger/v3"
 	"github.com/nixpare/server/v3"
 )
@@ -141,85 +143,124 @@ func (cc *ClientConn) SendInterrupt() error {
 }
 
 func (cc *ClientConn) Pipe(stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
-	exitC := make(chan error)
-	defer close(exitC)
+	exitC := make(chan error, 10)
+	var wg sync.WaitGroup
+
+	var reading bool
+	cancelRead := func() error { return nil }
 
 	if stdin != nil {
-		go func() {
-			// catch send on closed channel
-			defer func() {
-				if err := recover(); err != nil {
-					logger.Printf(logger.LOG_LEVEL_WARNING, "caught error from stdin after response: %v", err)
-				}
-			}()
+		switch f := stdin.(type) {
+		case cancelio.CancellableReader:
+			cancelRead = f.Cancel
 
-			sc := bufio.NewScanner(stdin)
-			for sc.Scan() {
-				err := cc.WriteMessage(sc.Text())
-				if err != nil {
-					logger.Debug(err)
-					exitC <- err
-					return
-				}
+		case cancelio.FdReader:
+			rd, err := cancelio.NewCancellableReader(f)
+			if err != nil {
+				return err
 			}
-			
-			if err := sc.Err(); err != nil {
-				exitC <- err
-			}
+			defer rd.Close()
+
+			stdin = rd
+			cancelRead = rd.Cancel
+
+		case io.ReadCloser:
+			cancelRead = f.Close
+
+		}
+		
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			pipeStdin(stdin, cc, exitC, &reading)
 		}()
 	}
 
+	wg.Add(1)
 	go func() {
-		// catch send on closed channel
-		defer func() {
-			if err := recover(); err != nil {
-				logger.Printf(logger.LOG_LEVEL_WARNING, "caught error from stdout after response: %v", err)
-			}
-		}()
+		defer wg.Done()
 
-		for {
-			msg, err := cc.ReadMessage()
-
-			if err != nil {
-				if errors.Is(err, io.EOF) {
-					exitC <- nil
-					break
-				}
-
-				exitC <- err
-				break
-			}
-
-			if msg.ToStdOut() {
-				if stdout != nil {
-					_, err = stdout.Write(append([]byte(msg.Message), '\n'))
-					if err != nil {
-						exitC <- err
-						break
-					}
-				}
-
-				continue
-			}
-
-			if msg.ToStdErr() {
-				if stderr != nil {
-					_, err = stderr.Write(append([]byte(msg.Message), '\n'))
-					if err != nil {
-						exitC <- err
-						break
-					}
-				}
-
-				continue
-			}
-
-			exitC <- nil
-			break
+		pipeStdoutStderr(stdout, stderr, cc, exitC)
+		if reading {
+			cancelRead()
 		}
 	}()
 
-	return <-exitC
+	wg.Wait()
+	close(exitC)
+
+	var errs []error
+	for err := range exitC {
+		errs = append(errs, err)
+	}
+
+	return errors.Join(errs...)
+}
+
+func pipeStdin(stdin io.Reader, cc *ClientConn, exitC chan<- error, reading *bool) {
+	rd := bufio.NewReader(stdin)
+	for {
+		*reading = true
+		line, err := rd.ReadString('\n')
+		*reading = false
+
+		if err != nil {
+			if !errors.Is(err, io.EOF) {
+				exitC <- err
+			}
+
+			break
+		}
+
+		err = cc.WriteMessage(line[:len(line)-1])
+		if err != nil {
+			exitC <- err
+			break
+		}
+	}
+}
+
+func pipeStdoutStderr(stdout, stderr io.Writer, cc *ClientConn, exitC chan<- error) {
+	for {
+		msg, err := cc.ReadMessage()
+
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				exitC <- nil
+				break
+			}
+
+			exitC <- err
+			break
+		}
+
+		if msg.ToStdOut() {
+			if stdout != nil {
+				_, err = stdout.Write(append([]byte(msg.Message), '\n'))
+				if err != nil {
+					exitC <- err
+					break
+				}
+			}
+
+			continue
+		}
+
+		if msg.ToStdErr() {
+			if stderr != nil {
+				_, err = stderr.Write(append([]byte(msg.Message), '\n'))
+				if err != nil {
+					exitC <- err
+					break
+				}
+			}
+
+			continue
+		}
+
+		exitC <- nil
+		break
+	}
 }
 
 type ServerConn struct {
