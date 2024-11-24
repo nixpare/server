@@ -169,7 +169,7 @@ func (srv *HTTPServer) Stop() error {
 	srv.Server.SetKeepAlivesEnabled(false)
 
 	if srv.HTTP3Server != nil {
-		if err := srv.HTTP3Server.CloseGracefully(10 * time.Second); err != nil {
+		if err := srv.HTTP3Server.Shutdown(context.Background()); err != nil {
 			srv.Logger.Printf(logger.LOG_LEVEL_FATAL,
 				"Server (HTTP/3) %d shutdown crashed due to: %v",
 				srv.port, err.Error(),
