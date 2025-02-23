@@ -59,6 +59,16 @@ func logCmd(sc *ServerConn, args ...string) (int, error) {
 				return 1, sc.WriteError(err.Error())
 			}
 
+			n := sc.Router.Logger.Logs()
+			if start < 0 {
+				start = n + start
+				end = n + end
+			}
+
+			if start < 0 || end < 0 || start > n || end > n {
+				return 1, sc.WriteError("start or end out of range")
+			}
+
 			logs = sc.Router.Logger.GetLogsBuffered(start, end)
 
 		case "list-tags":
@@ -81,11 +91,6 @@ func logCmd(sc *ServerConn, args ...string) (int, error) {
 		}
 	}
 
-	err := sc.WriteOutput("\n")
-	if err != nil {
-		return 1, err
-	}
-
 	for logChunk := range logs {
 		for _, l := range logChunk {
 			if !filter(l) {
@@ -99,7 +104,7 @@ func logCmd(sc *ServerConn, args ...string) (int, error) {
 		}
 	}
 
-	return 0, sc.WriteOutput("\n")
+	return 0, nil
 }
 
 func listTags(router *server.Router) string {
@@ -150,7 +155,9 @@ func logHelp(cmd string) string {
 				 "    - tags     [ tags ... ]   : get all the logs that matches all the tags provided\n" +
 				 "    - tags-any [ tags ... ]   : get all the logs that matches at least one tag\n" +
 				 "    - level    [ levels ... ] : get all the logs with one of the log severities provided\n" +
-				 "    - range    <start>:<end>  : get all the logs with the index <start> <= i < <end>\n" +
+				 "    - range    <start>:<end>  : get all the logs with the index <start> <= i < <end>.\n" +
+ 				 "                                if <start> is negative, it counts backwards (e.g. for the last\n" +
+ 				 "                                5 elements use: 'range -5:0' )\n" +
 				 "    - list-tags               : list of tags currently used by logs\n\n" +
 				 "    - help                    : prints out the help message\n\n" +
 				 "If --pretty is used as the last argument, the result will be colourful\n"
