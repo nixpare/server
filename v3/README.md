@@ -1,4 +1,4 @@
-# Nix Server (v2)
+# Nix Server (v3)
 
 ## Overview
 This package provides an HTTP/S server that can be easily

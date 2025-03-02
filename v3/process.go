@@ -53,7 +53,7 @@ func (tm *TaskManager) StartProcess(name string) error {
 		return err
 	}
 
-	err = p.Start(process.DevNull(), process.DevNull(), process.DevNull())
+	err = p.Start(nil, nil, nil)
 	if err != nil {
 		return err
 	}
