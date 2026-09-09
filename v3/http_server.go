@@ -197,6 +197,6 @@ func (srv *HTTPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Add("Server", "NixPare")
+	w.Header().Set("Server", "Nixpare")
 	srv.Handler.ServeHTTP(w, r)
 }

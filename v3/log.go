@@ -27,15 +27,17 @@ func (router *Router) plainPrintf(level logger.LogLevel, message string, extra s
 func (router *Router) writeLogStart(t time.Time) {
 	router.plainPrintf(logger.LOG_LEVEL_INFO, "Router Online", "",
 		"\n     /\\ /\\ /\\                                              /\\ /\\ /\\"+
-			"\n     <> <> <> - ["+t.Format(TimeFormat)+"] - ROUTER ONLINE - <> <> <>"+
+			"\n     <> <> <> - [%s] - ROUTER ONLINE - <> <> <>"+
 			"\n     \\/ \\/ \\/                                              \\/ \\/ \\/\n\n",
+		t.Format(TimeFormat),
 	)
 }
 
 func (router *Router) writeLogClosure(t time.Time) {
 	router.plainPrintf(logger.LOG_LEVEL_INFO, "Router Offline", "",
 		"\n     /\\ /\\ /\\                                               /\\ /\\ /\\"+
-			"\n     <> <> <> - ["+t.Format(TimeFormat)+"] - ROUTER OFFLINE - <> <> <>"+
+			"\n     <> <> <> - [%s] - ROUTER OFFLINE - <> <> <>"+
 			"\n     \\/ \\/ \\/                                               \\/ \\/ \\/\n\n",
+		t.Format(TimeFormat),
 	)
 }
